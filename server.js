@@ -12,10 +12,12 @@ const crypto = require('crypto');
 // --- Config ------------------------------------------------------------------
 
 const ROOT = __dirname;
+const FALLBACK_DATA_DIR = path.join(ROOT, 'data');
+
 const config = {
   port: Number(process.env.PORT) || 3000,
   baseUrl: (process.env.BASE_URL || 'https://ws.onrender.com').replace(/\/$/, ''),
-  dataDir: process.env.DATA_DIR || path.join(ROOT, 'data'),
+  dataDir: process.env.DATA_DIR || FALLBACK_DATA_DIR,
   criptKey: process.env.ACCESS_TOKEN || 'ffce211a-7b07-4d91-ba5d-c40bb4034a83',
   chromeStoreId: process.env.CHROME_STORE_ID || 'balkfdkhbcjjmhndnblgmlmcabnapogp',
   wlId: process.env.WL_ID || 'waspeed',
@@ -27,7 +29,68 @@ const config = {
   sessionSecret: process.env.SESSION_SECRET || 'change-me-in-production-waspeed-2026',
   installRedirectUrl: process.env.INSTALL_URL || 'https://web.whatsapp.com',
   notesRedirect: process.env.NOTES_REDIRECT === 'true',
+  isRender: !!process.env.RENDER,
+  persistMode: process.env.PERSIST_MODE || (process.env.RENDER ? 'debounced' : 'sync'),
+  saveDebounceMs: Number(process.env.SAVE_DEBOUNCE_MS) || 1500,
 };
+
+function resolveWritableDataDir() {
+  const candidates = [config.dataDir];
+  if (!candidates.includes(FALLBACK_DATA_DIR)) candidates.push(FALLBACK_DATA_DIR);
+
+  for (const dir of candidates) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.accessSync(dir, fs.constants.W_OK);
+      if (dir !== config.dataDir) {
+        console.warn(`[WaSpeed] DATA_DIR "${config.dataDir}" indisponivel — usando "${dir}"`);
+      }
+      return dir;
+    } catch (err) {
+      console.warn(`[WaSpeed] Nao foi possivel gravar em "${dir}": ${err.code || err.message}`);
+    }
+  }
+  throw new Error('Nenhum diretorio gravavel para db.json (verifique DATA_DIR ou disco persistente)');
+}
+
+config.dataDir = resolveWritableDataDir();
+config.ephemeral =
+  config.dataDir === FALLBACK_DATA_DIR ||
+  path.resolve(config.dataDir) === path.resolve(FALLBACK_DATA_DIR);
+
+const WPP_MODULE_VERSION = '1.11';
+
+function loadDomDefaults() {
+  const fp = path.join(ROOT, 'dom-defaults.json');
+  try {
+    return JSON.parse(fs.readFileSync(fp, 'utf8'));
+  } catch (err) {
+    console.warn(`[WaSpeed] dom-defaults.json indisponivel (${err.message}) — minimo embutido`);
+    return {
+      version: WPP_MODULE_VERSION,
+      update_path_active: 'true',
+      disabled_wait_sync: false,
+      wpp_mensagens: { timer: '60000', enable_two_send: false },
+      newModel: { model: 'taghtml', parm: 'body.color-refresh' },
+      app: { model: 'querySelector', selector: ['#app'] },
+    };
+  }
+}
+
+function buildDomConfig(overrides = {}) {
+  const base = loadDomDefaults();
+  const merged = { ...base, ...overrides };
+  merged.update_path = `${config.baseUrl}/api/urls/update`;
+  merged.update_path_new = `${config.baseUrl}/api/services/update`;
+  merged.update_path_active = String(
+    overrides.update_path_active ?? base.update_path_active ?? 'true',
+  );
+  if (merged.version === 1 || merged.selectors) {
+    delete merged.selectors;
+    merged.version = base.version || WPP_MODULE_VERSION;
+  }
+  return merged;
+}
 
 
 // --- Store -------------------------------------------------------------------
@@ -75,7 +138,7 @@ const DEFAULT_DB = {
     meet: {},
     urls: {},
     migration: {},
-    domConfig: { selectors: {}, version: 1 },
+    domConfig: buildDomConfig(),
   },
   mods: [],
   licenses: [],
@@ -89,8 +152,28 @@ function getDb() {
   return cache;
 }
 
-function saveDb() {
+let saveTimer = null;
+let saveDirty = false;
+
+function saveDbImmediate() {
+  if (!cache) return;
   writeJson('db', cache);
+  saveDirty = false;
+}
+
+function saveDb() {
+  if (config.persistMode === 'sync') {
+    saveDbImmediate();
+    return;
+  }
+  saveDirty = true;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveDbImmediate, config.saveDebounceMs);
+}
+
+function flushDb() {
+  clearTimeout(saveTimer);
+  if (saveDirty) saveDbImmediate();
 }
 
 function resetCache() {
@@ -273,9 +356,30 @@ function stats() {
   };
 }
 
+function migrateDb(db) {
+  const dc = db.settings.domConfig || {};
+  const needsDom =
+    !dc.app ||
+    !dc.paneSide ||
+    !dc.update_path ||
+    dc.version === 1 ||
+    (typeof dc.version === 'number' && dc.version < 2);
+  if (needsDom) {
+    db.settings.domConfig = buildDomConfig(dc);
+    return true;
+  }
+  dc.update_path = `${config.baseUrl}/api/urls/update`;
+  dc.update_path_new = `${config.baseUrl}/api/services/update`;
+  return false;
+}
+
 function initSeed() {
   const db = getDb();
-  if (db._seeded) return;
+  const migrated = migrateDb(db);
+  if (db._seeded) {
+    if (migrated) saveDb();
+    return;
+  }
   if (!db.mods.length) {
     db.mods.push({
       id: uid(),
@@ -297,6 +401,31 @@ function initSeed() {
   db._seeded = true;
   saveDb();
 }
+
+const store = {
+  getDb,
+  saveDb,
+  flushDb,
+  resetCache,
+  readJson,
+  appendLog,
+  uid,
+  token,
+  hashPassword,
+  verifyPassword,
+  isExpired,
+  effectiveStatus,
+  toApiUser,
+  userStatusForClient,
+  findByBearer,
+  findByEmailPlugin,
+  findMod,
+  createLicense,
+  updateLicense,
+  deleteLicense,
+  stats,
+  initSeed,
+};
 
 // --- API -------------------------------------------------------------------
 
@@ -340,6 +469,23 @@ function applyCors(req, res, next) {
   next();
 }
 
+function wppUpdatePayload() {
+  return {
+    success: true,
+    version: WPP_MODULE_VERSION,
+    update: false,
+    message: 'WaSpeed server — módulo atualizado',
+  };
+}
+
+function utilsNotConfigured(res, feature) {
+  return res.status(501).json({
+    success: false,
+    msg_id: 'not_configured',
+    message: `${feature} não configurado neste servidor`,
+  });
+}
+
 function registerWaSpeedApi(app) {
   app.use(applyCors);
 
@@ -375,21 +521,23 @@ function registerWaSpeedApi(app) {
     return res.send(db.settings.notesHtml || '<h1>WaSpeed</h1>');
   });
 
-  api.get('/services/update', (req, res) => {
-    return res.json({
-      success: true,
-      version: '1.11',
-      update: false,
-      message: 'WaSpeed server — módulo atualizado',
-    });
-  });
+  // Legado painel-old — wpp_module update_path
+  api.get('/urls/update', (req, res) => res.json(wppUpdatePayload()));
+  api.post('/urls/update', express.json(), (req, res) => res.json(wppUpdatePayload()));
 
-  api.post('/services/update', express.json(), (req, res) => {
-    return res.json({ success: true, version: '1.11', update: false });
-  });
+  api.get('/services/update', (req, res) => res.json(wppUpdatePayload()));
+  api.post('/services/update', express.json(), (req, res) => res.json(wppUpdatePayload()));
 
   api.post('/external/is_instaled', (req, res) => res.json({ success: true }));
-  api.get('/external/ping', (req, res) => res.json({ success: true, server: 'waspeed', version: '1.0.0' }));
+  api.get('/external/ping', (req, res) =>
+    res.json({
+      success: true,
+      server: 'waspeed',
+      version: '1.0.0',
+      wpp_module: WPP_MODULE_VERSION,
+      ephemeral: config.ephemeral,
+    }),
+  );
 
   api.use(requireAccessToken);
 
@@ -475,26 +623,33 @@ function registerWaSpeedApi(app) {
   // Remote DOM config (substitui code.wascript.com.br/config.json)
   app.get('/config.json', applyCors, (req, res) => {
     const db = store.getDb();
-    res.json(db.settings.domConfig || { selectors: {}, version: 1 });
+    const cfg = buildDomConfig(db.settings.domConfig || {});
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.json(cfg);
   });
 
-  // Utils stubs (backend-utils)
+  // Utils — backend-utils.wascript.com.br (WaSpeed DOC)
   const utils = express.Router();
   utils.use(applyCors);
-  utils.use(express.json({ limit: '10mb' }));
-  utils.post('/XLSX/exportFunil', (req, res) => {
-    return res.status(501).json({ success: false, message: 'Export XLSX — implemente conforme necessidade' });
-  });
-  utils.post('/XLSX/exporttab', (req, res) => {
-    return res.status(501).json({ success: false, message: 'Export XLSX — implemente conforme necessidade' });
-  });
-  utils.post('/audio/convert-ptt-file', (req, res) => {
-    return res.status(501).json({ success: false, message: 'Conversão PTT não configurada neste servidor' });
-  });
-  utils.post('/transcription', express.json(), (req, res) => {
-    return res.status(501).json({ success: false, message: 'Transcrição de áudio não configurada neste servidor' });
-  });
+  utils.use(express.json({ limit: '15mb' }));
+
+  utils.post('/XLSX/envioEmMassa', (req, res) => utilsNotConfigured(res, 'Export envio em massa'));
+  utils.post('/XLSX/gabarito', (req, res) => utilsNotConfigured(res, 'Gabarito XLSX'));
+  utils.post('/XLSX/exportFunil', (req, res) => utilsNotConfigured(res, 'Export funil'));
+  utils.post('/XLSX/exporttab', (req, res) => utilsNotConfigured(res, 'Export aba CRM'));
+  utils.post('/audio/convert-ptt-file', (req, res) => utilsNotConfigured(res, 'Conversão PTT (arquivo)'));
+  utils.post('/audio/convert-ptt-base64', (req, res) => utilsNotConfigured(res, 'Conversão PTT (base64)'));
+  utils.post('/transcription', (req, res) => utilsNotConfigured(res, 'Transcrição de áudio'));
   app.use('/utils/api', utils);
+
+  // audio-transcriber.wascript.com.br/transcription (patch da extensão)
+  const transcription = express.Router();
+  transcription.use(applyCors);
+  transcription.options('/', (_req, res) => res.sendStatus(204));
+  transcription.post('/', express.json({ limit: '15mb' }), (req, res) =>
+    utilsNotConfigured(res, 'Transcrição de áudio'),
+  );
+  app.use('/utils/transcription', transcription);
 
   // Página pós-desinstalação
   app.get('/obrigado', (req, res) => {
@@ -567,6 +722,14 @@ button,.btn{display:inline-block;padding:10px 16px;border:none;border-radius:8px
 .token{font-family:monospace;font-size:.8rem;word-break:break-all;background:#121a26;padding:8px;border-radius:6px}
 .login{max-width:400px;margin:80px auto}
 </style></head><body><div class="wrap">${nav}<h1>${esc(title)}</h1>${body}</div></body></html>`;
+}
+
+function freeTierBanner() {
+  if (!config.ephemeral) return '';
+  return `<div class="alert" style="background:#422006;color:#fde68a;border:1px solid #854d0e">
+    <strong>Render Free Tier</strong> — dados em <code>${esc(config.dataDir)}</code> são efêmeros e podem ser perdidos no redeploy ou spin-down.
+    Persistência: <code>${esc(config.persistMode)}</code> (${config.saveDebounceMs}ms). Faça backup manual das licenças.
+  </div>`;
 }
 
 function statusBadge(lic) {
@@ -654,7 +817,8 @@ function registerPanels(app) {
     res.send(
       layout(
         'Admin — Dashboard',
-        `<div class="stats">
+        `${freeTierBanner()}
+        <div class="stats">
           <div class="stat"><div class="n">${st.total}</div><div class="muted">Total</div></div>
           <div class="stat"><div class="n" style="color:var(--green)">${st.active}</div><div class="muted">Ativas</div></div>
           <div class="stat"><div class="n" style="color:var(--red)">${st.expired}</div><div class="muted">Expiradas</div></div>
@@ -887,7 +1051,10 @@ function registerPanels(app) {
           <label>HTML notas de release</label><textarea name="notesHtml" rows="4">${esc(s.notesHtml)}</textarea>
           <label><input type="checkbox" name="notesRedirect" value="1" ${config.notesRedirect ? 'checked' : ''}> Redirecionar para notas no update</label>
           <button type="submit">Salvar</button>
-        </form></div>`,
+        </form></div>
+        <div class="card"><p class="muted">Remote DOM (substitui code.wascript.com.br)</p>
+        <p class="token">${esc(config.baseUrl)}/config.json</p>
+        <p class="muted">Seletores padrão em <code>dom-defaults.json</code> — ${Object.keys(loadDomDefaults()).length} chaves WPP v${WPP_MODULE_VERSION}</p></div>`,
         nav,
       ),
     );
@@ -919,9 +1086,9 @@ function registerPanels(app) {
     res.send(
       layout(
         'WaSpeed Server',
-        `<div class="card"><p>Backend ativo em <strong>${esc(config.baseUrl)}</strong></p>
+        `${freeTierBanner()}<div class="card"><p>Backend ativo em <strong>${esc(config.baseUrl)}</strong></p>
         <p><a class="btn" href="${adminBase}">Painel Admin</a> <a class="btn" href="${modBase}">Painel Mod</a></p>
-        <p class="muted">API: /api/auth/login-bearer/:chromeStoreId · /api/auth/validation/:chromeStoreId</p></div>`,
+        <p class="muted">Health: <a href="/health">/health</a> · API: /api/auth/login-bearer/:chromeStoreId</p></div>`,
       ),
     );
   });
@@ -929,12 +1096,33 @@ function registerPanels(app) {
 
 // --- Bootstrap ---------------------------------------------------------------
 
+const startedAt = new Date().toISOString();
+
+function registerHealth(app) {
+  app.get('/health', applyCors, (req, res) => {
+    res.json({
+      ok: true,
+      service: 'waspeed-server',
+      startedAt,
+      uptime: Math.floor(process.uptime()),
+      baseUrl: config.baseUrl,
+      dataDir: config.dataDir,
+      ephemeral: config.ephemeral,
+      persistMode: config.persistMode,
+      wppModule: WPP_MODULE_VERSION,
+      licenses: store.stats().total,
+    });
+  });
+  app.head('/health', applyCors, (_req, res) => res.sendStatus(200));
+}
+
 initSeed();
 
 const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '2mb' }));
 
+registerHealth(app);
 registerWaSpeedApi(app);
 registerPanels(app);
 
@@ -943,9 +1131,22 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ success: false, msg_id: 'server_error' });
 });
 
-app.listen(config.port, () => {
+const server = app.listen(config.port, () => {
   console.log(`WaSpeed Server em http://localhost:${config.port}`);
+  console.log(`Dados: ${config.dataDir}${config.ephemeral ? ' (efemero — free tier)' : ''}`);
+  console.log(`Persist: ${config.persistMode}`);
   console.log(`Admin: ${config.baseUrl}/${config.adminPath}`);
   console.log(`Mod:   ${config.baseUrl}/${config.modPath}`);
   console.log(`API:   ${config.baseUrl}/api/`);
+  console.log(`Health: ${config.baseUrl}/health`);
 });
+
+function shutdown(signal) {
+  console.log(`[WaSpeed] ${signal} — gravando cache e encerrando`);
+  store.flushDb();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 10000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
