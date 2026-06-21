@@ -225,6 +225,21 @@ function findKeyByBearer(bearer) {
   return null;
 }
 
+function getOrCreateFreeKey(extensionId, ip) {
+  const seed = String(extensionId || ip || 'anonymous');
+  const code = normKey(`ws-free-${crypto.createHash('sha256').update(seed).digest('hex').slice(0, 16)}`);
+  const existing = findKey(code);
+  if (existing) return { code, rec: existing };
+  const rec = createKey({
+    code,
+    label: 'Usuario Gratuito',
+    premium: false,
+    note: 'Registro free automatico',
+    expireDays: 0,
+  });
+  return { code, rec };
+}
+
 const EMPTY_AUTH_GOOGLE = {
   user_id: '', name: '', picture: '', email_auth: '', access_token: '',
   expires_in: NaN, id_token: '', refresh_token: '', scope: '', token_type: '', updated_at: NaN,
@@ -598,6 +613,141 @@ function renderLogin(base, role, err = '') {
     </form></div>`);
 }
 
+// --- Painel cliente (app.wascript.com.br) ------------------------------------
+
+const CLIENT_PANEL_RE = /^\/([a-z0-9]{16,32})\/(auth-painel|login|recovery|auth-plugin|redirect-plugin-register|register)\/?$/i;
+
+function statusBadge(st) {
+  if (st === 'active') return '<span class="badge badge-ok">PRO ATIVO</span>';
+  if (st === 'blocked') return '<span class="badge badge-off">BLOQUEADO</span>';
+  if (st === 'expired') return '<span class="badge badge-off">EXPIRADO</span>';
+  return '<span class="badge badge-free">FREE</span>';
+}
+
+function renderClientLogin(storeId) {
+  return panelLayout('Painel Clientes', `<div class="card">
+    <p class="muted">Extensão WaSpeed · ID ${esc(storeId)}</p>
+    <p>O acesso ao painel é feito pela extensão no WhatsApp Web.</p>
+    <ol class="muted" style="line-height:1.8;padding-left:20px">
+      <li>Abra o WhatsApp Web</li>
+      <li>Na extensão WaSpeed, faça login com sua <strong>chave de ativação</strong></li>
+      <li>Clique em <strong>Painel Clientes</strong> na barra lateral</li>
+    </ol>
+    <p style="margin-top:16px"><a class="btn" href="https://web.whatsapp.com" target="_blank" rel="noopener">Abrir WhatsApp Web</a></p>
+  </div>`);
+}
+
+function renderClientRecovery(storeId) {
+  return panelLayout('Recuperar acesso', `<div class="card">
+    <p class="muted">Extensão WaSpeed</p>
+    <p>Entre em contato com o administrador do seu servidor WaSpeed para obter uma nova chave de ativação.</p>
+    <p class="muted">Sua chave é o identificador usado no login da extensão (ex.: <code>ws-demo-premium</code>).</p>
+    <p style="margin-top:16px"><a class="btn" href="/${esc(storeId)}/login">Voltar ao painel</a></p>
+  </div>`);
+}
+
+function renderClientRegister(storeId) {
+  return panelLayout('Modo gratuito', `<div class="card">
+    <p class="muted">Extensão WaSpeed</p>
+    <p>O cadastro gratuito é feito diretamente na extensão: clique em <strong>Entrar gratuitamente</strong> na tela de login do WhatsApp Web.</p>
+    <p class="muted">Limites do modo free: exportação CRM até 5 contatos por aba e recursos premium bloqueados.</p>
+    <p style="margin-top:16px"><a class="btn" href="https://web.whatsapp.com" target="_blank" rel="noopener">Abrir WhatsApp Web</a></p>
+  </div>`);
+}
+
+function renderClientAuthPainel(storeId, token, page) {
+  const rec = findKeyByBearer(token);
+  if (!rec) {
+    return panelLayout('Sessão inválida', `<div class="card">
+      <div class="alert">Token inválido ou sessão expirada. Faça login novamente na extensão WaSpeed.</div>
+      <p><a class="btn" href="/${esc(storeId)}/login">Instruções de acesso</a></p>
+    </div>`);
+  }
+
+  const code = rec.code || token;
+  const user = keyToUser(code, rec);
+  const st = keyStatus(rec);
+  const premium = buildUserPremium(code, rec);
+  const exp = rec.expiresAt ? new Date(rec.expiresAt).toLocaleString('pt-BR') : 'Sem vencimento';
+  const liberacao = premium?.data_liberacao || '—';
+  const pageLabel = page ? esc(decodeURIComponent(page)) : '';
+
+  const nav = `<nav>
+    <a href="/${esc(storeId)}/auth-painel?token=${encodeURIComponent(token)}">Minha conta</a>
+    <a href="https://web.whatsapp.com" target="_blank" rel="noopener">WhatsApp Web</a>
+  </nav>`;
+
+  return panelLayout('Painel Clientes', `${nav}
+    <div class="stats">
+      <div class="stat"><div class="n" style="font-size:1rem">${statusBadge(st)}</div><div class="muted">Status</div></div>
+      <div class="stat"><div class="n" style="font-size:1rem">${esc(liberacao)}</div><div class="muted">Liberação</div></div>
+      <div class="stat"><div class="n" style="font-size:1rem">${esc(exp)}</div><div class="muted">Validade</div></div>
+    </div>
+    <div class="card">
+      <p class="muted">Conta</p>
+      <p><strong>${esc(user.name)}</strong></p>
+      <p class="muted">${esc(user.email)}</p>
+      <p style="margin-top:12px">Chave: <span class="key-mono">${esc(code)}</span></p>
+      ${pageLabel ? `<p class="muted" style="margin-top:12px">Seção: ${pageLabel}</p>` : ''}
+    </div>
+    <div class="card">
+      <p class="muted">Informações</p>
+      <p>Servidor: <span class="key-mono">${esc(config.baseUrl)}</span></p>
+      <p>WhatsApp vinculado: ${esc(rec.lastPhone || '—')}</p>
+      <p>Último uso: ${rec.lastUsed ? new Date(rec.lastUsed).toLocaleString('pt-BR') : '—'}</p>
+    </div>
+    <div class="card">
+      <p class="muted">Dúvidas ou renovação</p>
+      <p>Contate o administrador do seu WaSpeed para gerenciar licenças e chaves.</p>
+    </div>`, '');
+}
+
+function handleClientPanel(req, res, pathname, url) {
+  const m = pathname.match(CLIENT_PANEL_RE);
+  if (!m) return false;
+
+  const storeId = m[1];
+  const route = m[2].toLowerCase();
+  const token = url.searchParams.get('token') || url.searchParams.get('bearer_token') || '';
+  const page = url.searchParams.get('page') || '';
+
+  if (route === 'auth-painel') {
+    if (!token) {
+      res.writeHead(302, { Location: `/${storeId}/login` });
+      res.end();
+      return true;
+    }
+    sendHtml(res, renderClientAuthPainel(storeId, token, page));
+    return true;
+  }
+
+  if (route === 'auth-plugin') {
+    const dest = token
+      ? `/${storeId}/auth-painel?token=${encodeURIComponent(token)}`
+      : `/${storeId}/login`;
+    res.writeHead(302, { Location: dest });
+    res.end();
+    return true;
+  }
+
+  if (route === 'redirect-plugin-register' || route === 'register') {
+    sendHtml(res, renderClientRegister(storeId));
+    return true;
+  }
+
+  if (route === 'recovery') {
+    sendHtml(res, renderClientRecovery(storeId));
+    return true;
+  }
+
+  if (route === 'login') {
+    sendHtml(res, renderClientLogin(storeId));
+    return true;
+  }
+
+  return false;
+}
+
 // --- Router ------------------------------------------------------------------
 
 async function handleWaSpeedApi(req, res, pathname, ip) {
@@ -648,6 +798,16 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     const result = authSuccess(code, rec);
     if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
     addLog('auth_ok', `Login bearer ${code}`, { ip });
+    return sendJson(res, result.body);
+  }
+
+  if (pathname === `/api/auth/register-free/${chromeId}` && req.method === 'POST') {
+    if (!checkRate(ip, 'login')) return sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
+    const body = await readJson(req);
+    const { code, rec } = getOrCreateFreeKey(body.extension_id || body.device_id, ip);
+    const result = authSuccess(code, rec);
+    if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
+    addLog('free_register', `Login free ${code}`, { ip, extension_id: body.extension_id });
     return sendJson(res, result.body);
   }
 
@@ -908,6 +1068,8 @@ async function handleRequest(req, res) {
     if (pathname.startsWith('/utils/')) {
       return sendJson(res, { success: false, msg_id: 'not_configured', message: 'Nao configurado neste servidor' }, 501);
     }
+
+    if (handleClientPanel(req, res, pathname, url)) return;
 
     if (pathname.startsWith('/api/')) {
       const handled = await handleWaSpeedApi(req, res, pathname, ip);
