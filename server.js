@@ -230,9 +230,40 @@ const EMPTY_AUTH_GOOGLE = {
   expires_in: NaN, id_token: '', refresh_token: '', scope: '', token_type: '', updated_at: NaN,
 };
 
+function formatDateYMD(value) {
+  const dt = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(dt.getTime())) return formatDateYMD(new Date());
+  const y = dt.getFullYear();
+  const m = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Objeto exigido pela extensao (7349.js be, 7329.js modais, 7353.js gates) */
+function buildUserPremium(code, rec) {
+  if (keyStatus(rec) !== 'active') return null;
+
+  let dataLiberacao;
+  if (rec.expiresAt) {
+    const exp = new Date(rec.expiresAt);
+    if (!Number.isNaN(exp.getTime())) {
+      exp.setFullYear(exp.getFullYear() - 1);
+      dataLiberacao = formatDateYMD(exp);
+    }
+  }
+  if (!dataLiberacao) {
+    dataLiberacao = formatDateYMD(rec.createdAt || new Date());
+  }
+
+  return {
+    id_assinatura: String(rec.user_id || code),
+    data_liberacao: dataLiberacao,
+    teste: '0',
+  };
+}
+
 function keyToUser(code, rec) {
   const st = keyStatus(rec);
-  const premium = st === 'active';
   return {
     user_id: String(rec.user_id),
     name: rec.label || 'Usuario',
@@ -240,7 +271,7 @@ function keyToUser(code, rec) {
     wl_id: config.wlId,
     bearer_token: rec.bearer_token || code,
     access_token_plugin: rec.access_token_plugin || code,
-    user_premium: premium,
+    user_premium: buildUserPremium(code, rec),
     dataCadastro: rec.createdAt || new Date().toISOString(),
     whatsapp_registro: rec.lastPhone || '',
     whatsapp_plugin: rec.lastPhone || '',
