@@ -1,0 +1,16 @@
+{
+  "name": "waspeed-server",
+  "version": "1.0.0",
+  "description": "Backend WaSpeed — API da extensão + painéis Admin e Moderador",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

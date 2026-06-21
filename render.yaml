@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: waspeed-server
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: BASE_URL
+        value: https://ws.onrender.com
+      - key: DATA_DIR
+        value: /var/data
+      - key: ADMIN_USER
+        sync: false
+      - key: ADMIN_PASS
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ACCESS_TOKEN
+        value: ffce211a-7b07-4d91-ba5d-c40bb4034a83
+    disk:
+      name: waspeed-data
+      mountPath: /var/data
+      sizeGB: 1
