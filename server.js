@@ -1,78 +1,63 @@
 'use strict';
 
 // =============================================================================
-// WaSpeed Server v2 — estrutura ZapVoice (http nativo + chaves) + API WaSpeed
+// WaSpeed Server v3.0 — http nativo + MongoDB + sessoes seguras
 // =============================================================================
 
 const http = require('http');
-const fs = require('fs');
-const path = require('path');
 const crypto = require('crypto');
 const { URL } = require('url');
+const { MongoClient } = require('mongodb');
 
-const ROOT = __dirname;
-const FALLBACK_DATA = path.join(ROOT, 'data');
 const WPP_VERSION = '1.11';
 const REMOTE_CODE_VERSION = '1.0.41';
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const ANTI_SLEEP_MS = 5 * 60 * 1000;
 
-// --- Config ------------------------------------------------------------------
+const COL = { settings: 'settings', licenses: 'licenses', logs: 'logs', sessions: 'sessions' };
 
 const config = {
   port: Number(process.env.PORT) || 3000,
-  baseUrl: (process.env.BASE_URL || '').replace(/\/$/, ''),
-  dataDir: process.env.DATA_DIR || FALLBACK_DATA,
+  baseUrl: (process.env.BASE_URL || process.env.PUBLIC_URL || '').replace(/\/$/, ''),
+  publicUrl: (process.env.PUBLIC_URL || process.env.BASE_URL || '').replace(/\/$/, ''),
+  mongoUri: process.env.MONGODB_URI || '',
+  dbName: process.env.MONGODB_DB || 'waspeed',
   criptKey: process.env.ACCESS_TOKEN || 'ffce211a-7b07-4d91-ba5d-c40bb4034a83',
   chromeStoreId: process.env.CHROME_STORE_ID || 'balkfdkhbcjjmhndnblgmlmcabnapogp',
   wlId: process.env.WL_ID || 'waspeed',
-  wlName: process.env.WL_NAME || 'WaSpeed',
   adminUser: process.env.ADMIN_USER || 'admin',
   adminPass: process.env.ADMIN_PASS || 'waspeed-admin-change-me',
   adminPath: process.env.ADMIN_PATH || 'admin-waspeed',
   modPath: process.env.MOD_PATH || 'mod-waspeed',
-  sessionSecret: process.env.SESSION_SECRET || 'change-me-waspeed-2026',
   installUrl: process.env.INSTALL_URL || 'https://web.whatsapp.com',
   notesRedirect: process.env.NOTES_REDIRECT === 'true',
-  persistMode: process.env.PERSIST_MODE || (process.env.RENDER ? 'debounced' : 'sync'),
-  saveDebounceMs: Number(process.env.SAVE_DEBOUNCE_MS) || 1500,
   logMax: Math.min(Number(process.env.LOG_MAX) || 500, 2000),
 };
 
-function resolveDataDir() {
-  for (const dir of [config.dataDir, FALLBACK_DATA]) {
-    try {
-      fs.mkdirSync(dir, { recursive: true });
-      fs.accessSync(dir, fs.constants.W_OK);
-      if (dir !== config.dataDir) {
-        console.warn(`[WaSpeed] DATA_DIR indisponivel — usando ${dir}`);
-      }
-      return dir;
-    } catch (e) {
-      console.warn(`[WaSpeed] Sem gravacao em ${dir}: ${e.message}`);
-    }
-  }
-  throw new Error('Nenhum diretorio gravavel');
-}
-
-config.dataDir = resolveDataDir();
-config.ephemeral = path.resolve(config.dataDir) === path.resolve(FALLBACK_DATA);
-
 if (!config.baseUrl) {
-  console.error('[WaSpeed] ERRO: defina BASE_URL nas variaveis de ambiente (URL publica do Render).');
+  console.error('[WaSpeed] ERRO: defina BASE_URL ou PUBLIC_URL.');
+  process.exit(1);
+}
+if (!config.mongoUri) {
+  console.error('[WaSpeed] ERRO: defina MONGODB_URI.');
   process.exit(1);
 }
 
 const R_ADMIN = `/${config.adminPath}`;
 const R_MOD = `/${config.modPath}`;
-const STORE_FILE = path.join(config.dataDir, 'store.json');
 
-// --- DOM defaults (code.wascript.com.br/config.json) -------------------------
+let mongoClient = null;
+let db = null;
+let cachedSettings = null;
+let configJsonBody = null;
+let server = null;
+
+// --- DOM defaults ------------------------------------------------------------
+
+const DOM_DEFAULTS = {"version":"1.11","update_path_active":"true","disabled_wait_sync":false,"wpp_mensagens":{"timer":"60000","enable_two_send":false},"newModel":{"model":"taghtml","parm":"body.color-refresh"},"app":{"model":"querySelector","selector":["#app"]},"afiliadoMain":{"model":"querySelector","selector":["body > div"]},"paneSide":{"model":"Element","selector":"#pane-side"},"waPage":{"model":"querySelector","selector":["div.two"]},"two":{"model":"Element","selector":"two"},"menuLateral":{"model":"querySelector","selector":["div.two > div:nth-child(5)"]},"closeChat":{"model":"Element","selector":"x10l6tqk"},"chatListInput":{"model":"querySelector","selector":[".lexical-rich-text-input > div"]},"searchInput":{"model":"querySelector","selector":["[data-icon='search']"]},"downAba":{"model":"querySelector","selector":["header > div > div > div > div > span > div > div:nth-child(1)","header > div._ak0w"]},"chatListHeader":{"model":"querySelector","selector":["header > header > div > span > div"]},"searchCamp":{"model":"querySelector","selector":["#side div[data-testid='chat-list-search-container']"]},"chatName":{"model":"querySelector","selector":["#main header span[title]","#main header div[role=\"button\"] span","#main header h1","#main > header div.x78zum5 > div > div > div > div","#main header [data-testid=\"conversation-info-header-chat-title\"]","#main header"]},"menuVertical":{"model":"querySelector","selector":["#main ._amm9","#main .x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh"]},"menuHorizontal":{"model":"querySelector","selector":["#main > header > div.x1c4vz4f > div"]},"menuFooter":{"model":"querySelector","selector":["footer ._ak1m"]},"respostaRapida":{"model":"querySelector","selector":["footer > div"]},"footerTextArea":{"model":"querySelector","selector":["footer div[contenteditable=true]"]},"mainAudio":{"model":"querySelector","selector":["footer > div.copyable-area > div"]},"assChat":{"model":"querySelector","selector":["#main > div.x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh"]},"assInput":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div > div"]},"assBtn":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div > div > div:nth-child(6)"]},"assEmoji":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div._ak1m > div > button[tabindex='-1']"]},"assCitacao":{"model":"querySelector","selector":["footer div.x9f619.x1okw0bk > button > div > div > div:nth-child(1)"]},"listMensages":{"model":"querySelector","selector":["div[data-scrolltracepolicy='wa.web.conversation.messages']"]},"allMensages":{"model":"querySelectorAll","selector":["#main div > div[data-id]"]},"assistenteChat":{"model":"querySelector","selector":["#main > footer"]},"trasferidos":{"model":"querySelector","selector":["#side div[tabindex='-1']"]},"notification":{"model":"querySelector","selector":["#side > div:nth-child(2)"]},"quotedMsg":{"model":"querySelector","selector":["#main > footer > div.x10l6tqk.x13vifvy.x1o0tod.xh8yej3 > div > div > div > span > div"]},"listChats":{"model":"querySelector","selector":["#pane-side > div > div > div"]},"listChatsUsers":{"model":"querySelectorAll","selector":["#pane-side > div > div > div > div  div[aria-selected]","#pane-side > div > div > div div[role='button'] > div"]},"listChatAtendimento":{"model":"Element","selector":"div div[data-testid='cell-frame-secondary'] div[role='gridcell']"},"insertAtendente":{"model":"Element","selector":"x10l6tqk xh8yej3 x1g42fcv"},"reactFiberContainer":{"model":"listElement","list":{"reactFiber":"__reactFiber","reactFiberIndex":0,"path_user_id":".child.memoizedProps[1].props.id._serialized","path_key_message":".child.memoizedProps.children[0].key"}},"updateChatList":{"model":"querySelector","selector":["#side div._ai04 > button"]},"useTradutor":{"model":"listElement","list":{"main_audio_1":"div.x121pien.x9f619","main_audio_2":"div.x121pien.x9f619","camp_text_1":"row-translate","camp_text_2":"div > span","add_btn_tradutor":"div.x1c4vz4f.x1q0g3np.x6s0dn4","camp_audio_1":"div[role=\"slider\"] > canvas","camp_audio_2":"div.x1e4oeot.x1ui04y5[role=\"slider\"] > div"}},"chatList":{"model":"querySelector","selector":["#pane-side","#side","div.two > div:first-child","div.two > div._aigw"]},"observerFooter":{"model":"querySelector","selector":["#main > span:nth-child(8)","#main > :last-child"]},"observerFooterNewModel":{"model":"querySelector","selector":["#main > span:nth-child(7)","#main > span:nth-child(8)","#main > span:nth-child(9)"]},"whatsModal":{"model":"querySelector","selector":["#app > div > div > span:nth-child(3)"]},"menu_whats":{"model":"querySelector","selector":["#app > div > div.x78zum5.xdt5ytf.x5yr21d > div > header > div > div:nth-child(2) > div","header > div > div:nth-child(2) > div"]},"actionMonitor":{"model":"querySelector","selector":["#main header"]},"footerIconsLeft":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div > div"]},"side":{"model":"querySelector","selector":["#side"]},"chatFiltersContainer":{"model":"listElement","list":{"div_filters":"_akap _akan _arj9"}},"chatFilters":{"model":"querySelectorAll","selector":["#side > div:nth-of-type(3) button"]},"selector_theme":{"model":"querySelector","selector":[".os-win"]}};
 
 function loadDomDefaults() {
-  try {
-    return JSON.parse(fs.readFileSync(path.join(ROOT, 'dom-defaults.json'), 'utf8'));
-  } catch {
-    return { version: WPP_VERSION, update_path_active: 'true', app: { model: 'querySelector', selector: ['#app'] } };
-  }
+  return structuredClone(DOM_DEFAULTS);
 }
 
 function buildDomConfig(overrides = {}) {
@@ -91,7 +76,6 @@ function buildDomConfig(overrides = {}) {
   return merged;
 }
 
-/** Formato code.wascript.com.br/config.json — exigido pelo background após login */
 function buildConfigJson(overrides = {}) {
   return {
     remote_code: {
@@ -103,78 +87,190 @@ function buildConfigJson(overrides = {}) {
   };
 }
 
-// --- Store -------------------------------------------------------------------
-
-const DEFAULT_STORE = {
-  keys: {},
-  settings: {
-    installUrl: config.installUrl,
-    notesHtml: '<h1>WaSpeed</h1><p>Servidor proprio ativo.</p>',
-    webhooks: [],
-    meet: {},
-    urls: {},
-    migration: {},
-    domConfig: buildDomConfig(),
-  },
-  mods: [],
-  logs: [],
-  nextUserId: 1000,
-  _seeded: false,
-};
-
-let store = null;
-let saveTimer = null;
-let saveDirty = false;
-
-function readStoreFile() {
-  if (!fs.existsSync(STORE_FILE)) return structuredClone(DEFAULT_STORE);
+async function refreshSettingsCache() {
   try {
-    return { ...structuredClone(DEFAULT_STORE), ...JSON.parse(fs.readFileSync(STORE_FILE, 'utf8')) };
+    cachedSettings = await db.collection(COL.settings).findOne({ _id: 'global' });
+    configJsonBody = JSON.stringify(buildConfigJson(cachedSettings?.domConfig || {}));
+  } catch (err) {
+    console.error('[WaSpeed] refreshSettingsCache:', err.message);
+  }
+}
+
+function sendCachedConfigJson(res) {
+  if (!configJsonBody) return sendJson(res, buildConfigJson());
+  res.writeHead(200, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'public, max-age=300',
+    'Content-Length': Buffer.byteLength(configJsonBody),
+  });
+  res.end(configJsonBody);
+}
+
+// --- MongoDB -----------------------------------------------------------------
+
+async function connectMongo() {
+  if (db) return db;
+  mongoClient = new MongoClient(config.mongoUri, {
+    maxPoolSize: 20,
+    minPoolSize: 2,
+    serverSelectionTimeoutMS: 10000,
+  });
+  await mongoClient.connect();
+  db = mongoClient.db(config.dbName);
+  await ensureIndexes();
+  return db;
+}
+
+async function ensureIndexes() {
+  try {
+    await db.collection(COL.licenses).createIndex({ bearer: 1 }, { unique: true });
+    await db.collection(COL.licenses).createIndex({ code: 1 }, { unique: true });
+    await db.collection(COL.sessions).createIndex({ token: 1 }, { unique: true });
+    await db.collection(COL.sessions).createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+    await db.collection(COL.logs).createIndex({ at: -1 });
+  } catch (err) {
+    console.error('[WaSpeed] ensureIndexes:', err.message);
+    throw err;
+  }
+}
+
+async function initSeed() {
+  const settingsCol = db.collection(COL.settings);
+  let doc = await settingsCol.findOne({ _id: 'global' });
+  if (!doc) {
+    doc = {
+      _id: 'global',
+      installUrl: config.installUrl,
+      notesHtml: '<h1>WaSpeed</h1><p>Servidor MongoDB ativo.</p>',
+      webhooks: [],
+      meet: {},
+      urls: {},
+      migration: {},
+      domConfig: buildDomConfig(),
+      nextUserId: 1000,
+      mods: [{
+        id: crypto.randomBytes(8).toString('hex'),
+        username: 'mod',
+        password: hashPassword('mod123'),
+        name: 'Moderador',
+        active: true,
+      }],
+      admin: {
+        username: config.adminUser,
+        password: hashPassword(config.adminPass),
+      },
+    };
+    await settingsCol.insertOne(doc);
+    console.log('[WaSpeed] Settings inicializados (admin com hash pbkdf2)');
+  }
+  const count = await db.collection(COL.licenses).countDocuments();
+  if (count === 0) {
+    await createKey({ code: 'ws-demo-premium', label: 'Demo Premium', premium: true, note: 'Chave demo — troque em producao' });
+    console.log('[WaSpeed] Chave demo: ws-demo-premium');
+  }
+  await refreshSettingsCache();
+}
+
+// --- Seguranca (pbkdf2 + sessoes MongoDB) ------------------------------------
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
+  return `pbkdf2:${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  if (!stored?.startsWith('pbkdf2:')) return false;
+  const parts = stored.split(':');
+  if (parts.length !== 3) return false;
+  const salt = parts[1];
+  const hash = parts[2];
+  const check = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(check, 'hex'));
   } catch {
-    return structuredClone(DEFAULT_STORE);
+    return false;
   }
 }
 
-function writeStoreFile() {
-  const tmp = STORE_FILE + '.tmp';
-  fs.writeFileSync(tmp, JSON.stringify(store, null, 2), 'utf8');
-  fs.renameSync(tmp, STORE_FILE);
-  saveDirty = false;
-}
-
-function saveStoreNow() {
-  if (!store) return;
-  writeStoreFile();
-}
-
-function saveStore() {
-  if (config.persistMode === 'sync') {
-    saveStoreNow();
-    return;
+async function createSession(role, meta = {}) {
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  try {
+    await db.collection(COL.sessions).insertOne({
+      token,
+      role,
+      ...meta,
+      createdAt: new Date(),
+      expiresAt,
+    });
+    return { token, expiresAt };
+  } catch (err) {
+    console.error('[WaSpeed] createSession:', err.message);
+    throw err;
   }
-  saveDirty = true;
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveStoreNow, config.saveDebounceMs);
 }
 
-function flushStore() {
-  clearTimeout(saveTimer);
-  if (saveDirty) saveStoreNow();
+async function validateSession(token) {
+  if (!token) return null;
+  try {
+    return await db.collection(COL.sessions).findOne({
+      token,
+      expiresAt: { $gt: new Date() },
+    });
+  } catch (err) {
+    console.error('[WaSpeed] validateSession:', err.message);
+    return null;
+  }
 }
 
-function loadStore() {
-  store = readStoreFile();
-  store.settings.domConfig = buildDomConfig(store.settings.domConfig || {});
-  return store;
+async function destroySession(token) {
+  if (!token) return;
+  try {
+    await db.collection(COL.sessions).deleteOne({ token });
+  } catch (err) {
+    console.error('[WaSpeed] destroySession:', err.message);
+  }
 }
 
-// --- Chaves ------------------------------------------------------------------
+function setSessionCookie(res, token, maxAgeSec = 86400) {
+  const secure = config.baseUrl.startsWith('https');
+  const parts = [`ws_session=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Strict'];
+  if (secure) parts.push('Secure');
+  parts.push(`Max-Age=${maxAgeSec}`);
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
 
-const AUTH_MSG = {
-  NOT_FOUND: 'Chave nao encontrada',
-  BLOCKED: 'Chave bloqueada',
-  EXPIRED: 'Chave expirada',
-};
+function clearSessionCookie(res) {
+  const secure = config.baseUrl.startsWith('https');
+  const parts = ['ws_session=', 'Path=/', 'HttpOnly', 'SameSite=Strict', 'Max-Age=0'];
+  if (secure) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
+}
+
+async function requireAdmin(req, res) {
+  const token = parseCookies(req).ws_session;
+  const sess = await validateSession(token);
+  if (!sess || sess.role !== 'admin') {
+    res.writeHead(302, { Location: `${R_ADMIN}/login` });
+    res.end();
+    return null;
+  }
+  return sess;
+}
+
+async function requireMod(req, res) {
+  const token = parseCookies(req).ws_session;
+  const sess = await validateSession(token);
+  if (!sess || sess.role !== 'mod') {
+    res.writeHead(302, { Location: `${R_MOD}/login` });
+    res.end();
+    return null;
+  }
+  return sess;
+}
+
+// --- Licencas ----------------------------------------------------------------
 
 function normKey(raw) {
   return String(raw || '').trim().toLowerCase().slice(0, 48);
@@ -185,142 +281,71 @@ function generateKeyCode() {
   return `ws-${p()}-${p()}-${p()}`.slice(0, 24);
 }
 
-function hashPassword(password) {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
-  return `${salt}:${hash}`;
-}
-
-function verifyPassword(password, stored) {
-  if (!stored || !stored.includes(':')) return false;
-  const [salt, hash] = stored.split(':');
-  const check = crypto.scryptSync(password, salt, 64).toString('hex');
-  return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(check, 'hex'));
-}
-
 function isKeyExpired(rec) {
-  if (!rec.expiresAt) return false;
+  if (!rec?.expiresAt) return false;
   return new Date(rec.expiresAt).getTime() < Date.now();
 }
 
 function keyStatus(rec) {
-  if (!rec.active) return 'blocked';
+  if (!rec?.active) return 'blocked';
   if (isKeyExpired(rec)) return 'expired';
   return rec.premium ? 'active' : 'free';
 }
 
-function findKey(code) {
+async function findKey(code) {
   const k = normKey(code);
   if (!k) return null;
-  return store.keys[k] || null;
+  try {
+    return await db.collection(COL.licenses).findOne({ code: k });
+  } catch (err) {
+    console.error('[WaSpeed] findKey:', err.message);
+    return null;
+  }
 }
 
-function findKeyByBearer(bearer) {
+async function findKeyByBearer(bearer) {
   const b = String(bearer || '').trim();
   if (!b) return null;
-  if (store.keys[b]) return store.keys[b];
-  for (const rec of Object.values(store.keys)) {
-    if (rec.bearer_token === b || rec.access_token_plugin === b) return rec;
+  try {
+    return await db.collection(COL.licenses).findOne({
+      $or: [{ bearer: b }, { code: normKey(b) }, { access_token_plugin: b }, { bearer_token: b }],
+    });
+  } catch (err) {
+    console.error('[WaSpeed] findKeyByBearer:', err.message);
+    return null;
   }
-  return null;
 }
 
-function getOrCreateFreeKey(extensionId, ip) {
-  const seed = String(extensionId || ip || 'anonymous');
-  const code = normKey(`ws-free-${crypto.createHash('sha256').update(seed).digest('hex').slice(0, 16)}`);
-  const existing = findKey(code);
-  if (existing) return { code, rec: existing };
-  const rec = createKey({
-    code,
-    label: 'Usuario Gratuito',
-    premium: false,
-    note: 'Registro free automatico',
-    expireDays: 0,
-  });
-  return { code, rec };
-}
-
-const EMPTY_AUTH_GOOGLE = {
-  user_id: '', name: '', picture: '', email_auth: '', access_token: '',
-  expires_in: NaN, id_token: '', refresh_token: '', scope: '', token_type: '', updated_at: NaN,
-};
-
-function formatDateYMD(value) {
-  const dt = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(dt.getTime())) return formatDateYMD(new Date());
-  const y = dt.getFullYear();
-  const m = String(dt.getMonth() + 1).padStart(2, '0');
-  const day = String(dt.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-/** Objeto exigido pela extensao (7349.js be, 7329.js modais, 7353.js gates) */
-function buildUserPremium(code, rec) {
-  if (keyStatus(rec) !== 'active') return null;
-
-  let dataLiberacao;
-  if (rec.expiresAt) {
-    const exp = new Date(rec.expiresAt);
-    if (!Number.isNaN(exp.getTime())) {
-      exp.setFullYear(exp.getFullYear() - 1);
-      dataLiberacao = formatDateYMD(exp);
-    }
+async function listLicenses(filter = {}) {
+  try {
+    return await db.collection(COL.licenses).find(filter).sort({ createdAt: -1 }).toArray();
+  } catch (err) {
+    console.error('[WaSpeed] listLicenses:', err.message);
+    return [];
   }
-  if (!dataLiberacao) {
-    dataLiberacao = formatDateYMD(rec.createdAt || new Date());
-  }
-
-  return {
-    id_assinatura: String(rec.user_id || code),
-    data_liberacao: dataLiberacao,
-    teste: '0',
-  };
 }
 
-function keyToUser(code, rec) {
-  const st = keyStatus(rec);
-  return {
-    user_id: String(rec.user_id),
-    name: rec.label || 'Usuario',
-    email: rec.email || `${code}@waspeed.local`,
-    wl_id: config.wlId,
-    bearer_token: rec.bearer_token || code,
-    access_token_plugin: rec.access_token_plugin || code,
-    user_premium: buildUserPremium(code, rec),
-    dataCadastro: rec.createdAt || new Date().toISOString(),
-    whatsapp_registro: rec.lastPhone || '',
-    whatsapp_plugin: rec.lastPhone || '',
-    path: '',
-    afiliado: '',
-    campanhaID: '',
-    start_form: true,
-    cookies: { _fbc: '', _fbp: '', _ga: '', _ttclid: '', _ttp: '' },
-  };
-}
-
-function authSuccess(code, rec) {
-  const st = keyStatus(rec);
-  if (st === 'blocked') return { ok: false, msg_id: 'user_blocked' };
-  if (st === 'expired') return { ok: false, msg_id: 'license_expired' };
-  rec.lastUsed = new Date().toISOString();
-  saveStore();
-  return {
-    ok: true,
-    body: {
-      success: true,
-      user: keyToUser(code, rec),
-      auth_google: EMPTY_AUTH_GOOGLE,
-      user_status: st === 'active' ? 'active' : 'free',
-    },
-  };
-}
-
-function createKey(input = {}, modName = null) {
+async function createKey(input = {}, modName = null) {
   const code = normKey(input.code) || generateKeyCode();
-  if (store.keys[code]) throw new Error('Chave ja existe');
-  const userId = store.nextUserId++;
+  const existing = await findKey(code);
+  if (existing) throw new Error('Chave ja existe');
+
+  let userId;
+  try {
+    const upd = await db.collection(COL.settings).findOneAndUpdate(
+      { _id: 'global' },
+      { $inc: { nextUserId: 1 } },
+      { returnDocument: 'after' },
+    );
+    userId = upd?.nextUserId ? upd.nextUserId - 1 : 1000;
+  } catch (err) {
+    console.error('[WaSpeed] createKey nextUserId:', err.message);
+    throw err;
+  }
+
   const rec = {
     code,
+    bearer: code,
     user_id: userId,
     label: input.label || 'Cliente',
     email: input.email || `${code}@waspeed.local`,
@@ -343,48 +368,155 @@ function createKey(input = {}, modName = null) {
   if (input.expireDays > 0) {
     rec.expiresAt = new Date(Date.now() + input.expireDays * 86400000).toISOString();
   }
-  store.keys[code] = rec;
-  addLog('key_create', `Chave ${code} criada`, { code, modName });
-  saveStore();
+
+  try {
+    await db.collection(COL.licenses).insertOne(rec);
+  } catch (err) {
+    console.error('[WaSpeed] createKey insert:', err.message);
+    throw err;
+  }
+  await addLog('key_create', `Chave ${code} criada`, { code, modName });
   return rec;
 }
 
-function addLog(type, message, meta = {}) {
-  store.logs.unshift({ id: crypto.randomBytes(8).toString('hex'), at: new Date().toISOString(), type, message, meta });
-  if (store.logs.length > config.logMax) store.logs.length = config.logMax;
-  saveStore();
+async function updateLicense(code, patch) {
+  try {
+    await db.collection(COL.licenses).updateOne({ code: normKey(code) }, { $set: patch });
+    return true;
+  } catch (err) {
+    console.error('[WaSpeed] updateLicense:', err.message);
+    return false;
+  }
 }
 
-function initSeed() {
-  if (store._seeded) return;
-  if (!store.mods.length) {
-    store.mods.push({
+async function deleteLicense(code) {
+  try {
+    await db.collection(COL.licenses).deleteOne({ code: normKey(code) });
+    return true;
+  } catch (err) {
+    console.error('[WaSpeed] deleteLicense:', err.message);
+    return false;
+  }
+}
+
+async function getOrCreateFreeKey(extensionId, ip) {
+  const seed = String(extensionId || ip || 'anonymous');
+  const code = normKey(`ws-free-${crypto.createHash('sha256').update(seed).digest('hex').slice(0, 16)}`);
+  const existing = await findKey(code);
+  if (existing) return { code, rec: existing };
+  const rec = await createKey({
+    code,
+    label: 'Usuario Gratuito',
+    premium: false,
+    note: 'Registro free automatico',
+    expireDays: 0,
+  });
+  return { code, rec };
+}
+
+const EMPTY_AUTH_GOOGLE = {
+  user_id: '', name: '', picture: '', email_auth: '', access_token: '',
+  expires_in: NaN, id_token: '', refresh_token: '', scope: '', token_type: '', updated_at: NaN,
+};
+
+function formatDateYMD(value) {
+  const dt = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(dt.getTime())) return formatDateYMD(new Date());
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+function buildUserPremium(code, rec) {
+  if (keyStatus(rec) !== 'active') return null;
+  let dataLiberacao;
+  if (rec.expiresAt) {
+    const exp = new Date(rec.expiresAt);
+    if (!Number.isNaN(exp.getTime())) {
+      exp.setFullYear(exp.getFullYear() - 1);
+      dataLiberacao = formatDateYMD(exp);
+    }
+  }
+  if (!dataLiberacao) dataLiberacao = formatDateYMD(rec.createdAt || new Date());
+  return {
+    id_assinatura: String(rec.user_id || code),
+    data_liberacao: dataLiberacao,
+    teste: '0',
+  };
+}
+
+function keyToUser(code, rec) {
+  return {
+    user_id: String(rec.user_id),
+    name: rec.label || 'Usuario',
+    email: rec.email || `${code}@waspeed.local`,
+    wl_id: config.wlId,
+    bearer_token: rec.bearer_token || code,
+    access_token_plugin: rec.access_token_plugin || code,
+    user_premium: buildUserPremium(code, rec),
+    dataCadastro: rec.createdAt || new Date().toISOString(),
+    whatsapp_registro: rec.lastPhone || '',
+    whatsapp_plugin: rec.lastPhone || '',
+    path: '',
+    afiliado: '',
+    campanhaID: '',
+    start_form: true,
+    cookies: { _fbc: '', _fbp: '', _ga: '', _ttclid: '', _ttp: '' },
+  };
+}
+
+async function authSuccess(code, rec) {
+  const st = keyStatus(rec);
+  if (st === 'blocked') return { ok: false, msg_id: 'user_blocked' };
+  if (st === 'expired') return { ok: false, msg_id: 'license_expired' };
+  const lastUsed = new Date().toISOString();
+  await updateLicense(code, { lastUsed });
+  rec.lastUsed = lastUsed;
+  return {
+    ok: true,
+    body: {
+      success: true,
+      user: keyToUser(code, rec),
+      auth_google: EMPTY_AUTH_GOOGLE,
+      user_status: st === 'active' ? 'active' : 'free',
+    },
+  };
+}
+
+async function addLog(type, message, meta = {}) {
+  try {
+    await db.collection(COL.logs).insertOne({
       id: crypto.randomBytes(8).toString('hex'),
-      username: 'mod',
-      password: hashPassword('mod123'),
-      name: 'Moderador',
-      active: true,
+      at: new Date().toISOString(),
+      type,
+      message,
+      meta,
     });
+    const excess = await db.collection(COL.logs).countDocuments() - config.logMax;
+    if (excess > 0) {
+      const old = await db.collection(COL.logs).find({}).sort({ at: 1 }).limit(excess).project({ _id: 1 }).toArray();
+      await db.collection(COL.logs).deleteMany({ _id: { $in: old.map((o) => o._id) } });
+    }
+  } catch (err) {
+    console.error('[WaSpeed] addLog:', err.message);
   }
-  if (!Object.keys(store.keys).length) {
-    createKey({ code: 'ws-demo-premium', label: 'Demo Premium', premium: true, note: 'Chave demo — troque em producao' });
-    console.log('[WaSpeed] Chave demo: ws-demo-premium');
+}
+
+async function getRecentLogs(limit = 200) {
+  try {
+    return await db.collection(COL.logs).find({}).sort({ at: -1 }).limit(limit).toArray();
+  } catch (err) {
+    console.error('[WaSpeed] getRecentLogs:', err.message);
+    return [];
   }
-  store._seeded = true;
-  saveStore();
 }
 
 // --- Rate limit --------------------------------------------------------------
 
-const RL = {
-  login: { max: 10, windowMs: 60000, blockMs: 300000 },
-  api: { max: 60, windowMs: 60000, blockMs: 120000 },
-};
+const RL = { login: { max: 10, windowMs: 60000, blockMs: 300000 } };
 const rateMap = new Map();
 
-function checkRate(ip, type = 'api') {
-  const cfg = RL[type] || RL.api;
-  const key = `${ip}:${type}`;
+function checkRate(ip) {
+  const cfg = RL.login;
+  const key = `${ip}:login`;
   const now = Date.now();
   let e = rateMap.get(key);
   if (!e || now > e.reset) e = { count: 0, reset: now + cfg.windowMs, blockedUntil: 0 };
@@ -398,7 +530,7 @@ function checkRate(ip, type = 'api') {
 // --- HTTP helpers ------------------------------------------------------------
 
 function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 function sendJson(res, data, status = 200) {
@@ -469,30 +601,6 @@ function parseCookies(req) {
   return out;
 }
 
-function signSession(payload) {
-  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const sig = crypto.createHmac('sha256', config.sessionSecret).update(body).digest('base64url');
-  return `${body}.${sig}`;
-}
-
-function verifySession(token) {
-  if (!token || !token.includes('.')) return null;
-  const [body, sig] = token.split('.');
-  const expected = crypto.createHmac('sha256', config.sessionSecret).update(body).digest('base64url');
-  if (sig !== expected) return null;
-  try {
-    const data = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
-    if (data.exp < Date.now()) return null;
-    return data;
-  } catch {
-    return null;
-  }
-}
-
-function setCookie(res, name, value, maxAge = 604800) {
-  res.setHeader('Set-Cookie', `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}`);
-}
-
 function requireAccessToken(req) {
   return req.headers['access-token'] === config.criptKey;
 }
@@ -506,161 +614,337 @@ function wppUpdate() {
   return { success: true, version: WPP_VERSION, update: false, message: 'WaSpeed server — modulo atualizado' };
 }
 
-// --- Painel HTML (estilo ZapVoice, tema WaSpeed) -----------------------------
+// // // --- UI (Dark Premium) -------------------------------------------------------
 
 const PANEL_CSS = `
-:root{--bg:#0a0e14;--card:#121a24;--border:#243044;--text:#e8edf4;--muted:#8b9cb3;--green:#22c55e;--red:#ef4444;--yellow:#eab308;--accent:#3b82f6}
-*{box-sizing:border-box}body{margin:0;font-family:Segoe UI,system-ui,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
-.wrap{max-width:1100px;margin:0 auto;padding:20px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}
-h1{font-size:1.4rem;margin:0 0 16px}
-.muted{color:var(--muted);font-size:.9rem}
-nav{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid var(--border)}
-nav a{color:var(--accent);text-decoration:none;padding:6px 12px;border-radius:8px;background:#1a2535}
-input,select,textarea{width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:#0d1219;color:var(--text);margin:6px 0 12px}
-button,.btn{display:inline-block;padding:10px 16px;border:none;border-radius:8px;background:var(--accent);color:#fff;cursor:pointer;font-size:.9rem;text-decoration:none}
-.btn-red{background:var(--red)}.btn-green{background:var(--green)}.btn-sm{padding:6px 10px;font-size:.8rem}
-table{width:100%;border-collapse:collapse;font-size:.85rem}th,td{padding:10px 8px;border-bottom:1px solid var(--border);text-align:left}
-th{color:var(--muted)}tr:hover td{background:#1a2332}
-.badge{padding:2px 8px;border-radius:999px;font-size:.72rem;font-weight:600}
-.badge-ok{background:#14532d;color:#86efac}.badge-off{background:#450a0a;color:#fca5a5}.badge-free{background:#422006;color:#fde68a}
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px;margin-bottom:16px}
-.stat{background:#0d1219;border-radius:10px;padding:14px;text-align:center}.stat .n{font-size:1.6rem;font-weight:700}
-.key-mono{font-family:monospace;font-size:.85rem;word-break:break-all;background:#0d1219;padding:6px 8px;border-radius:6px}
-.alert{padding:12px;border-radius:8px;margin-bottom:12px;background:#422006;color:#fde68a;border:1px solid #854d0e}
-.login{max-width:380px;margin:80px auto}
-.row{display:flex;gap:12px;flex-wrap:wrap}.row>*{flex:1;min-width:160px}
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+:root{
+  --bg:#0b0f19;--surface:#151b2c;--surface-hover:#1a2238;--border:#222d45;
+  --text:#f3f4f6;--muted:#9ca3af;--accent:#6366f1;
+  --accent-grad:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);
+  --ok-bg:#064e3b;--ok-text:#10b981;--warn-bg:#422006;--warn-text:#fbbf24;
+  --danger:#ef4444;--danger-bg:#450a0a;--danger-text:#fca5a5;
+  --shadow:0 4px 24px rgba(0,0,0,.35);--ring:rgba(99,102,241,.45);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:system-ui,-apple-system,'Inter',sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh;
+  background-image:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(99,102,241,.12),transparent);
+}
+a{color:var(--accent);text-decoration:none;transition:color .2s ease}
+a:hover{color:#a5b4fc}
+.app{max-width:1200px;margin:0 auto;padding:24px 20px 48px}
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:14px 20px;margin-bottom:28px;border-radius:12px;
+  background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow);
+}
+.brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:1.05rem;letter-spacing:-.02em}
+.brand-dot{width:10px;height:10px;border-radius:50%;background:var(--accent-grad);box-shadow:0 0 12px rgba(99,102,241,.6)}
+.nav{display:flex;flex-wrap:wrap;gap:8px}
+.nav a,.nav .nav-link{
+  color:var(--muted);font-size:.875rem;font-weight:500;padding:8px 14px;border-radius:8px;
+  border:1px solid transparent;transition:all .2s ease-in-out;
+}
+.nav a:hover,.nav a.active{color:var(--text);background:var(--surface-hover);border-color:var(--border)}
+.page-head{margin-bottom:24px}
+.page-head h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;line-height:1.2}
+.page-head .subtitle{color:var(--muted);font-size:.95rem;margin-top:6px}
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  padding:24px;margin-bottom:20px;box-shadow:var(--shadow);transition:border-color .2s ease-in-out;
+}
+.card:hover{border-color:#2d3a5c}
+.card-title{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+.metric{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px 24px;
+  transition:all .2s ease-in-out;
+}
+.metric:hover{transform:translateY(-2px);border-color:#334155;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+.metric-value{font-size:2.25rem;font-weight:800;letter-spacing:-.04em;line-height:1;margin-bottom:6px}
+.metric-value.accent{background:var(--accent-grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.metric-label{font-size:.8rem;color:var(--muted);font-weight:500}
+.badge{
+  display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;
+  font-size:.7rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+}
+.badge-ok{background:var(--ok-bg);color:var(--ok-text);border:1px solid rgba(16,185,129,.25)}
+.badge-off{background:var(--danger-bg);color:var(--danger-text);border:1px solid rgba(248,113,113,.2)}
+.badge-free{background:var(--warn-bg);color:var(--warn-text);border:1px solid rgba(251,191,36,.2)}
+.key-chip,code.key-chip{
+  font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',monospace;font-size:.82rem;
+  background:#0d1320;border:1px solid rgba(99,102,241,.25);
+  color:#c7d2fe;padding:6px 12px;border-radius:8px;word-break:break-all;display:inline-block;
+}
+.key-list{display:flex;flex-direction:column;gap:0}
+.key-list-head{
+  display:grid;grid-template-columns:1.4fr 1fr .7fr .9fr 1fr auto;gap:12px;
+  padding:10px 16px;font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+  border-bottom:1px solid var(--border);
+}
+.key-row{
+  display:grid;grid-template-columns:1.4fr 1fr .7fr .9fr 1fr auto;gap:12px;align-items:center;
+  padding:16px;border-bottom:1px solid var(--border);transition:background .2s ease-in-out;
+}
+.key-row:last-child{border-bottom:none}
+.key-row:hover{background:var(--surface-hover)}
+.key-row .actions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.empty-state{text-align:center;padding:48px 24px;color:var(--muted)}
+.log-list{display:flex;flex-direction:column;gap:0;max-height:70vh;overflow:auto}
+.log-row{
+  display:grid;grid-template-columns:160px 100px 1fr;gap:16px;padding:14px 16px;
+  border-bottom:1px solid var(--border);font-size:.875rem;transition:background .2s ease-in-out;
+}
+.log-row:hover{background:var(--surface-hover)}
+.log-type{font-family:monospace;font-size:.78rem;color:#a5b4fc}
+label{display:block;font-size:.78rem;font-weight:600;color:var(--muted);margin:0 0 6px}
+.field{margin-bottom:18px}
+input,select,textarea{
+  width:100%;padding:11px 14px;border-radius:8px;border:1px solid var(--border);
+  background:#0d1320;color:var(--text);font:inherit;font-size:.9rem;
+  transition:border-color .2s ease-in-out,box-shadow .2s ease-in-out;
+}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
+textarea{resize:vertical;min-height:80px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  padding:10px 18px;border:none;border-radius:8px;font:inherit;font-size:.875rem;font-weight:600;
+  cursor:pointer;text-decoration:none;color:#fff;background:var(--accent-grad);
+  transition:all .2s ease-in-out;box-shadow:0 4px 14px rgba(99,102,241,.35);
+}
+.btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(99,102,241,.45);color:#fff}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text);box-shadow:none}
+.btn-ghost:hover{background:var(--surface-hover);border-color:#334155}
+.btn-danger{background:linear-gradient(135deg,#dc2626,#ef4444);box-shadow:0 4px 14px rgba(239,68,68,.3)}
+.btn-sm{padding:6px 12px;font-size:.78rem;border-radius:6px}
+.btn-success{background:var(--accent-grad)}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}
+.alert{
+  padding:14px 18px;border-radius:10px;margin-bottom:20px;font-size:.9rem;
+  background:rgba(99,102,241,.08);color:#c7d2fe;border:1px solid rgba(99,102,241,.25);
+}
+.alert-danger{background:rgba(239,68,68,.08);color:var(--danger-text);border-color:rgba(239,68,68,.25)}
+.login-wrap{min-height:calc(100vh - 96px);display:flex;align-items:center;justify-content:center;padding:24px}
+.login-card{width:100%;max-width:420px;padding:32px}
+.login-card h1{font-size:1.5rem;margin-bottom:4px}
+.steps{counter-reset:step;padding-left:0;list-style:none}
+.steps li{counter-increment:step;padding:10px 0 10px 36px;position:relative;color:var(--muted);font-size:.9rem}
+.steps li::before{
+  content:counter(step);position:absolute;left:0;top:10px;width:24px;height:24px;
+  border-radius:50%;background:var(--surface-hover);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;color:var(--accent);
+}
+.info-grid{display:grid;gap:12px}
+.info-row{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;font-size:.9rem}
+.info-row .label{color:var(--muted);min-width:120px;font-size:.8rem;font-weight:600}
+@media(max-width:900px){
+  .key-list-head{display:none}
+  .key-row{grid-template-columns:1fr;gap:8px;padding:20px 16px}
+  .key-row .actions{justify-content:flex-start;margin-top:8px}
+  .log-row{grid-template-columns:1fr;gap:4px}
+}
 `;
 
-function panelLayout(title, body, nav = '') {
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+function panelShell(title, body, navHtml = '', subtitle = '') {
+  const navBlock = navHtml ? `<nav class="nav">${navHtml}</nav>` : '';
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} — WaSpeed</title><style>${PANEL_CSS}</style></head>
-<body><div class="wrap">${nav}<h1>${esc(title)}</h1>${body}</div></body></html>`;
+<body><div class="app">
+<header class="topbar"><div class="brand"><span class="brand-dot"></span>WaSpeed</div>${navBlock}</header>
+<div class="page-head"><h1>${esc(title)}</h1>${subtitle ? `<p class="subtitle">${subtitle}</p>` : ''}</div>
+${body}
+</div></body></html>`;
 }
 
-function freeBanner() {
-  if (!config.ephemeral) return '';
-  return `<div class="alert"><strong>Render Free Tier</strong> — dados em <code>${esc(config.dataDir)}</code> sao efemeros. Faca backup das chaves.</div>`;
+function adminNav(active = '') {
+  const item = (href, label, key) =>
+    `<a href="${href}" class="${active === key ? 'active' : ''}">${label}</a>`;
+  return [
+    item(R_ADMIN, 'Dashboard', 'dash'),
+    item(`${R_ADMIN}/keys`, 'Chaves', 'keys'),
+    item(`${R_ADMIN}/logs`, 'Logs', 'logs'),
+    item(`${R_ADMIN}/logout`, 'Sair', 'out'),
+  ].join('');
 }
 
-function keysTable(keysList, base, canDelete) {
-  const rows = keysList.map(({ code, rec }) => {
+function mongoBanner() {
+  return `<div class="alert"><strong>MongoDB Atlas</strong> — persistencia centralizada. Sessoes expiram em 24h.</div>`;
+}
+
+function statusBadgeHtml(st) {
+  if (st === 'active') return '<span class="badge badge-ok">PRO Ativo</span>';
+  if (st === 'blocked') return '<span class="badge badge-off">Bloqueado</span>';
+  if (st === 'expired') return '<span class="badge badge-off">Expirado</span>';
+  return '<span class="badge badge-free">Free</span>';
+}
+
+function keysListHtml(keysArr, base, canDelete) {
+  if (!keysArr.length) {
+    return '<div class="empty-state"><p>Nenhuma chave cadastrada ainda.</p></div>';
+  }
+  const rows = keysArr.map(({ code, rec }) => {
     const st = keyStatus(rec);
-    const badge = st === 'active' ? '<span class="badge badge-ok">PRO</span>'
-      : st === 'blocked' ? '<span class="badge badge-off">BLOQ</span>'
-      : st === 'expired' ? '<span class="badge badge-off">EXP</span>'
-      : '<span class="badge badge-free">FREE</span>';
-    const exp = rec.expiresAt ? new Date(rec.expiresAt).toLocaleString('pt-BR') : '—';
-    return `<tr>
-      <td><span class="key-mono">${esc(code)}</span></td>
-      <td>${esc(rec.label)}</td><td>${badge}</td><td>${exp}</td><td>${esc(rec.note)}</td>
-      <td>
-        <a class="btn btn-sm" href="${base}/keys/${encodeURIComponent(code)}">Editar</a>
-        <form method="post" action="${base}/keys/${encodeURIComponent(code)}/toggle" style="display:inline"><button class="btn btn-sm" type="submit">${rec.active ? 'Bloquear' : 'Liberar'}</button></form>
-        ${canDelete ? `<form method="post" action="${base}/keys/${encodeURIComponent(code)}/delete" style="display:inline" onsubmit="return confirm('Excluir?')"><button class="btn btn-sm btn-red" type="submit">X</button></form>` : ''}
-      </td></tr>`;
+    const exp = rec.expiresAt ? new Date(rec.expiresAt).toLocaleString('pt-BR') : 'Sem limite';
+    const delForm = canDelete
+      ? `<form method="post" action="${base}/keys/${encodeURIComponent(code)}/delete" onsubmit="return confirm('Excluir chave?')"><button class="btn btn-sm btn-danger" type="submit">Excluir</button></form>`
+      : '';
+    return `<div class="key-row">
+      <div><code class="key-chip">${esc(code)}</code></div>
+      <div>${esc(rec.label)}</div>
+      <div>${statusBadgeHtml(st)}</div>
+      <div style="color:var(--muted);font-size:.85rem">${esc(exp)}</div>
+      <div style="color:var(--muted);font-size:.85rem">${esc(rec.note || '—')}</div>
+      <div class="actions">
+        <a class="btn btn-sm btn-ghost" href="${base}/keys/${encodeURIComponent(code)}">Editar</a>
+        <form method="post" action="${base}/keys/${encodeURIComponent(code)}/toggle"><button class="btn btn-sm btn-ghost" type="submit">${rec.active ? 'Bloquear' : 'Liberar'}</button></form>
+        ${delForm}
+      </div>
+    </div>`;
   }).join('');
-  return `<table><thead><tr><th>Chave</th><th>Cliente</th><th>Status</th><th>Validade</th><th>Nota</th><th></th></tr></thead>
-<tbody>${rows || '<tr><td colspan="6" class="muted">Nenhuma chave</td></tr>'}</tbody></table>`;
+  return `<div class="key-list">
+    <div class="key-list-head"><span>Chave</span><span>Cliente</span><span>Status</span><span>Validade</span><span>Nota</span><span></span></div>
+    ${rows}
+  </div>`;
 }
 
-function renderAdminDashboard() {
-  const keys = Object.entries(store.keys);
-  const active = keys.filter(([, r]) => keyStatus(r) === 'active').length;
-  const nav = `<nav><a href="${R_ADMIN}">Dashboard</a><a href="${R_ADMIN}/keys">Chaves</a><a href="${R_ADMIN}/logs">Logs</a><a href="${R_ADMIN}/logout">Sair</a></nav>`;
-  return panelLayout('Admin', `${freeBanner()}
-    <div class="stats">
-      <div class="stat"><div class="n">${keys.length}</div><div class="muted">Chaves</div></div>
-      <div class="stat"><div class="n" style="color:var(--green)">${active}</div><div class="muted">Ativas PRO</div></div>
-      <div class="stat"><div class="n">${store.logs.length}</div><div class="muted">Logs</div></div>
+function renderAdminDashboard(stats) {
+  return panelShell('Dashboard', `${mongoBanner()}
+    <div class="metrics">
+      <div class="metric"><div class="metric-value">${stats.total}</div><div class="metric-label">Total de chaves</div></div>
+      <div class="metric"><div class="metric-value accent">${stats.active}</div><div class="metric-label">Licencas PRO ativas</div></div>
+      <div class="metric"><div class="metric-value">${stats.free}</div><div class="metric-label">Contas Free</div></div>
+      <div class="metric"><div class="metric-value">${stats.logCount}</div><div class="metric-label">Eventos registrados</div></div>
     </div>
-    <div class="card"><p class="muted">API</p><p class="key-mono">${esc(config.baseUrl)}/api/</p>
-    <p class="muted">access-token</p><p class="key-mono">${esc(config.criptKey)}</p>
-    <p class="muted">Login extensao: somente chave (access_token_plugin)</p></div>
-    <div class="card"><a class="btn btn-green" href="${R_ADMIN}/keys/new">+ Nova chave</a></div>`, nav);
+    <div class="card">
+      <div class="card-title">Endpoint da API</div>
+      <p class="key-chip">${esc(config.baseUrl)}/api/</p>
+      <div class="card-title" style="margin-top:20px">Access Token</div>
+      <p class="key-chip">${esc(config.criptKey)}</p>
+    </div>
+    <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div><strong>Gerenciamento</strong><p style="color:var(--muted);font-size:.875rem;margin-top:4px">Crie e gerencie licencas de clientes</p></div>
+      <a class="btn btn-success" href="${R_ADMIN}/keys/new">+ Nova Chave</a>
+    </div>`, adminNav('dash'), 'Visao geral do servidor WaSpeed');
 }
 
-function renderAdminKeys() {
-  const list = Object.entries(store.keys).map(([code, rec]) => ({ code, rec }));
-  const nav = `<nav><a href="${R_ADMIN}">Dashboard</a><a href="${R_ADMIN}/keys">Chaves</a><a href="${R_ADMIN}/logout">Sair</a></nav>`;
-  return panelLayout('Chaves', `${freeBanner()}
-    <div class="card"><a class="btn btn-green" href="${R_ADMIN}/keys/new">+ Nova chave</a></div>
-    <div class="card">${keysTable(list, R_ADMIN, true)}</div>`, nav);
+function renderAdminKeys(list) {
+  return panelShell('Chaves de licenca', `${mongoBanner()}
+    <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+      <p style="color:var(--muted);font-size:.875rem">${list.length} chave(s) cadastrada(s)</p>
+      <a class="btn btn-success" href="${R_ADMIN}/keys/new">+ Nova Chave</a>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden">${keysListHtml(list, R_ADMIN, true)}</div>`,
+    adminNav('keys'), 'Controle completo de licencas PRO e Free');
 }
 
 function renderKeyForm(base, rec, title) {
   const code = rec?.code || '';
-  return panelLayout(title, `<div class="card"><form method="post">
-    ${code ? `<p class="muted">Chave</p><p class="key-mono">${esc(code)}</p>` : ''}
-    <label>Nome do cliente</label><input name="label" value="${esc(rec?.label || '')}" required>
-    <div class="row">
-      <div><label>Premium (PRO)</label><select name="premium"><option value="1" ${rec?.premium !== false ? 'selected' : ''}>Sim</option><option value="0" ${rec?.premium === false ? 'selected' : ''}>Free</option></select></div>
-      <div><label>Dias validade (0=sem)</label><input name="expireDays" type="number" min="0" value="${rec?.expireDays || 0}"></div>
-    </div>
-    <label>Nota</label><textarea name="note" rows="2">${esc(rec?.note || '')}</textarea>
-    <button type="submit">Salvar</button>
-  </form></div>`, `<nav><a href="${base}/keys">Voltar</a></nav>`);
+  const body = `<div class="card" style="max-width:640px">
+    <form method="post">
+      ${code ? `<div class="field"><label>Chave</label><code class="key-chip">${esc(code)}</code></div>` : ''}
+      <div class="field"><label>Nome do cliente</label><input name="label" value="${esc(rec?.label || '')}" required placeholder="Nome ou empresa"></div>
+      <div class="row">
+        <div class="field"><label>Premium (PRO)</label>
+          <select name="premium"><option value="1" ${rec?.premium !== false ? 'selected' : ''}>Sim — PRO</option><option value="0" ${rec?.premium === false ? 'selected' : ''}>Free</option></select>
+        </div>
+        <div class="field"><label>Dias de validade</label><input name="expireDays" type="number" min="0" value="${rec?.expireDays || 0}" placeholder="0 = sem limite"></div>
+      </div>
+      <div class="field"><label>Nota interna</label><textarea name="note" rows="3" placeholder="Observacoes opcionais">${esc(rec?.note || '')}</textarea></div>
+      <button class="btn" type="submit">Salvar chave</button>
+    </form>
+  </div>`;
+  return panelShell(title, body, `<a href="${base}/keys" class="nav-link">← Voltar</a>`, code ? 'Edite os dados da licenca' : 'Gere uma nova chave de ativacao');
 }
 
 function renderLogin(base, role, err = '') {
-  return panelLayout('Login', `<div class="login card">
-    <p class="muted">Painel ${role}</p>
-    ${err ? `<div class="alert">${esc(err)}</div>` : ''}
+  const body = `<div class="login-wrap"><div class="card login-card">
+    <h1>Entrar</h1>
+    <p style="color:var(--muted);font-size:.875rem;margin-bottom:24px">Painel ${esc(role)}</p>
+    ${err ? `<div class="alert alert-danger">${esc(err)}</div>` : ''}
     <form method="post" action="${base}/login">
-      <label>Usuario</label><input name="user" required autocomplete="username">
-      <label>Senha</label><input name="pass" type="password" required autocomplete="current-password">
-      <button type="submit">Entrar</button>
-    </form></div>`);
+      <div class="field"><label>Usuario</label><input name="user" required autocomplete="username" placeholder="Seu usuario"></div>
+      <div class="field"><label>Senha</label><input name="pass" type="password" required autocomplete="current-password" placeholder="••••••••"></div>
+      <button class="btn" type="submit" style="width:100%;margin-top:8px">Acessar painel</button>
+    </form>
+  </div></div>`;
+  return panelShell('Login', body, '', `Acesso ${esc(role)}`);
 }
 
-// --- Painel cliente (app.wascript.com.br) ------------------------------------
+function renderAdminLogs(logs) {
+  const rows = logs.map((l) =>
+    `<div class="log-row">
+      <span style="color:var(--muted);font-size:.8rem">${esc(new Date(l.at).toLocaleString('pt-BR'))}</span>
+      <span class="log-type">${esc(l.type)}</span>
+      <span>${esc(l.message)}</span>
+    </div>`).join('');
+  return panelShell('Logs do sistema', `<div class="card" style="padding:0;overflow:hidden">
+    <div class="log-list">${rows || '<div class="empty-state"><p>Nenhum evento registrado</p></div>'}</div>
+  </div>`, adminNav('logs'), 'Auditoria de autenticacao e operacoes');
+}
+
+async function getDashboardStats() {
+  try {
+    const licenses = await listLicenses();
+    const logCount = await db.collection(COL.logs).countDocuments();
+    return {
+      total: licenses.length,
+      active: licenses.filter((r) => keyStatus(r) === 'active').length,
+      free: licenses.filter((r) => keyStatus(r) === 'free').length,
+      logCount,
+    };
+  } catch (err) {
+    console.error('[WaSpeed] getDashboardStats:', err.message);
+    return { total: 0, active: 0, free: 0, logCount: 0 };
+  }
+}
+
+function adminPathRegex(suffix = '') {
+  const base = R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, (ch) => `\\${ch}`);
+  return new RegExp(`^${base}/keys/([^/]+)${suffix}$`);
+}
+
+// --- Painel cliente ----------------------------------------------------------
 
 const CLIENT_PANEL_RE = /^\/([a-z0-9]{16,32})\/(auth-painel|login|recovery|auth-plugin|redirect-plugin-register|register)\/?$/i;
 
-function statusBadge(st) {
-  if (st === 'active') return '<span class="badge badge-ok">PRO ATIVO</span>';
-  if (st === 'blocked') return '<span class="badge badge-off">BLOQUEADO</span>';
-  if (st === 'expired') return '<span class="badge badge-off">EXPIRADO</span>';
-  return '<span class="badge badge-free">FREE</span>';
-}
-
 function renderClientLogin(storeId) {
-  return panelLayout('Painel Clientes', `<div class="card">
-    <p class="muted">Extensão WaSpeed · ID ${esc(storeId)}</p>
-    <p>O acesso ao painel é feito pela extensão no WhatsApp Web.</p>
-    <ol class="muted" style="line-height:1.8;padding-left:20px">
+  return panelShell('Painel Clientes', `<div class="card">
+    <p style="color:var(--muted);font-size:.875rem;margin-bottom:16px">Extensao WaSpeed · ID ${esc(storeId)}</p>
+    <p style="margin-bottom:20px">O acesso ao painel e feito pela extensao no WhatsApp Web.</p>
+    <ol class="steps">
       <li>Abra o WhatsApp Web</li>
-      <li>Na extensão WaSpeed, faça login com sua <strong>chave de ativação</strong></li>
+      <li>Na extensao WaSpeed, faca login com sua <strong>chave de ativacao</strong></li>
       <li>Clique em <strong>Painel Clientes</strong> na barra lateral</li>
     </ol>
-    <p style="margin-top:16px"><a class="btn" href="https://web.whatsapp.com" target="_blank" rel="noopener">Abrir WhatsApp Web</a></p>
-  </div>`);
+    <p style="margin-top:24px"><a class="btn" href="https://web.whatsapp.com" target="_blank" rel="noopener">Abrir WhatsApp Web</a></p>
+  </div>`, '', 'Instrucoes de acesso');
 }
 
 function renderClientRecovery(storeId) {
-  return panelLayout('Recuperar acesso', `<div class="card">
-    <p class="muted">Extensão WaSpeed</p>
-    <p>Entre em contato com o administrador do seu servidor WaSpeed para obter uma nova chave de ativação.</p>
-    <p class="muted">Sua chave é o identificador usado no login da extensão (ex.: <code>ws-demo-premium</code>).</p>
-    <p style="margin-top:16px"><a class="btn" href="/${esc(storeId)}/login">Voltar ao painel</a></p>
-  </div>`);
+  return panelShell('Recuperar acesso', `<div class="card">
+    <p style="color:var(--muted);margin-bottom:16px">Extensao WaSpeed</p>
+    <p style="margin-bottom:12px">Entre em contato com o administrador do seu servidor WaSpeed para obter uma nova chave.</p>
+    <p style="margin-top:24px"><a class="btn btn-ghost" href="/${esc(storeId)}/login">← Voltar ao painel</a></p>
+  </div>`, '', 'Recuperacao de licenca');
 }
 
 function renderClientRegister(storeId) {
-  return panelLayout('Modo gratuito', `<div class="card">
-    <p class="muted">Extensão WaSpeed</p>
-    <p>O cadastro gratuito é feito diretamente na extensão: clique em <strong>Entrar gratuitamente</strong> na tela de login do WhatsApp Web.</p>
-    <p class="muted">Limites do modo free: exportação CRM até 5 contatos por aba e recursos premium bloqueados.</p>
-    <p style="margin-top:16px"><a class="btn" href="https://web.whatsapp.com" target="_blank" rel="noopener">Abrir WhatsApp Web</a></p>
-  </div>`);
+  return panelShell('Modo gratuito', `<div class="card">
+    <p style="color:var(--muted);margin-bottom:16px">Extensao WaSpeed</p>
+    <p style="margin-bottom:12px">O cadastro gratuito e feito na extensao: clique em <strong>Entrar gratuitamente</strong>.</p>
+    <p style="margin-top:24px"><a class="btn" href="https://web.whatsapp.com" target="_blank" rel="noopener">Abrir WhatsApp Web</a></p>
+  </div>`, '', 'Registro sem custo');
 }
 
-function renderClientAuthPainel(storeId, token, page) {
-  const rec = findKeyByBearer(token);
+function renderClientAuthPainel(storeId, token, page, rec) {
   if (!rec) {
-    return panelLayout('Sessão inválida', `<div class="card">
-      <div class="alert">Token inválido ou sessão expirada. Faça login novamente na extensão WaSpeed.</div>
-      <p><a class="btn" href="/${esc(storeId)}/login">Instruções de acesso</a></p>
+    return panelShell('Sessao invalida', `<div class="card">
+      <div class="alert alert-danger">Token invalido ou sessao expirada. Faca login novamente na extensao WaSpeed.</div>
+      <a class="btn" href="/${esc(storeId)}/login">Instrucoes de acesso</a>
     </div>`);
   }
 
@@ -672,37 +956,35 @@ function renderClientAuthPainel(storeId, token, page) {
   const liberacao = premium?.data_liberacao || '—';
   const pageLabel = page ? esc(decodeURIComponent(page)) : '';
 
-  const nav = `<nav>
-    <a href="/${esc(storeId)}/auth-painel?token=${encodeURIComponent(token)}">Minha conta</a>
-    <a href="https://web.whatsapp.com" target="_blank" rel="noopener">WhatsApp Web</a>
-  </nav>`;
+  const nav = `<a href="/${esc(storeId)}/auth-painel?token=${encodeURIComponent(token)}">Minha conta</a>
+    <a href="https://web.whatsapp.com" target="_blank" rel="noopener">WhatsApp Web</a>`;
 
-  return panelLayout('Painel Clientes', `${nav}
-    <div class="stats">
-      <div class="stat"><div class="n" style="font-size:1rem">${statusBadge(st)}</div><div class="muted">Status</div></div>
-      <div class="stat"><div class="n" style="font-size:1rem">${esc(liberacao)}</div><div class="muted">Liberação</div></div>
-      <div class="stat"><div class="n" style="font-size:1rem">${esc(exp)}</div><div class="muted">Validade</div></div>
+  return panelShell('Minha conta', `
+    <div class="metrics">
+      <div class="metric"><div class="metric-value" style="font-size:1rem">${statusBadgeHtml(st)}</div><div class="metric-label">Status da licenca</div></div>
+      <div class="metric"><div class="metric-value" style="font-size:1.1rem">${esc(liberacao)}</div><div class="metric-label">Data liberacao</div></div>
+      <div class="metric"><div class="metric-value" style="font-size:1rem">${esc(exp)}</div><div class="metric-label">Validade</div></div>
     </div>
     <div class="card">
-      <p class="muted">Conta</p>
-      <p><strong>${esc(user.name)}</strong></p>
-      <p class="muted">${esc(user.email)}</p>
-      <p style="margin-top:12px">Chave: <span class="key-mono">${esc(code)}</span></p>
-      ${pageLabel ? `<p class="muted" style="margin-top:12px">Seção: ${pageLabel}</p>` : ''}
+      <div class="card-title">Conta</div>
+      <p style="font-size:1.1rem;font-weight:700">${esc(user.name)}</p>
+      <p style="color:var(--muted);font-size:.875rem">${esc(user.email)}</p>
+      <div class="info-grid" style="margin-top:16px">
+        <div class="info-row"><span class="label">Chave</span><code class="key-chip">${esc(code)}</code></div>
+        ${pageLabel ? `<div class="info-row"><span class="label">Secao</span><span>${pageLabel}</span></div>` : ''}
+      </div>
     </div>
     <div class="card">
-      <p class="muted">Informações</p>
-      <p>Servidor: <span class="key-mono">${esc(config.baseUrl)}</span></p>
-      <p>WhatsApp vinculado: ${esc(rec.lastPhone || '—')}</p>
-      <p>Último uso: ${rec.lastUsed ? new Date(rec.lastUsed).toLocaleString('pt-BR') : '—'}</p>
-    </div>
-    <div class="card">
-      <p class="muted">Dúvidas ou renovação</p>
-      <p>Contate o administrador do seu WaSpeed para gerenciar licenças e chaves.</p>
-    </div>`, '');
+      <div class="card-title">Informacoes</div>
+      <div class="info-grid">
+        <div class="info-row"><span class="label">Servidor</span><span class="key-chip">${esc(config.baseUrl)}</span></div>
+        <div class="info-row"><span class="label">WhatsApp</span><span>${esc(rec.lastPhone || '—')}</span></div>
+        <div class="info-row"><span class="label">Ultimo uso</span><span>${rec.lastUsed ? esc(new Date(rec.lastUsed).toLocaleString('pt-BR')) : '—'}</span></div>
+      </div>
+    </div>`, nav, `Ola, ${esc(user.name)}`);
 }
 
-function handleClientPanel(req, res, pathname, url) {
+async function handleClientPanel(req, res, pathname, url) {
   const m = pathname.match(CLIENT_PANEL_RE);
   if (!m) return false;
 
@@ -717,7 +999,8 @@ function handleClientPanel(req, res, pathname, url) {
       res.end();
       return true;
     }
-    sendHtml(res, renderClientAuthPainel(storeId, token, page));
+    const rec = await findKeyByBearer(token);
+    sendHtml(res, renderClientAuthPainel(storeId, token, page, rec));
     return true;
   }
 
@@ -752,11 +1035,11 @@ function handleClientPanel(req, res, pathname, url) {
 
 async function handleWaSpeedApi(req, res, pathname, ip) {
   const chromeId = config.chromeStoreId;
+  const settings = cachedSettings || {};
 
-  // Publicas
   if (pathname === '/api/urls/install/' + chromeId || pathname.match(/^\/api\/urls\/install\//)) {
-    addLog('install', 'Redirect install', { ip });
-    return sendJson(res, { success: true, url: store.settings.installUrl || config.installUrl });
+    await addLog('install', 'Redirect install', { ip });
+    return sendJson(res, { success: true, url: settings.installUrl || config.installUrl });
   }
   if (pathname.match(/^\/api\/urls\/uninstall\//)) {
     return sendJson(res, { success: true, url: `${config.baseUrl}/obrigado` });
@@ -766,7 +1049,7 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
   }
   if (pathname.match(/^\/api\/urls\/notes\//)) {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(req, pathname) });
-    return res.end(store.settings.notesHtml || '<h1>WaSpeed</h1>');
+    return res.end(settings.notesHtml || '<h1>WaSpeed</h1>');
   }
   if (pathname === '/api/urls/update' && (req.method === 'GET' || req.method === 'POST')) {
     return sendJson(res, wppUpdate());
@@ -778,86 +1061,93 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     return sendJson(res, { success: true });
   }
   if (pathname === '/api/external/ping') {
-    return sendJson(res, { success: true, server: 'waspeed', version: '2.0.0', keys: Object.keys(store.keys).length, ephemeral: config.ephemeral });
+    let keyCount = 0;
+    try { keyCount = await db.collection(COL.licenses).countDocuments(); } catch {}
+    return sendJson(res, { success: true, server: 'waspeed', version: '3.0.0', keys: keyCount, storage: 'mongodb' });
   }
 
   if (!requireAccessToken(req)) {
     return sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403);
   }
 
-  // Auth por chave
   if (pathname === `/api/auth/login-bearer/${chromeId}` && req.method === 'GET') {
-    if (!checkRate(ip, 'login')) return sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
+    if (!checkRate(ip)) return sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
     const bearer = parseBearer(req);
-    const rec = findKeyByBearer(bearer);
+    const rec = await findKeyByBearer(bearer);
     const code = rec ? (rec.code || bearer) : null;
     if (!rec) {
-      addLog('auth_fail', 'Bearer invalido', { ip });
+      await addLog('auth_fail', 'Bearer invalido', { ip });
       return sendJson(res, { success: false, msg_id: 'invalid_token' });
     }
-    const result = authSuccess(code, rec);
+    const result = await authSuccess(code, rec);
     if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
-    addLog('auth_ok', `Login bearer ${code}`, { ip });
+    await addLog('auth_ok', `Login bearer ${code}`, { ip });
     return sendJson(res, result.body);
   }
 
   if (pathname === `/api/auth/register-free/${chromeId}` && req.method === 'POST') {
-    if (!checkRate(ip, 'login')) return sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
+    if (!checkRate(ip)) return sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
     const body = await readJson(req);
-    const { code, rec } = getOrCreateFreeKey(body.extension_id || body.device_id, ip);
-    const result = authSuccess(code, rec);
+    const { code, rec } = await getOrCreateFreeKey(body.extension_id || body.device_id, ip);
+    const result = await authSuccess(code, rec);
     if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
-    addLog('free_register', `Login free ${code}`, { ip, extension_id: body.extension_id });
+    await addLog('free_register', `Login free ${code}`, { ip, extension_id: body.extension_id });
     return sendJson(res, result.body);
   }
 
   if (pathname === `/api/auth/validation/${chromeId}` && req.method === 'POST') {
-    if (!checkRate(ip, 'login')) return sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
+    if (!checkRate(ip)) return sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
     const body = await readJson(req);
     const key = normKey(body.access_token_plugin || body.chave || body.senha || body.email);
-    const rec = findKey(key);
+    const rec = await findKey(key);
     if (!rec) {
-      addLog('auth_fail', 'Chave invalida validation', { ip, key });
+      await addLog('auth_fail', 'Chave invalida validation', { ip, key });
       return sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' });
     }
-    const result = authSuccess(key, rec);
+    const result = await authSuccess(key, rec);
     if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
-    addLog('validation_ok', `Validacao ${key}`, { ip });
+    await addLog('validation_ok', `Validacao ${key}`, { ip });
     return sendJson(res, result.body);
   }
 
   if (pathname === `/api/auth/login/${chromeId}` && req.method === 'POST') {
-    if (!checkRate(ip, 'login')) return sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
+    if (!checkRate(ip)) return sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
     const body = await readJson(req);
     const key = normKey(body.senha || body.chave || body.email || body.access_token_plugin);
-    const rec = findKey(key);
+    const rec = await findKey(key);
     if (!rec) {
-      addLog('auth_fail', 'Login chave invalida', { ip });
+      await addLog('auth_fail', 'Login chave invalida', { ip });
       return sendJson(res, { success: false, msg_id: 'invalid_token' });
     }
-    const result = authSuccess(key, rec);
+    const result = await authSuccess(key, rec);
     if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
-    addLog('auth_ok', `Login ${key}`, { ip });
+    await addLog('auth_ok', `Login ${key}`, { ip });
     return sendJson(res, result.body);
   }
 
   if (pathname === '/api/user/update' && req.method === 'POST') {
     const body = await readJson(req);
     const bearer = parseBearer(req) || body.bearer_token;
-    const rec = findKeyByBearer(bearer);
+    const rec = await findKeyByBearer(bearer);
     if (!rec) return sendJson(res, { success: false, msg_id: 'invalid_token' });
+    const patch = {};
     if (body.whatsapp_plugin || body.whatsapp_registro) {
-      rec.lastPhone = body.whatsapp_plugin || body.whatsapp_registro;
+      patch.lastPhone = body.whatsapp_plugin || body.whatsapp_registro;
     }
-    if (body.name) rec.label = body.name;
-    saveStore();
+    if (body.name) patch.label = body.name;
+    if (Object.keys(patch).length) await updateLicense(rec.code, patch);
+    Object.assign(rec, patch);
     const code = rec.code || bearer;
     return sendJson(res, { success: true, user: keyToUser(code, rec) });
   }
 
   if (pathname === `/api/services/initial-data/${chromeId}`) {
-    const s = store.settings;
-    return sendJson(res, { webhooks: s.webhooks || [], meet: s.meet || {}, urls: s.urls || {}, migration: s.migration || {} });
+    return sendJson(res, {
+      webhooks: settings.webhooks || [],
+      meet: settings.meet || {},
+      urls: settings.urls || {},
+      migration: settings.migration || {},
+    });
   }
 
   if (pathname === '/api/image/url-to-base64' && req.method === 'POST') {
@@ -867,16 +1157,6 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
   return false;
 }
 
-function isAdmin(req) {
-  const s = verifySession(parseCookies(req).ws_session);
-  return s && s.role === 'admin';
-}
-
-function isMod(req) {
-  const s = verifySession(parseCookies(req).ws_session);
-  return s && s.role === 'mod';
-}
-
 async function handleAdmin(req, res, pathname) {
   if (pathname === R_ADMIN + '/login') {
     if (req.method === 'GET') return sendHtml(res, renderLogin(R_ADMIN, 'Admin'));
@@ -884,44 +1164,65 @@ async function handleAdmin(req, res, pathname) {
     const params = new URLSearchParams(body);
     const user = params.get('user') || '';
     const pass = params.get('pass') || '';
-    if (user === config.adminUser && pass === config.adminPass) {
-      setCookie(res, 'ws_session', signSession({ role: 'admin', user, exp: Date.now() + 7 * 86400000 }));
-      res.writeHead(302, { Location: R_ADMIN });
-      return res.end();
+    const admin = cachedSettings?.admin;
+    if (user === admin?.username && verifyPassword(pass, admin?.password)) {
+      try {
+        const { token } = await createSession('admin', { user });
+        setSessionCookie(res, token);
+        res.writeHead(302, { Location: R_ADMIN });
+        return res.end();
+      } catch {
+        return sendHtml(res, renderLogin(R_ADMIN, 'Admin', 'Erro ao criar sessao'), 500);
+      }
     }
     return sendHtml(res, renderLogin(R_ADMIN, 'Admin', 'Credenciais invalidas'), 401);
   }
+
   if (pathname === R_ADMIN + '/logout') {
-    setCookie(res, 'ws_session', '', 0);
-    res.writeHead(302, { Location: R_ADMIN + '/login' });
-    return res.end();
-  }
-  if (!isAdmin(req)) {
+    const token = parseCookies(req).ws_session;
+    await destroySession(token);
+    clearSessionCookie(res);
     res.writeHead(302, { Location: R_ADMIN + '/login' });
     return res.end();
   }
 
-  if (pathname === R_ADMIN || pathname === R_ADMIN + '/') return sendHtml(res, renderAdminDashboard());
-  if (pathname === R_ADMIN + '/keys') return sendHtml(res, renderAdminKeys());
+  const sess = await requireAdmin(req, res);
+  if (!sess) return;
+
+  if (pathname === R_ADMIN || pathname === R_ADMIN + '/') {
+    const stats = await getDashboardStats();
+    return sendHtml(res, renderAdminDashboard(stats));
+  }
+
+  if (pathname === R_ADMIN + '/keys') {
+    const licenses = await listLicenses();
+    const list = licenses.map((rec) => ({ code: rec.code, rec }));
+    return sendHtml(res, renderAdminKeys(list));
+  }
 
   if (pathname === R_ADMIN + '/keys/new') {
     if (req.method === 'GET') return sendHtml(res, renderKeyForm(R_ADMIN, null, 'Nova chave'));
     const body = await readBody(req);
     const p = new URLSearchParams(body);
-    const rec = createKey({
-      label: p.get('label'),
-      premium: p.get('premium') !== '0',
-      expireDays: Number(p.get('expireDays') || 0),
-      note: p.get('note') || '',
-    });
-    res.writeHead(302, { Location: `${R_ADMIN}/keys/${encodeURIComponent(rec.code)}` });
-    return res.end();
+    try {
+      const rec = await createKey({
+        label: p.get('label'),
+        premium: p.get('premium') !== '0',
+        expireDays: Number(p.get('expireDays') || 0),
+        note: p.get('note') || '',
+      });
+      res.writeHead(302, { Location: `${R_ADMIN}/keys/${encodeURIComponent(rec.code)}` });
+      return res.end();
+    } catch (err) {
+      res.writeHead(500);
+      return res.end('Erro ao criar chave: ' + err.message);
+    }
   }
 
-  const keyEdit = pathname.match(new RegExp(`^${R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/keys/([^/]+)$`));
+  const keyEdit = pathname.match(adminPathRegex());
   if (keyEdit) {
     const code = decodeURIComponent(keyEdit[1]);
-    const rec = findKey(code);
+    const rec = await findKey(code);
     if (!rec) {
       res.writeHead(404);
       return res.end('Not found');
@@ -929,42 +1230,39 @@ async function handleAdmin(req, res, pathname) {
     if (req.method === 'GET') return sendHtml(res, renderKeyForm(R_ADMIN, rec, 'Editar chave'));
     const body = await readBody(req);
     const p = new URLSearchParams(body);
-    rec.label = p.get('label') || rec.label;
-    rec.premium = p.get('premium') !== '0';
-    rec.note = p.get('note') || '';
+    const patch = {
+      label: p.get('label') || rec.label,
+      premium: p.get('premium') !== '0',
+      note: p.get('note') || '',
+    };
     const days = Number(p.get('expireDays') || 0);
-    if (days > 0) rec.expiresAt = new Date(Date.now() + days * 86400000).toISOString();
-    saveStore();
+    if (days > 0) patch.expiresAt = new Date(Date.now() + days * 86400000).toISOString();
+    await updateLicense(code, patch);
     res.writeHead(302, { Location: R_ADMIN + '/keys' });
     return res.end();
   }
 
-  const keyToggle = pathname.match(new RegExp(`^${R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/keys/([^/]+)/toggle$`));
+  const keyToggle = pathname.match(adminPathRegex('/toggle'));
   if (keyToggle && req.method === 'POST') {
     const code = decodeURIComponent(keyToggle[1]);
-    const rec = findKey(code);
-    if (rec) {
-      rec.active = !rec.active;
-      saveStore();
-    }
+    const rec = await findKey(code);
+    if (rec) await updateLicense(code, { active: !rec.active });
     res.writeHead(302, { Location: R_ADMIN + '/keys' });
     return res.end();
   }
 
-  const keyDel = pathname.match(new RegExp(`^${R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/keys/([^/]+)/delete$`));
+  const keyDel = pathname.match(adminPathRegex('/delete'));
   if (keyDel && req.method === 'POST') {
     const code = decodeURIComponent(keyDel[1]);
-    delete store.keys[code];
-    saveStore();
+    await deleteLicense(code);
+    await addLog('key_delete', `Chave ${code} excluida`, { code });
     res.writeHead(302, { Location: R_ADMIN + '/keys' });
     return res.end();
   }
 
   if (pathname === R_ADMIN + '/logs') {
-    const rows = store.logs.slice(0, 200).map((l) =>
-      `<tr><td>${new Date(l.at).toLocaleString('pt-BR')}</td><td>${esc(l.type)}</td><td>${esc(l.message)}</td></tr>`).join('');
-    const nav = `<nav><a href="${R_ADMIN}">Dashboard</a><a href="${R_ADMIN}/logs">Logs</a><a href="${R_ADMIN}/logout">Sair</a></nav>`;
-    return sendHtml(res, panelLayout('Logs', `<div class="card"><table><thead><tr><th>Data</th><th>Tipo</th><th>Msg</th></tr></thead><tbody>${rows}</tbody></table></div>`, nav));
+    const logs = await getRecentLogs(200);
+    return sendHtml(res, renderAdminLogs(logs));
   }
 
   res.writeHead(404);
@@ -978,37 +1276,44 @@ async function handleMod(req, res, pathname) {
     const params = new URLSearchParams(body);
     const user = params.get('user') || '';
     const pass = params.get('pass') || '';
-    const mod = store.mods.find((m) => m.username === user && m.active !== false);
+    const mod = (cachedSettings?.mods || []).find((m) => m.username === user && m.active !== false);
     if (mod && verifyPassword(pass, mod.password)) {
-      setCookie(res, 'ws_session', signSession({ role: 'mod', user, modId: mod.id, name: mod.name, exp: Date.now() + 7 * 86400000 }));
-      res.writeHead(302, { Location: R_MOD });
-      return res.end();
+      try {
+        const { token } = await createSession('mod', { user, modId: mod.id, name: mod.name });
+        setSessionCookie(res, token);
+        res.writeHead(302, { Location: R_MOD });
+        return res.end();
+      } catch {
+        return sendHtml(res, renderLogin(R_MOD, 'Moderador', 'Erro ao criar sessao'), 500);
+      }
     }
     return sendHtml(res, renderLogin(R_MOD, 'Moderador', 'Credenciais invalidas'), 401);
   }
+
   if (pathname === R_MOD + '/logout') {
-    setCookie(res, 'ws_session', '', 0);
-    res.writeHead(302, { Location: R_MOD + '/login' });
-    return res.end();
-  }
-  if (!isMod(req)) {
+    const token = parseCookies(req).ws_session;
+    await destroySession(token);
+    clearSessionCookie(res);
     res.writeHead(302, { Location: R_MOD + '/login' });
     return res.end();
   }
 
-  const sess = verifySession(parseCookies(req).ws_session);
+  const sess = await requireMod(req, res);
+  if (!sess) return;
+
   const modName = sess.name;
-  const list = Object.entries(store.keys).filter(([, r]) => r.modName === modName).map(([code, rec]) => ({ code, rec }));
+  const all = await listLicenses({ modName });
+  const list = all.map((rec) => ({ code: rec.code, rec }));
 
   if (pathname === R_MOD || pathname === R_MOD + '/') {
-    const nav = `<nav><a href="${R_MOD}">Chaves</a><a href="${R_MOD}/keys/new">Nova</a><a href="${R_MOD}/logout">Sair (${esc(modName)})</a></nav>`;
-    return sendHtml(res, panelLayout('Moderador', `<div class="card">${keysTable(list, R_MOD, false)}</div>`, nav));
+    const nav = `<a href="${R_MOD}">Chaves</a><a href="${R_MOD}/keys/new">Nova</a><a href="${R_MOD}/logout">Sair (${esc(modName)})</a>`;
+    return sendHtml(res, panelShell('Moderador', `<div class="card" style="padding:0;overflow:hidden">${keysListHtml(list, R_MOD, false)}</div>`, nav));
   }
 
   if (pathname === R_MOD + '/keys/new' && req.method === 'POST') {
     const body = await readBody(req);
     const p = new URLSearchParams(body);
-    createKey({ label: p.get('label'), premium: p.get('premium') !== '0', note: p.get('note') || '' }, modName);
+    await createKey({ label: p.get('label'), premium: p.get('premium') !== '0', note: p.get('note') || '' }, modName);
     res.writeHead(302, { Location: R_MOD });
     return res.end();
   }
@@ -1033,23 +1338,46 @@ async function handleRequest(req, res) {
   }
 
   try {
+    if (pathname === '/ping') {
+      return sendText(res, 'OK');
+    }
+
+    if (pathname === '/login') {
+      res.writeHead(302, { Location: R_ADMIN + '/login' });
+      return res.end();
+    }
+
     if (pathname === '/health') {
+      let keyCount = 0;
+      let mongoOk = false;
+      try {
+        keyCount = await db.collection(COL.licenses).countDocuments();
+        mongoOk = true;
+      } catch {}
       return sendJson(res, {
-        ok: true, service: 'waspeed-server', version: '2.0.0',
-        keys: Object.keys(store.keys).length, dataDir: config.dataDir, ephemeral: config.ephemeral,
+        ok: true,
+        service: 'waspeed-server',
+        version: '3.0.0',
+        keys: keyCount,
+        mongo: mongoOk,
+        storage: 'mongodb',
       });
     }
 
     if (pathname === '/') {
-      return sendHtml(res, panelLayout('WaSpeed Server', `${freeBanner()}
-        <div class="card"><p>Backend: <strong>${esc(config.baseUrl)}</strong></p>
-        <p><a class="btn" href="${R_ADMIN}">Admin</a> <a class="btn" href="${R_MOD}">Mod</a></p>
-        <p class="muted">Login extensao: somente chave · API: /api/auth/validation/:id</p></div>`));
+      return sendHtml(res, panelShell('WaSpeed Server', `${mongoBanner()}
+        <div class="card">
+          <p style="margin-bottom:8px">Backend ativo em <strong>${esc(config.baseUrl)}</strong></p>
+          <p style="color:var(--muted);font-size:.875rem;margin-bottom:20px">Login extensao: somente chave · API: /api/auth/validation/:id</p>
+          <div style="display:flex;flex-wrap:wrap;gap:10px">
+            <a class="btn" href="${R_ADMIN}">Painel Admin</a>
+            <a class="btn btn-ghost" href="${R_MOD}">Painel Mod</a>
+          </div>
+        </div>`, '', 'Servidor de licencas e configuracao'));
     }
 
     if (pathname === '/config.json') {
-      res.setHeader('Cache-Control', 'public, max-age=300');
-      return sendJson(res, buildConfigJson(store.settings.domConfig || {}));
+      return sendCachedConfigJson(res);
     }
 
     if (pathname === '/api/code') {
@@ -1061,15 +1389,14 @@ async function handleRequest(req, res) {
     }
 
     if (pathname === '/obrigado') {
-      return sendHtml(res, '<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:40px"><h1>WaSpeed</h1><p>Obrigado!</p></body></html>');
+      return sendHtml(res, panelShell('Obrigado', '<div class="card" style="text-align:center;padding:48px"><h2 style="margin-bottom:8px">Obrigado!</h2><p style="color:var(--muted)">WaSpeed</p></div>'));
     }
 
-    // Utils stubs
     if (pathname.startsWith('/utils/')) {
       return sendJson(res, { success: false, msg_id: 'not_configured', message: 'Nao configurado neste servidor' }, 501);
     }
 
-    if (handleClientPanel(req, res, pathname, url)) return;
+    if (await handleClientPanel(req, res, pathname, url)) return;
 
     if (pathname.startsWith('/api/')) {
       const handled = await handleWaSpeedApi(req, res, pathname, ip);
@@ -1088,30 +1415,58 @@ async function handleRequest(req, res) {
   }
 }
 
+// --- Anti-sleep (Render Free Tier) -------------------------------------------
+
+function startAntiSleepCron() {
+  const base = config.publicUrl || config.baseUrl;
+  if (!base) {
+    console.warn('[WaSpeed] PUBLIC_URL nao definida — anti-sleep desativado');
+    return;
+  }
+  const pingUrl = `${base.replace(/\/$/, '')}/ping`;
+  console.log(`[WaSpeed] Anti-sleep ativo: GET ${pingUrl} a cada 5 min`);
+  setInterval(() => {
+    fetch(pingUrl, { method: 'GET' }).catch((err) => {
+      console.warn('[WaSpeed] Anti-sleep ping falhou:', err.message);
+    });
+  }, ANTI_SLEEP_MS).unref();
+}
+
 // --- Bootstrap ---------------------------------------------------------------
 
-loadStore();
-initSeed();
+async function bootstrap() {
+  await connectMongo();
+  await initSeed();
 
-const startedAt = new Date().toISOString();
-const server = http.createServer(handleRequest);
+  server = http.createServer(handleRequest);
+  server.listen(config.port, () => {
+    console.log(`WaSpeed Server v3.0 em http://localhost:${config.port}`);
+    console.log(`MongoDB: ${config.dbName}`);
+    console.log(`Admin: ${config.baseUrl}${R_ADMIN}/login`);
+    console.log(`Mod:   ${config.baseUrl}${R_MOD}/login`);
+    console.log(`Health: ${config.baseUrl}/health`);
+    console.log(`Ping:   ${config.baseUrl}/ping`);
+    startAntiSleepCron();
+  });
+}
 
-server.listen(config.port, () => {
-  console.log(`WaSpeed Server v2 em http://localhost:${config.port}`);
-  console.log(`Dados: ${config.dataDir}${config.ephemeral ? ' (efemero)' : ''}`);
-  console.log(`Chaves: ${Object.keys(store.keys).length}`);
-  console.log(`Admin: ${config.baseUrl}${R_ADMIN}`);
-  console.log(`Mod:   ${config.baseUrl}${R_MOD}`);
-  console.log(`Health: ${config.baseUrl}/health`);
-  if (store.keys['ws-demo-premium']) console.log('Demo: ws-demo-premium');
-});
-
-function shutdown(sig) {
+async function shutdown(sig) {
   console.log(`[WaSpeed] ${sig} — encerrando`);
-  flushStore();
-  server.close(() => process.exit(0));
+  try {
+    if (mongoClient) await mongoClient.close();
+  } catch (err) {
+    console.error('[WaSpeed] mongo close:', err.message);
+  }
+  if (server) server.close(() => process.exit(0));
+  else process.exit(0);
   setTimeout(() => process.exit(1), 10000).unref();
 }
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
+
+bootstrap().catch((err) => {
+  console.error('[WaSpeed] Falha no bootstrap:', err);
+  process.exit(1);
+});
+
