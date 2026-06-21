@@ -332,16 +332,64 @@ function fail(res, msgId, extra = {}) {
   return res.json({ success: false, msg_id: msgId, ...extra });
 }
 
-function registerWaSpeedApi(app) {
-  const api = express.Router();
+function applyCors(req, res, next) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, access-token, accept');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+}
 
-  api.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, access-token, accept');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
-    if (req.method === 'OPTIONS') return res.sendStatus(204);
-    next();
+function registerWaSpeedApi(app) {
+  app.use(applyCors);
+
+  const api = express.Router();
+  api.use(applyCors);
+
+  // Rotas publicas (sem access-token) — install, config, WPP update
+  api.get('/urls/install/:extensionId', (req, res) => {
+    const db = store.getDb();
+    const url = db.settings.installUrl || config.installRedirectUrl;
+    store.appendLog('install', 'Redirect install', { extensionId: req.params.extensionId });
+    return res.json({ success: true, url });
   });
+
+  api.get('/urls/uninstall/:extensionId', (req, res) => {
+    return res.json({
+      success: true,
+      url: `${config.baseUrl}/obrigado`,
+    });
+  });
+
+  api.get('/urls/active-notes/:extensionId', (req, res) => {
+    const redirect = config.notesRedirect;
+    return res.json({
+      success: true,
+      path_note_update: { redirect },
+    });
+  });
+
+  api.get('/urls/notes/:extensionId', (req, res) => {
+    const db = store.getDb();
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.send(db.settings.notesHtml || '<h1>WaSpeed</h1>');
+  });
+
+  api.get('/services/update', (req, res) => {
+    return res.json({
+      success: true,
+      version: '1.11',
+      update: false,
+      message: 'WaSpeed server — módulo atualizado',
+    });
+  });
+
+  api.post('/services/update', express.json(), (req, res) => {
+    return res.json({ success: true, version: '1.11', update: false });
+  });
+
+  api.post('/external/is_instaled', (req, res) => res.json({ success: true }));
+  api.get('/external/ping', (req, res) => res.json({ success: true, server: 'waspeed', version: '1.0.0' }));
 
   api.use(requireAccessToken);
 
@@ -417,49 +465,6 @@ function registerWaSpeedApi(app) {
     });
   });
 
-  // GET /api/services/update — WPP module update check
-  api.get('/services/update', (req, res) => {
-    return res.json({
-      success: true,
-      version: '1.11',
-      update: false,
-      message: 'WaSpeed server — módulo atualizado',
-    });
-  });
-
-  api.post('/services/update', express.json(), (req, res) => {
-    return res.json({ success: true, version: '1.11', update: false });
-  });
-
-  // Install / uninstall / notes
-  api.get('/urls/install/:extensionId', (req, res) => {
-    const db = store.getDb();
-    const url = db.settings.installUrl || config.installRedirectUrl;
-    store.appendLog('install', 'Redirect install', { extensionId: req.params.extensionId });
-    return res.json({ success: true, url });
-  });
-
-  api.get('/urls/uninstall/:extensionId', (req, res) => {
-    return res.json({
-      success: true,
-      url: `${config.baseUrl}/obrigado`,
-    });
-  });
-
-  api.get('/urls/active-notes/:extensionId', (req, res) => {
-  const redirect = config.notesRedirect;
-    return res.json({
-      success: true,
-      path_note_update: { redirect },
-    });
-  });
-
-  api.get('/urls/notes/:extensionId', (req, res) => {
-    const db = store.getDb();
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.send(db.settings.notesHtml || '<h1>WaSpeed</h1>');
-  });
-
   // Stub imagem
   api.post('/image/url-to-base64', express.json(), (req, res) => {
     return res.json({ success: false, msg_id: 'not_implemented' });
@@ -468,17 +473,14 @@ function registerWaSpeedApi(app) {
   app.use('/api', api);
 
   // Remote DOM config (substitui code.wascript.com.br/config.json)
-  app.get('/config.json', (req, res) => {
+  app.get('/config.json', applyCors, (req, res) => {
     const db = store.getDb();
     res.json(db.settings.domConfig || { selectors: {}, version: 1 });
   });
 
-  // Painel cliente — externally_connectable handshake
-  app.post('/api/external/is_instaled', (req, res) => res.json({ success: true }));
-  app.get('/api/external/ping', (req, res) => res.json({ success: true, server: 'waspeed', version: '1.0.0' }));
-
   // Utils stubs (backend-utils)
   const utils = express.Router();
+  utils.use(applyCors);
   utils.use(express.json({ limit: '10mb' }));
   utils.post('/XLSX/exportFunil', (req, res) => {
     return res.status(501).json({ success: false, message: 'Export XLSX — implemente conforme necessidade' });
