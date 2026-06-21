@@ -18,7 +18,7 @@ const WPP_VERSION = '1.11';
 
 const config = {
   port: Number(process.env.PORT) || 3000,
-  baseUrl: (process.env.BASE_URL || 'https://ws.onrender.com').replace(/\/$/, ''),
+  baseUrl: (process.env.BASE_URL || '').replace(/\/$/, ''),
   dataDir: process.env.DATA_DIR || FALLBACK_DATA,
   criptKey: process.env.ACCESS_TOKEN || 'ffce211a-7b07-4d91-ba5d-c40bb4034a83',
   chromeStoreId: process.env.CHROME_STORE_ID || 'balkfdkhbcjjmhndnblgmlmcabnapogp',
@@ -54,6 +54,11 @@ function resolveDataDir() {
 
 config.dataDir = resolveDataDir();
 config.ephemeral = path.resolve(config.dataDir) === path.resolve(FALLBACK_DATA);
+
+if (!config.baseUrl) {
+  console.error('[WaSpeed] ERRO: defina BASE_URL nas variaveis de ambiente (URL publica do Render).');
+  process.exit(1);
+}
 
 const R_ADMIN = `/${config.adminPath}`;
 const R_MOD = `/${config.modPath}`;
