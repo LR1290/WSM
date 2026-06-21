@@ -13,6 +13,7 @@ const { URL } = require('url');
 const ROOT = __dirname;
 const FALLBACK_DATA = path.join(ROOT, 'data');
 const WPP_VERSION = '1.11';
+const REMOTE_CODE_VERSION = '1.0.41';
 
 // --- Config ------------------------------------------------------------------
 
@@ -76,7 +77,10 @@ function loadDomDefaults() {
 
 function buildDomConfig(overrides = {}) {
   const base = loadDomDefaults();
-  const merged = { ...base, ...overrides };
+  const clean = { ...overrides };
+  delete clean.remote_code;
+  delete clean.dom_selector;
+  const merged = { ...base, ...clean };
   merged.update_path = `${config.baseUrl}/api/urls/update`;
   merged.update_path_new = `${config.baseUrl}/api/services/update`;
   merged.update_path_active = String(merged.update_path_active ?? 'true');
@@ -85,6 +89,18 @@ function buildDomConfig(overrides = {}) {
     merged.version = base.version || WPP_VERSION;
   }
   return merged;
+}
+
+/** Formato code.wascript.com.br/config.json — exigido pelo background após login */
+function buildConfigJson(overrides = {}) {
+  return {
+    remote_code: {
+      version: REMOTE_CODE_VERSION,
+      ambiente: 'production',
+      url: `${config.baseUrl}/api/code?version=${REMOTE_CODE_VERSION}`,
+    },
+    dom_selector: buildDomConfig(overrides),
+  };
 }
 
 // --- Store -------------------------------------------------------------------
@@ -842,7 +858,15 @@ async function handleRequest(req, res) {
 
     if (pathname === '/config.json') {
       res.setHeader('Cache-Control', 'public, max-age=300');
-      return sendJson(res, buildDomConfig(store.settings.domConfig || {}));
+      return sendJson(res, buildConfigJson(store.settings.domConfig || {}));
+    }
+
+    if (pathname === '/api/code') {
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      res.writeHead(200);
+      res.end('/* WaSpeed remote code stub — WPP injetado localmente pela extensao */\n');
+      return;
     }
 
     if (pathname === '/obrigado') {
