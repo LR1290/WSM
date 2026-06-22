@@ -107,6 +107,42 @@ function buildConfigJson(overrides = {}) {
   };
 }
 
+function buildTutorialUrl(id, link = 'https://www.youtube.com/@WaSpeedOficial') {
+  return { id, link, active: true, redirect: false, msg: '' };
+}
+
+function buildDefaultUrls() {
+  const tutIds = [
+    'api', 'auto_atendimento', 'envio_em_massa', 'follow_up', 'login',
+    'mensagens_agendadas', 'resposta_rapida', 'status', 'webhook', 'geral',
+  ];
+  const tutoriais = {};
+  for (const id of tutIds) tutoriais[id] = buildTutorialUrl(id);
+  tutoriais.auto_atendimento = buildTutorialUrl(
+    'auto_atendimento',
+    'https://waspeed.com.br/autoatendimento-no-whatsapp-em-5-minutos-video/',
+  );
+  tutoriais.envio_em_massa = buildTutorialUrl(
+    'envio_em_massa',
+    'https://waspeed.com.br/agendamento-whatsapp/como-programar-mensagem-automatica-whatsapp/',
+  );
+  tutoriais.status = buildTutorialUrl('status', 'https://www.youtube.com/@WaSpeedOficial');
+  tutoriais.login = buildTutorialUrl('login', 'https://waspeed.com.br/extensao-chrome-whatsapp/como-instalar-extensao-whatsapp/');
+  return { tutoriais };
+}
+
+function mergeDefaultUrls(urls = {}) {
+  const defaults = buildDefaultUrls();
+  const out = { ...urls };
+  const merged = { ...defaults.tutoriais, ...(out.tutoriais || {}) };
+  for (const [id, def] of Object.entries(defaults.tutoriais)) {
+    const cur = merged[id];
+    if (!cur?.active || !cur?.link) merged[id] = def;
+  }
+  out.tutoriais = merged;
+  return out;
+}
+
 async function refreshSettingsCache() {
   if (!db) return;
   try {
@@ -186,7 +222,7 @@ async function initSeed() {
         notesHtml: '<h1>WaSpeed</h1><p>Servidor MongoDB ativo.</p>',
         webhooks: [],
         meet: {},
-        urls: {},
+        urls: buildDefaultUrls(),
         migration: {},
         domConfig: buildDomConfig(),
         nextUserId: 1000,
@@ -198,6 +234,11 @@ async function initSeed() {
       };
       await settingsCol.insertOne(doc);
       console.log('[WaSpeed] Settings inicializados (admin com hash pbkdf2)');
+    } else if (!doc.urls?.tutoriais || !Object.keys(doc.urls.tutoriais).length) {
+      await settingsCol.updateOne(
+        { _id: 'global' },
+        { $set: { urls: mergeDefaultUrls(doc.urls || {}) } },
+      );
     }
     await syncCredentialsFromEnv();
     const count = await db.collection(COL.licenses).countDocuments();
@@ -600,6 +641,26 @@ function buildUserPremium(code, rec) {
     data_liberacao: dataLiberacao,
     teste: '0',
   };
+}
+
+function normPhone(raw) {
+  if (!raw) return '';
+  return String(raw).replace(/\D/g, '');
+}
+
+async function registerPhoneUsage(rec, phone, ip) {
+  const p = normPhone(phone);
+  if (!p || p.length < 8) return false;
+  const phones = Array.isArray(rec.phones) ? [...rec.phones] : [];
+  const patch = { lastPhone: p };
+  if (ip) patch.lastIp = ip;
+  if (!phones.includes(p)) {
+    phones.push(p);
+    patch.phones = phones;
+  }
+  await updateLicense(rec.code, patch);
+  Object.assign(rec, patch);
+  return true;
 }
 
 function keyToUser(code, rec) {
@@ -1289,7 +1350,7 @@ function buildPanelLogsHtml(logs) {
       <td style="white-space:nowrap;font-size:.8rem;color:var(--muted)">${esc(new Date(l.at).toLocaleString('pt-BR'))}</td>
       <td><span class="log-type">${esc(l.type)}</span></td>
       <td>${esc(l.message)}</td>
-      <td style="font-size:.8rem">${esc(l.meta?.code || '')}</td>
+      <td style="font-size:.8rem">${esc(l.meta?.code || l.meta?.key || '')}</td>
     </tr>`).join('');
 }
 
@@ -1819,12 +1880,12 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     const rec = await findKeyByBearer(bearer);
     const code = rec ? (rec.code || bearer) : null;
     if (!rec) {
-      await addLog('auth_fail', 'Bearer invalido', { ip });
+      await addLog('auth_fail', 'Bearer invalido', { ip, code: bearer || '' });
       return sendJson(res, { success: false, msg_id: 'invalid_token' });
     }
     const result = await authSuccess(code, rec);
     if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
-    await addLog('auth_ok', `Login bearer ${code}`, { ip });
+    await addLog('auth_ok', `Login bearer ${code}`, { ip, code });
     return sendJson(res, result.body);
   }
 
@@ -1834,7 +1895,7 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     const { code, rec } = await getOrCreateFreeKey(body.extension_id || body.device_id, ip);
     const result = await authSuccess(code, rec);
     if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
-    await addLog('free_register', `Login free ${code}`, { ip, extension_id: body.extension_id });
+    await addLog('free_register', `Login free ${code}`, { ip, code, extension_id: body.extension_id });
     return sendJson(res, result.body);
   }
 
@@ -1844,12 +1905,14 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     const key = normKey(body.access_token_plugin || body.chave || body.senha || body.email);
     const rec = await findKey(key);
     if (!rec) {
-      await addLog('auth_fail', 'Chave invalida validation', { ip, key });
+      await addLog('auth_fail', 'Chave invalida validation', { ip, code: key });
       return sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' });
     }
+    const phone = body.whatsapp_plugin || body.whatsapp_registro;
+    if (phone) await registerPhoneUsage(rec, phone, ip);
     const result = await authSuccess(key, rec);
     if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
-    await addLog('validation_ok', `Validacao ${key}`, { ip });
+    await addLog('validation_ok', `Validacao ${key}`, { ip, code: key });
     return sendJson(res, result.body);
   }
 
@@ -1859,24 +1922,23 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     const key = normKey(body.senha || body.chave || body.email || body.access_token_plugin);
     const rec = await findKey(key);
     if (!rec) {
-      await addLog('auth_fail', 'Login chave invalida', { ip });
+      await addLog('auth_fail', 'Login chave invalida', { ip, code: key });
       return sendJson(res, { success: false, msg_id: 'invalid_token' });
     }
     const result = await authSuccess(key, rec);
     if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
-    await addLog('auth_ok', `Login ${key}`, { ip });
+    await addLog('auth_ok', `Login ${key}`, { ip, code: key });
     return sendJson(res, result.body);
   }
 
   if (pathname === '/api/user/update' && req.method === 'POST') {
     const body = await readJson(req);
-    const bearer = parseBearer(req) || body.bearer_token;
+    const bearer = parseBearer(req) || body.bearer_token || body.access_token_plugin;
     const rec = await findKeyByBearer(bearer);
     if (!rec) return sendJson(res, { success: false, msg_id: 'invalid_token' });
     const patch = {};
-    if (body.whatsapp_plugin || body.whatsapp_registro) {
-      patch.lastPhone = body.whatsapp_plugin || body.whatsapp_registro;
-    }
+    const phone = body.whatsapp_plugin || body.whatsapp_registro;
+    if (phone) await registerPhoneUsage(rec, phone, ip);
     if (body.name) patch.label = body.name;
     if (Object.keys(patch).length) await updateLicense(rec.code, patch);
     Object.assign(rec, patch);
@@ -1888,7 +1950,7 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     return sendJson(res, {
       webhooks: sanitizeUrls(settings.webhooks || []),
       meet: sanitizeUrls(settings.meet || {}),
-      urls: sanitizeUrls(settings.urls || {}),
+      urls: sanitizeUrls(mergeDefaultUrls(settings.urls || {})),
       migration: sanitizeUrls(settings.migration || {}),
     });
   }
