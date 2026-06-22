@@ -128,18 +128,25 @@ function buildDefaultUrls() {
   );
   tutoriais.status = buildTutorialUrl('status', 'https://www.youtube.com/@WaSpeedOficial');
   tutoriais.login = buildTutorialUrl('login', 'https://waspeed.com.br/extensao-chrome-whatsapp/como-instalar-extensao-whatsapp/');
-  return { tutoriais };
+  return { tutoriais: Object.values(tutoriais) };
 }
 
 function mergeDefaultUrls(urls = {}) {
   const defaults = buildDefaultUrls();
   const out = { ...urls };
-  const merged = { ...defaults.tutoriais, ...(out.tutoriais || {}) };
-  for (const [id, def] of Object.entries(defaults.tutoriais)) {
-    const cur = merged[id];
-    if (!cur?.active || !cur?.link) merged[id] = def;
+  const existing = out.tutoriais;
+  const existingArr = Array.isArray(existing)
+    ? existing
+    : Object.values(existing || {});
+  const byId = {};
+  for (const item of existingArr) {
+    if (item?.id) byId[item.id] = item;
   }
-  out.tutoriais = merged;
+  for (const item of defaults.tutoriais) {
+    const cur = byId[item.id];
+    if (!cur?.active || !cur?.link) byId[item.id] = item;
+  }
+  out.tutoriais = Object.values(byId);
   return out;
 }
 
@@ -234,7 +241,7 @@ async function initSeed() {
       };
       await settingsCol.insertOne(doc);
       console.log('[WaSpeed] Settings inicializados (admin com hash pbkdf2)');
-    } else if (!doc.urls?.tutoriais || !Object.keys(doc.urls.tutoriais).length) {
+    } else if (!doc.urls?.tutoriais || (Array.isArray(doc.urls.tutoriais) ? !doc.urls.tutoriais.length : !Object.keys(doc.urls.tutoriais).length)) {
       await settingsCol.updateOne(
         { _id: 'global' },
         { $set: { urls: mergeDefaultUrls(doc.urls || {}) } },
