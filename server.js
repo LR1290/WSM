@@ -471,7 +471,9 @@ async function requireMod(req, res) {
 // --- Licencas ----------------------------------------------------------------
 
 function normKey(raw) {
-  return String(raw || '').trim().toLowerCase().slice(0, 48);
+  let s = String(raw || '').trim().toLowerCase();
+  if (s.endsWith('@waspeed.local')) s = s.slice(0, -'@waspeed.local'.length);
+  return s.slice(0, 48);
 }
 
 function generateKeyCode() {
@@ -673,7 +675,7 @@ function keyToUser(code, rec) {
   return {
     user_id: String(rec.user_id),
     name: rec.label || 'Usuario',
-    email: rec.email || `${code}@waspeed.local`,
+    email: code,
     wl_id: config.wlId,
     bearer_token: rec.bearer_token || code,
     access_token_plugin: rec.access_token_plugin || code,
@@ -1360,14 +1362,24 @@ async function getPanelKeysHtmlCached() {
   return _panelKeysHtmlCache;
 }
 
-function buildPanelLogsHtml(logs) {
-  return logs.map((l) =>
-    `<tr data-log="${esc((l.type + ' ' + l.message).toLowerCase())}">
+async function buildPanelLogsHtmlFromDb(logs) {
+  const licenses = await listLicenses();
+  const labelByCode = Object.fromEntries(licenses.map((k) => [k.code, k.label || '—']));
+  return buildPanelLogsHtml(logs, labelByCode);
+}
+
+function buildPanelLogsHtml(logs, labelByCode = {}) {
+  return logs.map((l) => {
+    const code = l.meta?.code || l.meta?.key || '';
+    const client = labelByCode[code] || '—';
+    return `<tr data-log="${esc((l.type + ' ' + l.message + ' ' + client).toLowerCase())}">
       <td style="white-space:nowrap;font-size:.8rem;color:var(--muted)">${esc(new Date(l.at).toLocaleString('pt-BR'))}</td>
       <td><span class="log-type">${esc(l.type)}</span></td>
       <td>${esc(l.message)}</td>
-      <td style="font-size:.8rem">${esc(l.meta?.code || l.meta?.key || '')}</td>
-    </tr>`).join('');
+      <td style="font-size:.8rem">${esc(client)}</td>
+      <td style="font-size:.8rem"><code class="key-chip">${esc(code)}</code></td>
+    </tr>`;
+  }).join('');
 }
 
 const ADMIN_SPA_CSS = `
@@ -1481,7 +1493,7 @@ ${warn > 0 || exp > 0 ? `<div class="alert" style="margin:12px 20px">${exp > 0 ?
 </div>
 <div class="sec">
   <div class="sh"><span class="st">📋 Logs</span><input type="text" id="logSearch" placeholder="Filtrar..." oninput="filterLog()" style="padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:#061008;color:var(--text)"></div>
-  <div class="ov"><table><thead><tr><th>Data</th><th>Tipo</th><th>Mensagem</th><th>Chave</th></tr></thead>
+  <div class="ov"><table><thead><tr><th>Data</th><th>Tipo</th><th>Mensagem</th><th>Cliente</th><th>Chave</th></tr></thead>
   <tbody id="logb">${logsHtml}</tbody></table></div>
 </div>
 <div id="toast" class="toast"></div>
@@ -1605,7 +1617,7 @@ async function handleAdminApi(req, res, pathname) {
     const stats = await getPanelKeyStats();
     const keysHtml = await getPanelKeysHtmlCached();
     const logs = await getRecentLogs(150);
-    return sendJson(res, { ok: true, ...stats, keysHtml, logsHtml: buildPanelLogsHtml(logs) });
+    return sendJson(res, { ok: true, ...stats, keysHtml, logsHtml: await buildPanelLogsHtmlFromDb(logs) });
   }
   if (pathname === R_ADMIN + '/api/keys' && req.method === 'POST') {
     const body = await readJson(req);
@@ -2018,7 +2030,7 @@ async function handleAdmin(req, res, pathname, ip = '') {
     const stats = await getPanelKeyStats();
     const keysHtml = await getPanelKeysHtmlCached();
     const logs = await getRecentLogs(150);
-    return sendHtml(res, renderAdminSpa(keysHtml, buildPanelLogsHtml(logs), stats));
+    return sendHtml(res, renderAdminSpa(keysHtml, await buildPanelLogsHtmlFromDb(logs), stats));
   }
 
   if (pathname === R_ADMIN + '/keys') {
