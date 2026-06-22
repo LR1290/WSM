@@ -44,11 +44,11 @@ const config = {
 };
 
 if (!config.baseUrl) {
-  console.error('[WaSpeed] ERRO: defina BASE_URL ou use deploy no Render (RENDER_EXTERNAL_URL).');
+  console.error('[WaSpeed] ERRO: defina BASE_URL, PUBLIC_URL ou deploy no Render (RENDER_EXTERNAL_URL).');
   process.exit(1);
 }
 if (!config.mongoUri) {
-  console.error('[WaSpeed] ERRO: defina MONGODB_URI.');
+  console.error('[WaSpeed] ERRO: defina MONGODB_URI no painel Environment do Render.');
   process.exit(1);
 }
 if (/xxxxx|USUARIO|SENHA|<password>|YOUR_CLUSTER/i.test(config.mongoUri)) {
@@ -56,12 +56,17 @@ if (/xxxxx|USUARIO|SENHA|<password>|YOUR_CLUSTER/i.test(config.mongoUri)) {
   console.error('[WaSpeed] Copie a URI real em MongoDB Atlas → Connect → Drivers → Node.js');
   process.exit(1);
 }
+if (config.adminPass === 'waspeed-admin-change-me') {
+  console.warn('[WaSpeed] AVISO: ADMIN_PASS ainda e o default — altere no Render.');
+}
+console.log(`[WaSpeed] Config: port=${config.port} db=${config.dbName} url=${config.baseUrl}`);
 
 const R_ADMIN = `/${config.adminPath}`;
 const R_MOD = `/${config.modPath}`;
 
 let mongoClient = null;
 let db = null;
+let mongoReady = false;
 let cachedSettings = null;
 let configJsonBody = null;
 let server = null;
@@ -102,6 +107,7 @@ function buildConfigJson(overrides = {}) {
 }
 
 async function refreshSettingsCache() {
+  if (!db) return;
   try {
     cachedSettings = await db.collection(COL.settings).findOne({ _id: 'global' });
     configJsonBody = JSON.stringify(buildConfigJson(cachedSettings?.domConfig || {}));
@@ -111,74 +117,98 @@ async function refreshSettingsCache() {
 }
 
 function sendCachedConfigJson(res) {
-  if (!configJsonBody) return sendJson(res, buildConfigJson());
+  if (res.headersSent) return;
+  if (!configJsonBody) {
+    sendJson(res, buildConfigJson());
+    return;
+  }
+  const body = configJsonBody;
   res.writeHead(200, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'public, max-age=300',
-    'Content-Length': Buffer.byteLength(configJsonBody),
+    'Content-Length': Buffer.byteLength(body),
   });
-  res.end(configJsonBody);
+  res.end(body);
 }
 
 // --- MongoDB -----------------------------------------------------------------
 
 async function connectMongo() {
-  if (db) return db;
-  mongoClient = new MongoClient(config.mongoUri, {
-    maxPoolSize: 20,
-    minPoolSize: 2,
-    serverSelectionTimeoutMS: 10000,
-  });
-  await mongoClient.connect();
-  db = mongoClient.db(config.dbName);
-  await ensureIndexes();
-  return db;
-}
-
-async function ensureIndexes() {
+  if (db && mongoReady) return db;
   try {
-    await db.collection(COL.licenses).createIndex({ bearer: 1 }, { unique: true });
-    await db.collection(COL.licenses).createIndex({ code: 1 }, { unique: true });
-    await db.collection(COL.sessions).createIndex({ token: 1 }, { unique: true });
-    await db.collection(COL.sessions).createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
-    await db.collection(COL.logs).createIndex({ at: -1 });
+    mongoClient = new MongoClient(config.mongoUri, {
+      maxPoolSize: 20,
+      minPoolSize: 2,
+      serverSelectionTimeoutMS: 15000,
+      connectTimeoutMS: 15000,
+    });
+    await mongoClient.connect();
+    db = mongoClient.db(config.dbName);
+    await ensureIndexes();
+    return db;
   } catch (err) {
-    console.error('[WaSpeed] ensureIndexes:', err.message);
+    db = null;
+    mongoReady = false;
+    console.error('[WaSpeed] connectMongo:', err.message);
     throw err;
   }
 }
 
+async function ensureIndexes() {
+  if (!db) return;
+  const specs = [
+    { col: COL.licenses, key: { bearer: 1 }, opts: { unique: true } },
+    { col: COL.licenses, key: { code: 1 }, opts: { unique: true } },
+    { col: COL.sessions, key: { token: 1 }, opts: { unique: true } },
+    { col: COL.sessions, key: { expiresAt: 1 }, opts: { expireAfterSeconds: 0 } },
+    { col: COL.logs, key: { at: -1 }, opts: {} },
+  ];
+  for (const { col, key, opts } of specs) {
+    try {
+      await db.collection(col).createIndex(key, opts);
+    } catch (err) {
+      if (err.code === 85 || err.code === 86) continue;
+      console.error(`[WaSpeed] ensureIndexes ${col}:`, err.message);
+    }
+  }
+}
+
 async function initSeed() {
-  const settingsCol = db.collection(COL.settings);
-  let doc = await settingsCol.findOne({ _id: 'global' });
-  if (!doc) {
-    doc = {
-      _id: 'global',
-      installUrl: config.installUrl,
-      notesHtml: '<h1>WaSpeed</h1><p>Servidor MongoDB ativo.</p>',
-      webhooks: [],
-      meet: {},
-      urls: {},
-      migration: {},
-      domConfig: buildDomConfig(),
-      nextUserId: 1000,
-      mods: buildModsFromEnv(),
-      admin: {
-        username: config.adminUser,
-        password: hashPassword(config.adminPass),
-      },
-    };
-    await settingsCol.insertOne(doc);
-    console.log('[WaSpeed] Settings inicializados (admin com hash pbkdf2)');
-  } else {
+  if (!db) throw new Error('MongoDB nao conectado');
+  try {
+    const settingsCol = db.collection(COL.settings);
+    let doc = await settingsCol.findOne({ _id: 'global' });
+    if (!doc) {
+      doc = {
+        _id: 'global',
+        installUrl: config.installUrl,
+        notesHtml: '<h1>WaSpeed</h1><p>Servidor MongoDB ativo.</p>',
+        webhooks: [],
+        meet: {},
+        urls: {},
+        migration: {},
+        domConfig: buildDomConfig(),
+        nextUserId: 1000,
+        mods: buildModsFromEnv(),
+        admin: {
+          username: config.adminUser,
+          password: hashPassword(config.adminPass),
+        },
+      };
+      await settingsCol.insertOne(doc);
+      console.log('[WaSpeed] Settings inicializados (admin com hash pbkdf2)');
+    }
     await syncCredentialsFromEnv();
+    const count = await db.collection(COL.licenses).countDocuments();
+    if (count === 0) {
+      await createKey({ code: 'ws-demo-premium', label: 'Demo Premium', premium: true, note: 'Chave demo — troque em producao' });
+      console.log('[WaSpeed] Chave demo: ws-demo-premium');
+    }
+    await refreshSettingsCache();
+  } catch (err) {
+    console.error('[WaSpeed] initSeed:', err.message);
+    throw err;
   }
-  const count = await db.collection(COL.licenses).countDocuments();
-  if (count === 0) {
-    await createKey({ code: 'ws-demo-premium', label: 'Demo Premium', premium: true, note: 'Chave demo — troque em producao' });
-    console.log('[WaSpeed] Chave demo: ws-demo-premium');
-  }
-  await refreshSettingsCache();
 }
 
 function buildModsFromEnv() {
@@ -207,6 +237,7 @@ function buildModsFromEnv() {
 }
 
 async function syncCredentialsFromEnv() {
+  if (!db) return;
   try {
     const patch = {
       admin: {
@@ -215,7 +246,11 @@ async function syncCredentialsFromEnv() {
       },
       mods: buildModsFromEnv(),
     };
-    await db.collection(COL.settings).updateOne({ _id: 'global' }, { $set: patch });
+    await db.collection(COL.settings).updateOne(
+      { _id: 'global' },
+      { $set: patch },
+      { upsert: true },
+    );
     console.log('[WaSpeed] Admin/mod sincronizados do .env');
   } catch (err) {
     console.error('[WaSpeed] syncCredentialsFromEnv:', err.message);
@@ -232,10 +267,11 @@ function hashPassword(password) {
 
 function verifyPassword(password, stored) {
   if (!stored?.startsWith('pbkdf2:')) return false;
-  const parts = stored.split(':');
-  if (parts.length !== 3) return false;
-  const salt = parts[1];
-  const hash = parts[2];
+  const rest = stored.slice(7);
+  const sep = rest.indexOf(':');
+  if (sep < 0) return false;
+  const salt = rest.slice(0, sep);
+  const hash = rest.slice(sep + 1);
   const check = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
   try {
     return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(check, 'hex'));
@@ -244,7 +280,69 @@ function verifyPassword(password, stored) {
   }
 }
 
+async function getSettingsAdmin() {
+  if (!db) return cachedSettings?.admin || null;
+  try {
+    const doc = await db.collection(COL.settings).findOne({ _id: 'global' }, { projection: { admin: 1 } });
+    return doc?.admin || null;
+  } catch (err) {
+    console.error('[WaSpeed] getSettingsAdmin:', err.message);
+    return cachedSettings?.admin || null;
+  }
+}
+
+async function verifyAdminCredentials(user, pass) {
+  const u = String(user || '').trim();
+  const p = String(pass || '');
+  if (!u || !p) return false;
+
+  if (u.toLowerCase() === config.adminUser.toLowerCase() && p === config.adminPass) {
+    await syncCredentialsFromEnv();
+    await refreshSettingsCache();
+    return true;
+  }
+
+  const admin = await getSettingsAdmin();
+  if (admin && u.toLowerCase() === String(admin.username || '').toLowerCase() && verifyPassword(p, admin.password)) {
+    return true;
+  }
+  return false;
+}
+
+async function verifyModCredentials(user, pass) {
+  const u = String(user || '').trim();
+  const p = String(pass || '');
+  if (!u || !p) return null;
+
+  for (const prefix of ['MOD', 'MOD2', 'MOD3', 'MOD4', 'MOD5', 'MOD6']) {
+    const mu = envStr(`${prefix}_USER`);
+    const mp = envStr(`${prefix}_PASS`);
+    if (mu && mp && u.toLowerCase() === mu.toLowerCase() && p === mp) {
+      await syncCredentialsFromEnv();
+      await refreshSettingsCache();
+      return {
+        name: mu,
+        modId: crypto.createHash('sha256').update(`waspeed-mod:${mu}`).digest('hex').slice(0, 16),
+      };
+    }
+  }
+
+  try {
+    const doc = await db.collection(COL.settings).findOne({ _id: 'global' }, { projection: { mods: 1 } });
+    const mod = (doc?.mods || []).find(
+      (m) => m.active !== false && u.toLowerCase() === String(m.username || '').toLowerCase(),
+    );
+    if (mod && verifyPassword(p, mod.password)) {
+      return { name: mod.name || mod.username, modId: mod.id };
+    }
+  } catch (err) {
+    console.error('[WaSpeed] verifyModCredentials:', err.message);
+  }
+  return null;
+}
+
 async function createSession(role, meta = {}) {
+  if (!db) return null;
   const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
   try {
@@ -258,12 +356,12 @@ async function createSession(role, meta = {}) {
     return { token, expiresAt };
   } catch (err) {
     console.error('[WaSpeed] createSession:', err.message);
-    throw err;
+    return null;
   }
 }
 
 async function validateSession(token) {
-  if (!token) return null;
+  if (!token || !db) return null;
   try {
     return await db.collection(COL.sessions).findOne({
       token,
@@ -276,7 +374,7 @@ async function validateSession(token) {
 }
 
 async function destroySession(token) {
-  if (!token) return;
+  if (!token || !db) return;
   try {
     await db.collection(COL.sessions).deleteOne({ token });
   } catch (err) {
@@ -345,7 +443,7 @@ function keyStatus(rec) {
 
 async function findKey(code) {
   const k = normKey(code);
-  if (!k) return null;
+  if (!k || !db) return null;
   try {
     return await db.collection(COL.licenses).findOne({ code: k });
   } catch (err) {
@@ -356,7 +454,7 @@ async function findKey(code) {
 
 async function findKeyByBearer(bearer) {
   const b = String(bearer || '').trim();
-  if (!b) return null;
+  if (!b || !db) return null;
   try {
     return await db.collection(COL.licenses).findOne({
       $or: [{ bearer: b }, { code: normKey(b) }, { access_token_plugin: b }, { bearer_token: b }],
@@ -368,6 +466,7 @@ async function findKeyByBearer(bearer) {
 }
 
 async function listLicenses(filter = {}) {
+  if (!db) return [];
   try {
     return await db.collection(COL.licenses).find(filter).sort({ createdAt: -1 }).toArray();
   } catch (err) {
@@ -377,6 +476,7 @@ async function listLicenses(filter = {}) {
 }
 
 async function createKey(input = {}, modName = null) {
+  if (!db) throw new Error('MongoDB indisponivel');
   const code = normKey(input.code) || generateKeyCode();
   const existing = await findKey(code);
   if (existing) throw new Error('Chave ja existe');
@@ -431,6 +531,7 @@ async function createKey(input = {}, modName = null) {
 }
 
 async function updateLicense(code, patch) {
+  if (!db) return false;
   try {
     await db.collection(COL.licenses).updateOne({ code: normKey(code) }, { $set: patch });
     return true;
@@ -441,6 +542,7 @@ async function updateLicense(code, patch) {
 }
 
 async function deleteLicense(code) {
+  if (!db) return false;
   try {
     await db.collection(COL.licenses).deleteOne({ code: normKey(code) });
     return true;
@@ -533,6 +635,7 @@ async function authSuccess(code, rec) {
 }
 
 async function addLog(type, message, meta = {}) {
+  if (!db) return;
   try {
     await db.collection(COL.logs).insertOne({
       id: crypto.randomBytes(8).toString('hex'),
@@ -552,6 +655,7 @@ async function addLog(type, message, meta = {}) {
 }
 
 async function getRecentLogs(limit = 200) {
+  if (!db) return [];
   try {
     return await db.collection(COL.logs).find({}).sort({ at: -1 }).limit(limit).toArray();
   } catch (err) {
@@ -585,19 +689,27 @@ function esc(s) {
 }
 
 function sendJson(res, data, status = 200) {
+  if (res.headersSent) return;
   const body = JSON.stringify(data);
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) });
   res.end(body);
 }
 
 function sendHtml(res, html, status = 200) {
+  if (res.headersSent) return;
   res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(html);
 }
 
 function sendText(res, text, status = 200) {
+  if (res.headersSent) return;
   res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
   res.end(text);
+}
+
+function sendError(res, status, msgId) {
+  if (res.headersSent) return;
+  sendJson(res, { success: false, msg_id: msgId }, status);
 }
 
 function corsHeaders(req, pathname) {
@@ -665,70 +777,79 @@ function wppUpdate() {
   return { success: true, version: WPP_VERSION, update: false, message: 'WaSpeed server — modulo atualizado' };
 }
 
-// // // --- UI (Dark Premium) -------------------------------------------------------
+// --- UI (Neon Green) ---------------------------------------------------------
 
 const PANEL_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 :root{
-  --bg:#0b0f19;--surface:#151b2c;--surface-hover:#1a2238;--border:#222d45;
-  --text:#f3f4f6;--muted:#9ca3af;--accent:#6366f1;
-  --accent-grad:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%);
-  --ok-bg:#064e3b;--ok-text:#10b981;--warn-bg:#422006;--warn-text:#fbbf24;
-  --danger:#ef4444;--danger-bg:#450a0a;--danger-text:#fca5a5;
-  --shadow:0 4px 24px rgba(0,0,0,.35);--ring:rgba(99,102,241,.45);
+  --bg:#030806;--surface:#0a1410;--surface-hover:#0f1f18;--border:#1a4032;
+  --text:#eafff5;--muted:#6b9e82;--accent:#39ff14;--accent-dim:#00e676;
+  --accent-grad:linear-gradient(135deg,#39ff14 0%,#00ff88 50%,#00cc66 100%);
+  --ok-bg:#052e1a;--ok-text:#39ff14;--warn-bg:#2a2205;--warn-text:#fde047;
+  --danger:#ff4466;--danger-bg:#2a0a10;--danger-text:#ff8899;
+  --shadow:0 4px 32px rgba(0,0,0,.5);--ring:rgba(57,255,20,.35);
+  --neon-glow:0 0 20px rgba(57,255,20,.25),0 0 40px rgba(0,255,136,.1);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
 body{
-  font-family:system-ui,-apple-system,'Inter',sans-serif;
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
   background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh;
-  background-image:radial-gradient(ellipse 80% 50% at 50% -20%,rgba(99,102,241,.12),transparent);
+  background-image:radial-gradient(ellipse 70% 55% at 50% -10%,rgba(57,255,20,.09),transparent),
+    radial-gradient(ellipse 50% 40% at 80% 100%,rgba(0,255,136,.04),transparent);
 }
 a{color:var(--accent);text-decoration:none;transition:color .2s ease}
-a:hover{color:#a5b4fc}
-.app{max-width:1200px;margin:0 auto;padding:24px 20px 48px}
+a:hover{color:#7fff6e;text-shadow:0 0 8px rgba(57,255,20,.4)}
+.app{max-width:1100px;margin:0 auto;padding:28px 20px 56px}
+.app--centered .page-head,.app--centered .metrics,.app--centered .card{text-align:center}
+.app--centered .card .card-title{text-align:left}
+.app--centered .key-list,.app--centered .log-list{text-align:left}
 .topbar{
-  display:flex;align-items:center;justify-content:space-between;gap:16px;
-  padding:14px 20px;margin-bottom:28px;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:16px;
+  padding:14px 24px;margin-bottom:28px;border-radius:14px;
   background:var(--surface);border:1px solid var(--border);box-shadow:var(--shadow);
 }
-.brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:1.05rem;letter-spacing:-.02em}
-.brand-dot{width:10px;height:10px;border-radius:50%;background:var(--accent-grad);box-shadow:0 0 12px rgba(99,102,241,.6)}
-.nav{display:flex;flex-wrap:wrap;gap:8px}
+.brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:1.1rem;letter-spacing:-.02em}
+.brand-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:var(--neon-glow)}
+.nav{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
 .nav a,.nav .nav-link{
   color:var(--muted);font-size:.875rem;font-weight:500;padding:8px 14px;border-radius:8px;
   border:1px solid transparent;transition:all .2s ease-in-out;
 }
-.nav a:hover,.nav a.active{color:var(--text);background:var(--surface-hover);border-color:var(--border)}
-.page-head{margin-bottom:24px}
-.page-head h1{font-size:1.75rem;font-weight:800;letter-spacing:-.03em;line-height:1.2}
-.page-head .subtitle{color:var(--muted);font-size:.95rem;margin-top:6px}
-.card{
-  background:var(--surface);border:1px solid var(--border);border-radius:12px;
-  padding:24px;margin-bottom:20px;box-shadow:var(--shadow);transition:border-color .2s ease-in-out;
+.nav a:hover,.nav a.active{
+  color:var(--accent);background:rgba(57,255,20,.06);border-color:rgba(57,255,20,.25);
+  box-shadow:0 0 12px rgba(57,255,20,.12);
 }
-.card:hover{border-color:#2d3a5c}
+.page-head{margin-bottom:28px;text-align:center}
+.page-head h1{font-size:1.85rem;font-weight:800;letter-spacing:-.03em;line-height:1.2;color:var(--text)}
+.page-head .subtitle{color:var(--muted);font-size:.95rem;margin-top:8px}
+.card{
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  padding:24px;margin-bottom:20px;box-shadow:var(--shadow);transition:border-color .2s ease,box-shadow .2s ease;
+}
+.card:hover{border-color:rgba(57,255,20,.3);box-shadow:var(--shadow),var(--neon-glow)}
 .card-title{font-size:.75rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:12px}
 .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
 .metric{
-  background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:22px 24px;
-  transition:all .2s ease-in-out;
+  background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:22px 24px;
+  transition:all .2s ease-in-out;text-align:center;
 }
-.metric:hover{transform:translateY(-2px);border-color:#334155;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+.metric:hover{transform:translateY(-2px);border-color:rgba(57,255,20,.35);box-shadow:var(--neon-glow)}
 .metric-value{font-size:2.25rem;font-weight:800;letter-spacing:-.04em;line-height:1;margin-bottom:6px}
-.metric-value.accent{background:var(--accent-grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.metric-value.accent{color:var(--accent);text-shadow:0 0 16px rgba(57,255,20,.45)}
 .metric-label{font-size:.8rem;color:var(--muted);font-weight:500}
 .badge{
   display:inline-flex;align-items:center;padding:4px 10px;border-radius:999px;
   font-size:.7rem;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
 }
-.badge-ok{background:var(--ok-bg);color:var(--ok-text);border:1px solid rgba(16,185,129,.25)}
-.badge-off{background:var(--danger-bg);color:var(--danger-text);border:1px solid rgba(248,113,113,.2)}
-.badge-free{background:var(--warn-bg);color:var(--warn-text);border:1px solid rgba(251,191,36,.2)}
+.badge-ok{background:var(--ok-bg);color:var(--ok-text);border:1px solid rgba(57,255,20,.35);box-shadow:0 0 8px rgba(57,255,20,.15)}
+.badge-off{background:var(--danger-bg);color:var(--danger-text);border:1px solid rgba(255,68,102,.25)}
+.badge-free{background:var(--warn-bg);color:var(--warn-text);border:1px solid rgba(253,224,71,.2)}
 .key-chip,code.key-chip{
-  font-family:ui-monospace,'Cascadia Code','Segoe UI Mono',monospace;font-size:.82rem;
-  background:#0d1320;border:1px solid rgba(99,102,241,.25);
-  color:#c7d2fe;padding:6px 12px;border-radius:8px;word-break:break-all;display:inline-block;
+  font-family:ui-monospace,'Cascadia Code',monospace;font-size:.82rem;
+  background:#061008;border:1px solid rgba(57,255,20,.25);color:#7fff6e;
+  padding:6px 12px;border-radius:8px;word-break:break-all;display:inline-block;
+  box-shadow:0 0 10px rgba(57,255,20,.08);
 }
 .key-list{display:flex;flex-direction:column;gap:0}
 .key-list-head{
@@ -738,7 +859,7 @@ a:hover{color:#a5b4fc}
 }
 .key-row{
   display:grid;grid-template-columns:1.4fr 1fr .7fr .9fr 1fr auto;gap:12px;align-items:center;
-  padding:16px;border-bottom:1px solid var(--border);transition:background .2s ease-in-out;
+  padding:16px;border-bottom:1px solid var(--border);transition:background .2s ease;
 }
 .key-row:last-child{border-bottom:none}
 .key-row:hover{background:var(--surface-hover)}
@@ -747,50 +868,63 @@ a:hover{color:#a5b4fc}
 .log-list{display:flex;flex-direction:column;gap:0;max-height:70vh;overflow:auto}
 .log-row{
   display:grid;grid-template-columns:160px 100px 1fr;gap:16px;padding:14px 16px;
-  border-bottom:1px solid var(--border);font-size:.875rem;transition:background .2s ease-in-out;
+  border-bottom:1px solid var(--border);font-size:.875rem;transition:background .2s ease;
 }
 .log-row:hover{background:var(--surface-hover)}
-.log-type{font-family:monospace;font-size:.78rem;color:#a5b4fc}
+.log-type{font-family:monospace;font-size:.78rem;color:var(--accent-dim)}
 label{display:block;font-size:.78rem;font-weight:600;color:var(--muted);margin:0 0 6px}
-.field{margin-bottom:18px}
+.field{margin-bottom:18px;text-align:left}
 input,select,textarea{
   width:100%;padding:11px 14px;border-radius:8px;border:1px solid var(--border);
-  background:#0d1320;color:var(--text);font:inherit;font-size:.9rem;
-  transition:border-color .2s ease-in-out,box-shadow .2s ease-in-out;
+  background:#061008;color:var(--text);font:inherit;font-size:.9rem;
+  transition:border-color .2s ease,box-shadow .2s ease;
 }
-input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
+input:focus,select:focus,textarea:focus{
+  outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring),0 0 12px rgba(57,255,20,.15);
+}
 textarea{resize:vertical;min-height:80px}
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:8px;
   padding:10px 18px;border:none;border-radius:8px;font:inherit;font-size:.875rem;font-weight:600;
-  cursor:pointer;text-decoration:none;color:#fff;background:var(--accent-grad);
-  transition:all .2s ease-in-out;box-shadow:0 4px 14px rgba(99,102,241,.35);
+  cursor:pointer;text-decoration:none;color:#030806;background:var(--accent-grad);
+  transition:all .2s ease-in-out;box-shadow:0 4px 18px rgba(57,255,20,.35);
 }
-.btn:hover{transform:translateY(-1px);box-shadow:0 6px 20px rgba(99,102,241,.45);color:#fff}
+.btn:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(57,255,20,.5);color:#030806}
 .btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text);box-shadow:none}
-.btn-ghost:hover{background:var(--surface-hover);border-color:#334155}
-.btn-danger{background:linear-gradient(135deg,#dc2626,#ef4444);box-shadow:0 4px 14px rgba(239,68,68,.3)}
+.btn-ghost:hover{background:rgba(57,255,20,.06);border-color:rgba(57,255,20,.35);color:var(--accent);box-shadow:0 0 12px rgba(57,255,20,.12)}
+.btn-danger{background:linear-gradient(135deg,#cc0033,#ff4466);color:#fff;box-shadow:0 4px 14px rgba(255,68,102,.3)}
 .btn-sm{padding:6px 12px;font-size:.78rem;border-radius:6px}
-.btn-success{background:var(--accent-grad)}
+.btn-success{background:var(--accent-grad);color:#030806}
 .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}
 .alert{
-  padding:14px 18px;border-radius:10px;margin-bottom:20px;font-size:.9rem;
-  background:rgba(99,102,241,.08);color:#c7d2fe;border:1px solid rgba(99,102,241,.25);
+  padding:14px 18px;border-radius:10px;margin-bottom:20px;font-size:.9rem;text-align:left;
+  background:rgba(57,255,20,.06);color:#7fff6e;border:1px solid rgba(57,255,20,.2);
 }
-.alert-danger{background:rgba(239,68,68,.08);color:var(--danger-text);border-color:rgba(239,68,68,.25)}
-.login-wrap{min-height:calc(100vh - 96px);display:flex;align-items:center;justify-content:center;padding:24px}
-.login-card{width:100%;max-width:420px;padding:32px}
-.login-card h1{font-size:1.5rem;margin-bottom:4px}
-.steps{counter-reset:step;padding-left:0;list-style:none}
+.alert-danger{background:rgba(255,68,102,.08);color:var(--danger-text);border-color:rgba(255,68,102,.25)}
+.login-page{
+  min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;
+}
+.login-page-inner{width:100%;max-width:440px;display:flex;flex-direction:column;align-items:center;gap:24px}
+.login-brand{
+  display:flex;align-items:center;gap:12px;font-weight:800;font-size:1.35rem;
+  color:var(--accent);text-shadow:0 0 20px rgba(57,255,20,.35);
+}
+.login-card{width:100%;padding:36px 32px;text-align:center}
+.login-card h1{font-size:1.5rem;margin-bottom:4px;color:var(--text)}
+.login-card .subtitle{color:var(--muted);font-size:.875rem;margin-bottom:24px}
+.login-card form{text-align:left}
+.login-card .btn{width:100%;margin-top:8px;color:#030806}
+.steps{counter-reset:step;padding-left:0;list-style:none;text-align:left}
 .steps li{counter-increment:step;padding:10px 0 10px 36px;position:relative;color:var(--muted);font-size:.9rem}
 .steps li::before{
   content:counter(step);position:absolute;left:0;top:10px;width:24px;height:24px;
   border-radius:50%;background:var(--surface-hover);border:1px solid var(--border);
   display:flex;align-items:center;justify-content:center;font-size:.75rem;font-weight:700;color:var(--accent);
 }
-.info-grid{display:grid;gap:12px}
+.info-grid{display:grid;gap:12px;text-align:left}
 .info-row{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;font-size:.9rem}
 .info-row .label{color:var(--muted);min-width:120px;font-size:.8rem;font-weight:600}
+.toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:center;margin-bottom:16px}
 @media(max-width:900px){
   .key-list-head{display:none}
   .key-row{grid-template-columns:1fr;gap:8px;padding:20px 16px}
@@ -804,9 +938,19 @@ function panelShell(title, body, navHtml = '', subtitle = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} — WaSpeed</title><style>${PANEL_CSS}</style></head>
-<body><div class="app">
+<body><div class="app app--centered">
 <header class="topbar"><div class="brand"><span class="brand-dot"></span>WaSpeed</div>${navBlock}</header>
 <div class="page-head"><h1>${esc(title)}</h1>${subtitle ? `<p class="subtitle">${subtitle}</p>` : ''}</div>
+${body}
+</div></body></html>`;
+}
+
+function loginShell(body, roleLabel = '') {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Login — WaSpeed</title><style>${PANEL_CSS}</style></head>
+<body class="login-page"><div class="login-page-inner">
+<div class="login-brand"><span class="brand-dot"></span>WaSpeed</div>
 ${body}
 </div></body></html>`;
 }
@@ -876,15 +1020,15 @@ function renderAdminDashboard(stats) {
       <div class="card-title" style="margin-top:20px">Access Token</div>
       <p class="key-chip">${esc(config.criptKey)}</p>
     </div>
-    <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
-      <div><strong>Gerenciamento</strong><p style="color:var(--muted);font-size:.875rem;margin-top:4px">Crie e gerencie licencas de clientes</p></div>
+    <div class="card" style="display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px">
+      <div style="text-align:center"><strong>Gerenciamento</strong><p style="color:var(--muted);font-size:.875rem;margin-top:4px">Crie e gerencie licencas de clientes</p></div>
       <a class="btn btn-success" href="${R_ADMIN}/keys/new">+ Nova Chave</a>
     </div>`, adminNav('dash'), 'Visao geral do servidor WaSpeed');
 }
 
 function renderAdminKeys(list) {
   return panelShell('Chaves de licenca', `${mongoBanner()}
-    <div class="card" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
+    <div class="toolbar">
       <p style="color:var(--muted);font-size:.875rem">${list.length} chave(s) cadastrada(s)</p>
       <a class="btn btn-success" href="${R_ADMIN}/keys/new">+ Nova Chave</a>
     </div>
@@ -912,17 +1056,17 @@ function renderKeyForm(base, rec, title) {
 }
 
 function renderLogin(base, role, err = '') {
-  const body = `<div class="login-wrap"><div class="card login-card">
+  const body = `<div class="card login-card">
     <h1>Entrar</h1>
-    <p style="color:var(--muted);font-size:.875rem;margin-bottom:24px">Painel ${esc(role)}</p>
+    <p class="subtitle">Painel ${esc(role)}</p>
     ${err ? `<div class="alert alert-danger">${esc(err)}</div>` : ''}
     <form method="post" action="${base}/login">
       <div class="field"><label>Usuario</label><input name="user" required autocomplete="username" placeholder="Seu usuario"></div>
-      <div class="field"><label>Senha</label><input name="pass" type="password" required autocomplete="current-password" placeholder="••••••••"></div>
-      <button class="btn" type="submit" style="width:100%;margin-top:8px">Acessar painel</button>
+      <div class="field"><label>Senha</label><input name="pass" type="password" required autocomplete="current-password" placeholder="Sua senha"></div>
+      <button class="btn" type="submit">Acessar painel</button>
     </form>
-  </div></div>`;
-  return panelShell('Login', body, '', `Acesso ${esc(role)}`);
+  </div>`;
+  return loginShell(body, role);
 }
 
 function renderAdminLogs(logs) {
@@ -938,6 +1082,7 @@ function renderAdminLogs(logs) {
 }
 
 async function getDashboardStats() {
+  if (!db) return { total: 0, active: 0, free: 0, logCount: 0 };
   try {
     const licenses = await listLicenses();
     const logCount = await db.collection(COL.logs).countDocuments();
@@ -1099,8 +1244,11 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     return sendJson(res, { success: true, path_note_update: { redirect: config.notesRedirect } });
   }
   if (pathname.match(/^\/api\/urls\/notes\//)) {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(req, pathname) });
-    return res.end(settings.notesHtml || '<h1>WaSpeed</h1>');
+    const html = settings.notesHtml || '<h1>WaSpeed</h1>';
+    if (res.headersSent) return true;
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(html);
+    return true;
   }
   if (pathname === '/api/urls/update' && (req.method === 'GET' || req.method === 'POST')) {
     return sendJson(res, wppUpdate());
@@ -1215,16 +1363,14 @@ async function handleAdmin(req, res, pathname) {
     const params = new URLSearchParams(body);
     const user = params.get('user') || '';
     const pass = params.get('pass') || '';
-    const admin = cachedSettings?.admin;
-    if (user === admin?.username && verifyPassword(pass, admin?.password)) {
-      try {
-        const { token } = await createSession('admin', { user });
-        setSessionCookie(res, token);
-        res.writeHead(302, { Location: R_ADMIN });
-        return res.end();
-      } catch {
+    if (await verifyAdminCredentials(user, pass)) {
+      const session = await createSession('admin', { user: user.trim() });
+      if (!session) {
         return sendHtml(res, renderLogin(R_ADMIN, 'Admin', 'Erro ao criar sessao'), 500);
       }
+      setSessionCookie(res, session.token);
+      res.writeHead(302, { Location: R_ADMIN });
+      return res.end();
     }
     return sendHtml(res, renderLogin(R_ADMIN, 'Admin', 'Credenciais invalidas'), 401);
   }
@@ -1327,16 +1473,15 @@ async function handleMod(req, res, pathname) {
     const params = new URLSearchParams(body);
     const user = params.get('user') || '';
     const pass = params.get('pass') || '';
-    const mod = (cachedSettings?.mods || []).find((m) => m.username === user && m.active !== false);
-    if (mod && verifyPassword(pass, mod.password)) {
-      try {
-        const { token } = await createSession('mod', { user, modId: mod.id, name: mod.name });
-        setSessionCookie(res, token);
-        res.writeHead(302, { Location: R_MOD });
-        return res.end();
-      } catch {
+    const mod = await verifyModCredentials(user, pass);
+    if (mod) {
+      const session = await createSession('mod', { user: user.trim(), modId: mod.modId, name: mod.name });
+      if (!session) {
         return sendHtml(res, renderLogin(R_MOD, 'Moderador', 'Erro ao criar sessao'), 500);
       }
+      setSessionCookie(res, session.token);
+      res.writeHead(302, { Location: R_MOD });
+      return res.end();
     }
     return sendHtml(res, renderLogin(R_MOD, 'Moderador', 'Credenciais invalidas'), 401);
   }
@@ -1400,19 +1545,27 @@ async function handleRequest(req, res) {
 
     if (pathname === '/health') {
       let keyCount = 0;
-      let mongoOk = false;
-      try {
-        keyCount = await db.collection(COL.licenses).countDocuments();
-        mongoOk = true;
-      } catch {}
+      let mongoOk = mongoReady && db !== null;
+      if (mongoOk) {
+        try {
+          keyCount = await db.collection(COL.licenses).countDocuments();
+        } catch (err) {
+          console.error('[WaSpeed] health count:', err.message);
+          mongoOk = false;
+        }
+      }
       return sendJson(res, {
-        ok: true,
+        ok: mongoOk,
         service: 'waspeed-server',
         version: '3.0.0',
         keys: keyCount,
         mongo: mongoOk,
         storage: 'mongodb',
-      });
+      }, mongoOk ? 200 : 503);
+    }
+
+    if (!mongoReady || !db) {
+      return sendError(res, 503, 'db_unavailable');
     }
 
     if (pathname === '/') {
@@ -1428,13 +1581,16 @@ async function handleRequest(req, res) {
     }
 
     if (pathname === '/config.json') {
-      return sendCachedConfigJson(res);
+      sendCachedConfigJson(res);
+      return;
     }
 
     if (pathname === '/api/code') {
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-      res.writeHead(200);
+      if (res.headersSent) return;
+      res.writeHead(200, {
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Cache-Control': 'public, max-age=3600',
+      });
       res.end('/* WaSpeed remote code stub — WPP injetado localmente pela extensao */\n');
       return;
     }
@@ -1455,14 +1611,24 @@ async function handleRequest(req, res) {
       return sendJson(res, { success: false, msg_id: 'not_found' }, 404);
     }
 
-    if (pathname.startsWith(R_ADMIN)) return handleAdmin(req, res, pathname);
-    if (pathname.startsWith(R_MOD)) return handleMod(req, res, pathname);
+    if (pathname.startsWith(R_ADMIN)) {
+      await handleAdmin(req, res, pathname);
+      return;
+    }
+    if (pathname.startsWith(R_MOD)) {
+      await handleMod(req, res, pathname);
+      return;
+    }
 
-    res.writeHead(404);
-    res.end('Not found');
+    if (!res.headersSent) {
+      res.writeHead(404);
+      res.end('Not found');
+    }
   } catch (err) {
-    console.error('[WaSpeed]', err);
-    sendJson(res, { success: false, msg_id: 'server_error' }, 500);
+    console.error('[WaSpeed] handleRequest:', err.message);
+    if (!res.headersSent) {
+      sendJson(res, { success: false, msg_id: 'server_error' }, 500);
+    }
   }
 }
 
@@ -1485,24 +1651,9 @@ function startAntiSleepCron() {
 
 // --- Bootstrap ---------------------------------------------------------------
 
-async function bootstrap() {
-  await connectMongo();
-  await initSeed();
-
-  server = http.createServer(handleRequest);
-  server.listen(config.port, () => {
-    console.log(`WaSpeed Server v3.0 em http://localhost:${config.port}`);
-    console.log(`MongoDB: ${config.dbName}`);
-    console.log(`Admin: ${config.baseUrl}${R_ADMIN}/login`);
-    console.log(`Mod:   ${config.baseUrl}${R_MOD}/login`);
-    console.log(`Health: ${config.baseUrl}/health`);
-    console.log(`Ping:   ${config.baseUrl}/ping`);
-    startAntiSleepCron();
-  });
-}
-
 async function shutdown(sig) {
   console.log(`[WaSpeed] ${sig} — encerrando`);
+  mongoReady = false;
   try {
     if (mongoClient) await mongoClient.close();
   } catch (err) {
@@ -1516,8 +1667,34 @@ async function shutdown(sig) {
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));
 
+async function bootstrap() {
+  try {
+    await connectMongo();
+    await initSeed();
+    mongoReady = true;
+  } catch (err) {
+    console.error('[WaSpeed] Falha no bootstrap:', err.message);
+    process.exit(1);
+  }
+
+  server = http.createServer(handleRequest);
+  server.on('clientError', (err, socket) => {
+    console.warn('[WaSpeed] clientError:', err.message);
+    if (!socket.destroyed) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
+  });
+  server.listen(config.port, () => {
+    console.log(`WaSpeed Server v3.0 em http://localhost:${config.port}`);
+    console.log(`MongoDB: ${config.dbName} (ready=${mongoReady})`);
+    console.log(`Admin: ${config.baseUrl}${R_ADMIN}/login`);
+    console.log(`Mod:   ${config.baseUrl}${R_MOD}/login`);
+    console.log(`Health: ${config.baseUrl}/health`);
+    console.log(`Ping:   ${config.baseUrl}/ping`);
+    startAntiSleepCron();
+  });
+}
+
 bootstrap().catch((err) => {
-  console.error('[WaSpeed] Falha no bootstrap:', err);
+  console.error('[WaSpeed] bootstrap fatal:', err.message);
   process.exit(1);
 });
 
