@@ -694,6 +694,24 @@ function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+const BLOCKED_URL_RE = /trackerdigital\.com\.br/i;
+
+function isBlockedUrl(url) {
+  return BLOCKED_URL_RE.test(String(url ?? ''));
+}
+
+function sanitizeUrls(value) {
+  if (value == null) return value;
+  if (typeof value === 'string') return isBlockedUrl(value) ? '' : value;
+  if (Array.isArray(value)) return value.map(sanitizeUrls);
+  if (typeof value === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = sanitizeUrls(v);
+    return out;
+  }
+  return value;
+}
+
 function sendJson(res, data, status = 200) {
   if (res.headersSent) return;
   const body = JSON.stringify(data);
@@ -959,6 +977,39 @@ function loginShell(body, roleLabel = '') {
 <div class="login-brand"><span class="brand-dot"></span>WaSpeed</div>
 ${body}
 </div></body></html>`;
+}
+
+function renderUninstallPage() {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Até logo — ZVM</title><style>
+${PANEL_CSS}
+.uninstall-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 20px;position:relative;overflow:hidden;background:var(--bg)}
+.uninstall-page::before{
+  content:'ZVM';position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:min(42vw,280px);font-weight:900;letter-spacing:.08em;color:rgba(57,255,20,.045);
+  pointer-events:none;user-select:none;z-index:0
+}
+.uninstall-card{position:relative;z-index:1;max-width:520px;width:100%;text-align:center;padding:48px 36px}
+.uninstall-logo{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:88px;height:88px;border-radius:20px;margin-bottom:24px;
+  background:var(--accent-grad);box-shadow:0 0 40px rgba(57,255,20,.35);
+  font-weight:900;font-size:1.75rem;color:#030806;letter-spacing:.06em
+}
+.uninstall-card h1{font-size:1.75rem;margin-bottom:12px;color:var(--text)}
+.uninstall-card p{color:var(--muted);font-size:1rem;line-height:1.65;margin-bottom:8px}
+.uninstall-heart{color:var(--accent);font-size:1.05rem;margin-top:24px;font-weight:600}
+</style></head>
+<body class="uninstall-page">
+<div class="card uninstall-card">
+  <div class="uninstall-logo">ZVM</div>
+  <h1>Sentimos muito em ver você partir</h1>
+  <p>A extensão foi removida do seu navegador. Esperamos que o WaSpeed tenha ajudado você a organizar seus atendimentos no WhatsApp.</p>
+  <p>Se mudar de ideia, estaremos aqui quando precisar.</p>
+  <p class="uninstall-heart">Obrigado por usar o WaSpeed · ZVM by LR1290</p>
+</div>
+</body></html>`;
 }
 
 function adminNav(active = '') {
@@ -1730,7 +1781,8 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     return sendJson(res, { success: true, url: settings.installUrl || config.installUrl });
   }
   if (pathname.match(/^\/api\/urls\/uninstall\//)) {
-    return sendJson(res, { success: true, url: `${config.baseUrl}/obrigado` });
+    res.writeHead(302, { Location: `${config.baseUrl}/obrigado` });
+    return res.end();
   }
   if (pathname.match(/^\/api\/urls\/active-notes\//)) {
     return sendJson(res, { success: true, path_note_update: { redirect: config.notesRedirect } });
@@ -1834,10 +1886,10 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
 
   if (pathname === `/api/services/initial-data/${chromeId}`) {
     return sendJson(res, {
-      webhooks: settings.webhooks || [],
-      meet: settings.meet || {},
-      urls: settings.urls || {},
-      migration: settings.migration || {},
+      webhooks: sanitizeUrls(settings.webhooks || []),
+      meet: sanitizeUrls(settings.meet || {}),
+      urls: sanitizeUrls(settings.urls || {}),
+      migration: sanitizeUrls(settings.migration || {}),
     });
   }
 
@@ -2103,7 +2155,7 @@ async function handleRequest(req, res) {
     }
 
     if (pathname === '/obrigado') {
-      return sendHtml(res, panelShell('Obrigado', '<div class="card" style="text-align:center;padding:48px"><h2 style="margin-bottom:8px">Obrigado!</h2><p style="color:var(--muted)">WaSpeed</p></div>'));
+      return sendHtml(res, renderUninstallPage());
     }
 
     if (pathname.startsWith('/utils/')) {
