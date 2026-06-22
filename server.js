@@ -16,30 +16,44 @@ const ANTI_SLEEP_MS = 5 * 60 * 1000;
 
 const COL = { settings: 'settings', licenses: 'licenses', logs: 'logs', sessions: 'sessions' };
 
+function envStr(key, fallback = '') {
+  return String(process.env[key] ?? fallback).trim().replace(/^["']|["']$/g, '');
+}
+
+function dbNameFromMongoUri(uri) {
+  const m = String(uri || '').match(/mongodb(?:\+srv)?:\/\/[^/]+\/([^/?]+)/);
+  return m?.[1] || 'waspeed';
+}
+
 const config = {
   port: Number(process.env.PORT) || 3000,
-  baseUrl: (process.env.BASE_URL || process.env.PUBLIC_URL || '').replace(/\/$/, ''),
-  publicUrl: (process.env.PUBLIC_URL || process.env.BASE_URL || '').replace(/\/$/, ''),
-  mongoUri: process.env.MONGODB_URI || '',
-  dbName: process.env.MONGODB_DB || 'waspeed',
-  criptKey: process.env.ACCESS_TOKEN || 'ffce211a-7b07-4d91-ba5d-c40bb4034a83',
-  chromeStoreId: process.env.CHROME_STORE_ID || 'balkfdkhbcjjmhndnblgmlmcabnapogp',
-  wlId: process.env.WL_ID || 'waspeed',
-  adminUser: process.env.ADMIN_USER || 'admin',
-  adminPass: process.env.ADMIN_PASS || 'waspeed-admin-change-me',
-  adminPath: process.env.ADMIN_PATH || 'admin-waspeed',
-  modPath: process.env.MOD_PATH || 'mod-waspeed',
-  installUrl: process.env.INSTALL_URL || 'https://web.whatsapp.com',
-  notesRedirect: process.env.NOTES_REDIRECT === 'true',
+  baseUrl: (envStr('BASE_URL') || envStr('PUBLIC_URL') || envStr('RENDER_EXTERNAL_URL')).replace(/\/$/, ''),
+  publicUrl: (envStr('PUBLIC_URL') || envStr('BASE_URL') || envStr('RENDER_EXTERNAL_URL')).replace(/\/$/, ''),
+  mongoUri: envStr('MONGODB_URI'),
+  dbName: envStr('MONGODB_DB') || dbNameFromMongoUri(envStr('MONGODB_URI')),
+  criptKey: envStr('ACCESS_TOKEN', 'ffce211a-7b07-4d91-ba5d-c40bb4034a83'),
+  chromeStoreId: envStr('CHROME_STORE_ID', 'balkfdkhbcjjmhndnblgmlmcabnapogp'),
+  wlId: envStr('WL_ID', 'waspeed'),
+  adminUser: envStr('ADMIN_USER', 'admin'),
+  adminPass: envStr('ADMIN_PASS', 'waspeed-admin-change-me'),
+  adminPath: envStr('ADMIN_PATH', 'admin-waspeed'),
+  modPath: envStr('MOD_PATH', 'mod-waspeed'),
+  installUrl: envStr('INSTALL_URL', 'https://web.whatsapp.com'),
+  notesRedirect: envStr('NOTES_REDIRECT').toLowerCase() === 'true',
   logMax: Math.min(Number(process.env.LOG_MAX) || 500, 2000),
 };
 
 if (!config.baseUrl) {
-  console.error('[WaSpeed] ERRO: defina BASE_URL ou PUBLIC_URL.');
+  console.error('[WaSpeed] ERRO: defina BASE_URL ou use deploy no Render (RENDER_EXTERNAL_URL).');
   process.exit(1);
 }
 if (!config.mongoUri) {
   console.error('[WaSpeed] ERRO: defina MONGODB_URI.');
+  process.exit(1);
+}
+if (/xxxxx|USUARIO|SENHA|<password>|YOUR_CLUSTER/i.test(config.mongoUri)) {
+  console.error('[WaSpeed] ERRO: MONGODB_URI ainda contem placeholders do template.');
+  console.error('[WaSpeed] Copie a URI real em MongoDB Atlas → Connect → Drivers → Node.js');
   process.exit(1);
 }
 
@@ -148,13 +162,7 @@ async function initSeed() {
       migration: {},
       domConfig: buildDomConfig(),
       nextUserId: 1000,
-      mods: [{
-        id: crypto.randomBytes(8).toString('hex'),
-        username: 'mod',
-        password: hashPassword('mod123'),
-        name: 'Moderador',
-        active: true,
-      }],
+      mods: buildModsFromEnv(),
       admin: {
         username: config.adminUser,
         password: hashPassword(config.adminPass),
@@ -162,6 +170,8 @@ async function initSeed() {
     };
     await settingsCol.insertOne(doc);
     console.log('[WaSpeed] Settings inicializados (admin com hash pbkdf2)');
+  } else {
+    await syncCredentialsFromEnv();
   }
   const count = await db.collection(COL.licenses).countDocuments();
   if (count === 0) {
@@ -169,6 +179,47 @@ async function initSeed() {
     console.log('[WaSpeed] Chave demo: ws-demo-premium');
   }
   await refreshSettingsCache();
+}
+
+function buildModsFromEnv() {
+  const prefixes = ['MOD', 'MOD2', 'MOD3', 'MOD4', 'MOD5', 'MOD6'];
+  const mods = [];
+  for (const prefix of prefixes) {
+    const user = envStr(`${prefix}_USER`);
+    const pass = envStr(`${prefix}_PASS`);
+    if (!user || !pass) continue;
+    mods.push({
+      id: crypto.createHash('sha256').update(`waspeed-mod:${user}`).digest('hex').slice(0, 16),
+      username: user,
+      password: hashPassword(pass),
+      name: user,
+      active: true,
+    });
+  }
+  if (mods.length) return mods;
+  return [{
+    id: crypto.randomBytes(8).toString('hex'),
+    username: 'mod',
+    password: hashPassword('mod123'),
+    name: 'Moderador',
+    active: true,
+  }];
+}
+
+async function syncCredentialsFromEnv() {
+  try {
+    const patch = {
+      admin: {
+        username: config.adminUser,
+        password: hashPassword(config.adminPass),
+      },
+      mods: buildModsFromEnv(),
+    };
+    await db.collection(COL.settings).updateOne({ _id: 'global' }, { $set: patch });
+    console.log('[WaSpeed] Admin/mod sincronizados do .env');
+  } catch (err) {
+    console.error('[WaSpeed] syncCredentialsFromEnv:', err.message);
+  }
 }
 
 // --- Seguranca (pbkdf2 + sessoes MongoDB) ------------------------------------
