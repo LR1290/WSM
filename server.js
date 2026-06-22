@@ -652,12 +652,11 @@ async function registerPhoneUsage(rec, phone, ip) {
   const p = normPhone(phone);
   if (!p || p.length < 8) return false;
   const phones = Array.isArray(rec.phones) ? [...rec.phones] : [];
-  const patch = { lastPhone: p };
-  if (ip) patch.lastIp = ip;
-  if (!phones.includes(p)) {
-    phones.push(p);
-    patch.phones = phones;
-  }
+  const patch = {};
+  if (rec.lastPhone !== p) patch.lastPhone = p;
+  if (ip && rec.lastIp !== ip) patch.lastIp = ip;
+  if (!phones.includes(p)) patch.phones = [...phones, p];
+  if (!Object.keys(patch).length) return false;
   await updateLicense(rec.code, patch);
   Object.assign(rec, patch);
   return true;
@@ -747,6 +746,16 @@ function checkRate(ip) {
   if (e.count > cfg.max) e.blockedUntil = now + cfg.blockMs;
   rateMap.set(key, e);
   return e.count <= cfg.max;
+}
+
+/** Evita writes/logs repetidos na mesma chave (ex.: validação a cada 5 min). */
+function validationRecentlyHandled(code, windowMs = 240000) {
+  const key = `val:${code}`;
+  const now = Date.now();
+  const last = rateMap.get(key) || 0;
+  if (now - last < windowMs) return true;
+  rateMap.set(key, now);
+  return false;
 }
 
 // --- HTTP helpers ------------------------------------------------------------
@@ -1909,10 +1918,11 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
       return sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' });
     }
     const phone = body.whatsapp_plugin || body.whatsapp_registro;
-    if (phone) await registerPhoneUsage(rec, phone, ip);
+    const skipHeavy = validationRecentlyHandled(key);
+    if (phone && !skipHeavy) await registerPhoneUsage(rec, phone, ip);
     const result = await authSuccess(key, rec);
     if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
-    await addLog('validation_ok', `Validacao ${key}`, { ip, code: key });
+    if (!skipHeavy) await addLog('validation_ok', `Validacao ${key}`, { ip, code: key });
     return sendJson(res, result.body);
   }
 
