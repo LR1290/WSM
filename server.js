@@ -1,5 +1,26 @@
 'use strict';
 
+function safeDeepClone(obj) {
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(safeDeepClone);
+  const out = Object.create(null);
+  for (const [k, v] of Object.entries(obj)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+    out[k] = safeDeepClone(v);
+  }
+  return out;
+}
+function safeAssign(target, ...sources) {
+  for (const src of sources) {
+    if (!src || typeof src !== 'object') continue;
+    for (const [k, v] of Object.entries(src)) {
+      if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+      target[k] = v;
+    }
+  }
+  return target;
+}
+
 const http   = require('http');
 const crypto = require('crypto');
 const { URL } = require('url');
@@ -59,7 +80,7 @@ setInterval(()=>{ const n=Date.now(); for (const [k,v] of rateMap) if (n>(v.bloc
 const DOM = {"version":"1.11","update_path_active":"true","disabled_wait_sync":false,"wpp_mensagens":{"timer":"60000","enable_two_send":false},"newModel":{"model":"taghtml","parm":"body.color-refresh"},"app":{"model":"querySelector","selector":["#app"]},"afiliadoMain":{"model":"querySelector","selector":["body > div"]},"paneSide":{"model":"Element","selector":"#pane-side"},"waPage":{"model":"querySelector","selector":["div.two"]},"two":{"model":"Element","selector":"two"},"menuLateral":{"model":"querySelector","selector":["div.two > div:nth-child(5)"]},"closeChat":{"model":"Element","selector":"x10l6tqk"},"chatListInput":{"model":"querySelector","selector":[".lexical-rich-text-input > div"]},"searchInput":{"model":"querySelector","selector":["[data-icon='search']"]},"downAba":{"model":"querySelector","selector":["header > div > div > div > div > span > div > div:nth-child(1)","header > div._ak0w"]},"chatListHeader":{"model":"querySelector","selector":["header > header > div > span > div"]},"searchCamp":{"model":"querySelector","selector":["#side div[data-testid='chat-list-search-container']"]},"chatName":{"model":"querySelector","selector":["#main header span[title]","#main header div[role=\"button\"] span","#main header h1","#main > header div.x78zum5 > div > div > div > div","#main header [data-testid=\"conversation-info-header-chat-title\"]","#main header"]},"menuVertical":{"model":"querySelector","selector":["#main ._amm9","#main .x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh"]},"menuHorizontal":{"model":"querySelector","selector":["#main > header > div.x1c4vz4f > div"]},"menuFooter":{"model":"querySelector","selector":["footer ._ak1m"]},"respostaRapida":{"model":"querySelector","selector":["footer > div"]},"footerTextArea":{"model":"querySelector","selector":["footer div[contenteditable=true]"]},"mainAudio":{"model":"querySelector","selector":["footer > div.copyable-area > div"]},"assChat":{"model":"querySelector","selector":["#main > div.x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh"]},"assInput":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div > div"]},"assBtn":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div > div > div:nth-child(6)"]},"assEmoji":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div._ak1m > div > button[tabindex='-1']"]},"assCitacao":{"model":"querySelector","selector":["footer div.x9f619.x1okw0bk > button > div > div > div:nth-child(1)"]},"listMensages":{"model":"querySelector","selector":["div[data-scrolltracepolicy='wa.web.conversation.messages']"]},"allMensages":{"model":"querySelectorAll","selector":["#main div > div[data-id]"]},"assistenteChat":{"model":"querySelector","selector":["#main > footer"]},"trasferidos":{"model":"querySelector","selector":["#side div[tabindex='-1']"]},"notification":{"model":"querySelector","selector":["#side > div:nth-child(2)"]},"quotedMsg":{"model":"querySelector","selector":["#main > footer > div.x10l6tqk.x13vifvy.x1o0tod.xh8yej3 > div > div > div > span > div"]},"listChats":{"model":"querySelector","selector":["#pane-side > div > div > div"]},"listChatsUsers":{"model":"querySelectorAll","selector":["#pane-side > div > div > div > div  div[aria-selected]","#pane-side > div > div > div div[role='button'] > div"]},"listChatAtendimento":{"model":"Element","selector":"div div[data-testid='cell-frame-secondary'] div[role='gridcell']"},"insertAtendente":{"model":"Element","selector":"x10l6tqk xh8yej3 x1g42fcv"},"reactFiberContainer":{"model":"listElement","list":{"reactFiber":"__reactFiber","reactFiberIndex":0,"path_user_id":".child.memoizedProps[1].props.id._serialized","path_key_message":".child.memoizedProps.children[0].key"}},"updateChatList":{"model":"querySelector","selector":["#side div._ai04 > button"]},"useTradutor":{"model":"listElement","list":{"main_audio_1":"div.x121pien.x9f619","main_audio_2":"div.x121pien.x9f619","camp_text_1":"row-translate","camp_text_2":"div > span","add_btn_tradutor":"div.x1c4vz4f.x1q0g3np.x6s0dn4","camp_audio_1":"div[role=\"slider\"] > canvas","camp_audio_2":"div.x1e4oeot.x1ui04y5[role=\"slider\"] > div"}},"chatList":{"model":"querySelector","selector":["#pane-side","#side","div.two > div:first-child","div.two > div._aigw"]},"observerFooter":{"model":"querySelector","selector":["#main > span:nth-child(8)","#main > :last-child"]},"observerFooterNewModel":{"model":"querySelector","selector":["#main > span:nth-child(7)","#main > span:nth-child(8)","#main > span:nth-child(9)"]},"whatsModal":{"model":"querySelector","selector":["#app > div > div > span:nth-child(3)"]},"menu_whats":{"model":"querySelector","selector":["#app > div > div.x78zum5.xdt5ytf.x5yr21d > div > header > div > div:nth-child(2) > div","header > div > div:nth-child(2) > div"]},"actionMonitor":{"model":"querySelector","selector":["#main header"]},"footerIconsLeft":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div > div"]},"side":{"model":"querySelector","selector":["#side"]},"chatFiltersContainer":{"model":"listElement","list":{"div_filters":"_akap _akan _arj9"}},"chatFilters":{"model":"querySelectorAll","selector":["#side > div:nth-of-type(3) button"]},"selector_theme":{"model":"querySelector","selector":[".os-win"]}};
 
 function buildDom(ov={}) {
-  const m={...DOM,...ov}; delete m.remote_code; delete m.dom_selector;
+  const m=safeAssign(safeDeepClone(DOM),ov); delete m.remote_code; delete m.dom_selector;
   if (m.version===1||m.selectors) { delete m.selectors; m.version=DOM.version; }
   m.update_path=`${cfg.base}/api/urls/update`; m.update_path_new=`${cfg.base}/api/services/update`; m.update_path_active=String(m.update_path_active??'true');
   return m;
@@ -84,7 +105,8 @@ function mergeUrls(u={}) {
 
 async function connectDb() {
   if (db&&ready) return db;
-  client=new MongoClient(cfg.mongo,{ maxPoolSize:5, minPoolSize:1, maxIdleTimeMS:60_000, serverSelectionTimeoutMS:10_000, connectTimeoutMS:10_000, socketTimeoutMS:30_000, heartbeatFrequencyMS:30_000, retryWrites:true, retryReads:true });
+  const _pool=Math.min(Math.max(Number(process.env.MONGO_POOL_SIZE)||10,2),100);
+  client=new MongoClient(cfg.mongo,{ maxPoolSize:_pool, minPoolSize:Math.min(2,_pool), maxIdleTimeMS:60_000, serverSelectionTimeoutMS:10_000, connectTimeoutMS:10_000, socketTimeoutMS:30_000, heartbeatFrequencyMS:30_000, waitQueueTimeoutMS:10_000, retryWrites:true, retryReads:true });
   await client.connect(); db=client.db(cfg.db);
   client.on('serverClosed',()=>{ ready=false; setTimeout(reconnect,5000); });
   await mkIndexes(); return db;
@@ -112,8 +134,9 @@ function hashPw(pw) {
 }
 function verPw(pw, stored) {
   if (!stored?.startsWith('pbkdf2:')) return false;
-  const ck=`${stored}::${pw}`; if (pwCache.has(ck)) return pwCache.get(ck);
   const [s,h]=stored.slice(7).split(':'); if (!s||!h) return false;
+  const ck=crypto.createHash('sha256').update(s+pw).digest('hex');
+  if (pwCache.has(ck)) return pwCache.get(ck);
   const chk=crypto.pbkdf2Sync(pw,s,10000,64,'sha512').toString('hex');
   let r=false; try { r=crypto.timingSafeEqual(Buffer.from(h,'hex'),Buffer.from(chk,'hex')); } catch {}
   pwCache.set(ck,r); setTimeout(()=>pwCache.delete(ck),300_000).unref(); return r;
@@ -298,6 +321,7 @@ const SEC_HEADERS = {
   'Referrer-Policy':           'strict-origin-when-cross-origin',
   'Permissions-Policy':        'camera=(), microphone=(), geolocation=()',
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  'Content-Security-Policy':   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'none'; manifest-src 'none'; frame-ancestors 'none'; base-uri 'self'",
 };
 function applyHeaders(res,extra={}) { for (const [k,v] of Object.entries({ ...SEC_HEADERS,...extra })) res.setHeader(k,v); }
 function cors(req,res,p) {
@@ -310,7 +334,15 @@ function cors(req,res,p) {
   });
 }
 async function readBody(req,max=2*1024*1024) { return new Promise((res,rej)=>{ const c=[];let sz=0; req.on('data',d=>{ sz+=d.length; if(sz>max){rej(new Error('too_large'));req.destroy();return;} c.push(d); }); req.on('end',()=>res(Buffer.concat(c).toString('utf8'))); req.on('error',rej); }); }
-async function bodyJson(req) { try { const r=await readBody(req); return r?JSON.parse(r):{}; } catch { return {}; } }
+async function bodyJson(req) {
+  try {
+    const r=await readBody(req);
+    if (!r) return {};
+    const parsed=JSON.parse(r);
+    if (parsed && typeof parsed === 'object') return safeDeepClone(parsed);
+    return {};
+  } catch { return {}; }
+}
 function hasToken(req) { return req.headers['access-token']===cfg.token; }
 function bearerTok(req) { return /^Bearer\s+(.+)$/i.exec(req.headers.authorization||'')?.[1]?.trim()||''; }
 function wppUpd() { return { success:true,version:WPP_VERSION,update:false,message:'WaSpeed server ok' }; }
@@ -457,20 +489,20 @@ body{display:flex;align-items:center;justify-content:center;min-height:100vh;pad
 
 const CLIENT_CSS = BASE_CSS+`
 body{padding:0}
-.cw{max-width:680px;margin:0 auto;padding:40px 24px 60px;position:relative;z-index:1}
+.cw{max-width:860px;margin:0 auto;padding:44px 28px 64px;position:relative;z-index:1}
 .c-brand{display:flex;align-items:center;gap:9px;margin-bottom:32px}
 .c-logo{width:34px;height:34px;border-radius:9px;background:var(--gg);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.68rem;color:#020904;box-shadow:var(--glow);flex-shrink:0}
 .c-name{font-weight:800;font-size:.95rem;letter-spacing:-.02em}
-.c-card{background:rgba(11,26,15,.88);backdrop-filter:blur(14px);border:1px solid var(--bd);border-radius:14px;padding:24px;margin-bottom:14px;box-shadow:var(--sh)}
+.c-card{background:rgba(11,26,15,.88);backdrop-filter:blur(14px);border:1px solid var(--bd);border-radius:14px;padding:28px;margin-bottom:16px;box-shadow:var(--sh)}
 .c-card h2{font-size:.88rem;font-weight:700;margin-bottom:14px;color:var(--t1);text-transform:uppercase;letter-spacing:.05em;font-size:.68rem}
-.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
-.met{background:rgba(6,14,9,.7);border:1px solid var(--bd);border-radius:10px;padding:16px;text-align:center}
-.met .mv{font-size:1rem;font-weight:800;margin-bottom:4px;line-height:1.2}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px}
+.met{background:rgba(6,14,9,.7);border:1px solid var(--bd);border-radius:12px;padding:20px 16px;text-align:center}
+.met .mv{font-size:1.1rem;font-weight:800;margin-bottom:6px;line-height:1.2}
 .met .ml{font-size:.6rem;color:var(--t2);text-transform:uppercase;letter-spacing:.05em}
-.kv{display:flex;flex-direction:column;gap:9px}
+.kv{display:flex;flex-direction:column;gap:12px}
 .kv-row{display:flex;flex-wrap:wrap;gap:4px;align-items:baseline}
-.kv-lbl{font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--t2);min-width:100px;flex-shrink:0}
-.kv-val{font-size:.83rem;color:var(--t0)}
+.kv-lbl{font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--t2);min-width:120px;flex-shrink:0}
+.kv-val{font-size:.88rem;color:var(--t0)}
 .steps{list-style:none;counter-reset:s;margin-top:8px}
 .steps li{counter-increment:s;padding:8px 0 8px 34px;position:relative;color:var(--t1);font-size:.83rem;border-bottom:1px solid var(--bd)}
 .steps li:last-child{border-bottom:none}
@@ -510,7 +542,7 @@ function sidebar(active,role='admin',name='') {
 <div class="sb-bot"><a href="${lo}" class="sb-out">${IC.out}<span>Sair</span></a></div>
 </aside>`;
 }
-function adminPage(title,content,active,role='admin',name='',extra='') {
+function adminPage(title,content,active,role='admin',name='',extra='',scripts='') {
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${x(title)} — WaSpeed</title><style>${ADMIN_CSS}</style></head><body>
 <canvas id="bg-canvas"></canvas><script>
 (function(){
@@ -549,11 +581,7 @@ draw();
 <div class="content">${content}</div></div></div>
 <div id="toast" class="toast"></div>
 <div id="mbg" class="modal-bg" onclick="if(event.target===this)cM()"><div class="modal" id="mbox"></div></div>
-<script>
-function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='toast show'+(ok?'':' err');setTimeout(()=>t.className='toast',3200);}
-function cM(){document.getElementById('mbg').classList.remove('open');}
-document.getElementById('ts').textContent=new Date().toLocaleTimeString('pt-BR');
-</script></body></html>`;
+<script>function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='toast show'+(ok?'':' err');setTimeout(()=>t.className='toast',3200);}function cM(){document.getElementById('mbg').classList.remove('open');}document.getElementById('ts').textContent=new Date().toLocaleTimeString('pt-BR');</script>${scripts}</body></html>`;
 }
 function loginPage(role,base,err='') {
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Entrar — WaSpeed</title><style>${LOGIN_CSS}</style></head><body>
@@ -769,7 +797,7 @@ async function oNums(c){const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(
 function expCsv(){location.href=_RA+'/api/export/csv';}
 setInterval(()=>doRef(),60000);
 </script>`;
-  return adminPage('Dashboard',alert+statsHtml+keySec+logSec+js,'dash','admin','',extra);
+  return adminPage('Dashboard',alert+statsHtml+keySec+logSec,'dash','admin','',extra,js);
 }
 
 function renderModDash(modName,list,lgs) {
@@ -800,7 +828,7 @@ if(r.status===401){location.href=_RM+'/login';return;}const j=await r.json();if(
 async function doRef(){const r=await fetch(_RM+'/api/data');if(r.status===401)return;const d=await r.json();if(d.ok){document.getElementById('kb').innerHTML=d.keysHtml;flt();}}
 </script>`;
   const extra=`<button class="btn btn-ghost" style="height:28px;font-size:.74rem" onclick="doRef()">${IC.ref} Atualizar</button>`;
-  return adminPage(`Olá, ${x(modName)}`,statsHtml+sec+js,'keys','mod',modName,extra);
+  return adminPage(`Olá, ${x(modName)}`,statsHtml+sec,'keys','mod',modName,extra,js);
 }
 
 function renderKeyForm(base,rec,title) {
@@ -1127,7 +1155,7 @@ async function handleAdminApi(req,res,path) {
 async function handleAdmin(req,res,path,ip) {
   if (path===`${RA}/login`) {
     if (req.method==='GET') return html(res,loginPage('Administrador',RA));
-    if (!chkRate(ip)) return html(res,loginPage('Administrador',RA,'Muitas tentativas. Aguarde.'),429);
+    if (!chkRate(ip,5,60_000,600_000)) return html(res,loginPage('Administrador',RA,'Muitas tentativas. Aguarde.'),429);
     const p=new URLSearchParams(await readBody(req));
     if (await verAdmin(p.get('user')||'',p.get('pass')||'')) {
       const s=await mkSession('admin',{ user:(p.get('user')||'').trim() }); if (!s) return html(res,loginPage('Administrador',RA,'Erro interno'),500);
@@ -1143,13 +1171,13 @@ async function handleAdmin(req,res,path,ip) {
   if (path===`${RA}/keys/new`) {
     if (req.method==='GET') return html(res,renderKeyForm(RA,null,'Nova licença'));
     const p=new URLSearchParams(await readBody(req));
-    try { const rec=await mkKey({ label:p.get('label'),premium:p.get('premium')!=='0',expireDays:Number(p.get('expireDays')||0),note:p.get('note')||'' }); res.writeHead(302,{ Location:`${RA}/keys/${encodeURIComponent(rec.code)}` }); return res.end(); }
+    try { const rec=await mkKey({ label:(p.get('label')||'').trim()||'Cliente',premium:p.get('premium')!=='0',expireDays:Number(p.get('expireDays')||0),note:p.get('note')||'' }); res.writeHead(302,{ Location:`${RA}/keys/${encodeURIComponent(rec.code)}` }); return res.end(); }
     catch (e) { res.writeHead(500); return res.end('Erro: '+e.message); }
   }
   const ke=path.match(RE.aKey); if (ke&&!path.includes('/toggle')&&!path.includes('/delete')) {
     const code=decodeURIComponent(ke[1]),rec=await findK(code); if (!rec) { res.writeHead(404); return res.end('Not found'); }
     if (req.method==='GET') return html(res,renderKeyForm(RA,rec,'Editar licença'));
-    const p=new URLSearchParams(await readBody(req)),patch={ label:p.get('label')||rec.label,premium:p.get('premium')!=='0',note:p.get('note')||'' };
+    const p=new URLSearchParams(await readBody(req)),patch={ label:(p.get('label')||'').trim()||rec.label, premium:p.get('premium')!=='0', note:p.get('note')!==null?p.get('note'):rec.note };
     const d=Number(p.get('expireDays')||0); if (d>0) patch.expiresAt=new Date(Date.now()+d*86_400_000).toISOString();
     await updKey(code,patch); res.writeHead(302,{ Location:`${RA}/keys` }); return res.end();
   }
@@ -1162,7 +1190,7 @@ async function handleAdmin(req,res,path,ip) {
 async function handleMod(req,res,path,ip) {
   if (path===`${RM}/login`) {
     if (req.method==='GET') return html(res,loginPage('Moderador',RM));
-    if (!chkRate(ip)) return html(res,loginPage('Moderador',RM,'Muitas tentativas.'),429);
+    if (!chkRate(ip,5,60_000,600_000)) return html(res,loginPage('Moderador',RM,'Muitas tentativas.'),429);
     const p=new URLSearchParams(await readBody(req)),mod=await verMod(p.get('user')||'',p.get('pass')||'');
     if (mod) { const s=await mkSession('mod',{ user:(p.get('user')||'').trim(),modId:mod.id,name:mod.name }); if (!s) return html(res,loginPage('Moderador',RM,'Erro interno'),500); res.setHeader('Set-Cookie',cookieHdr(s.token)); res.writeHead(302,{ Location:RM }); return res.end(); }
     return html(res,loginPage('Moderador',RM,'Usuário ou senha incorretos.'),401);
@@ -1193,10 +1221,20 @@ async function handle(req,res) {
   try {
     if (path==='/ping')  return txt(res,'OK');
     if (path==='/login') { res.writeHead(302,{ Location:`${RA}/login` }); return res.end(); }
-    if (path==='/health') {
-      let k=0,ok=ready&&!!db;
-      if (ok) try { k=await db.collection(COL.licenses).countDocuments(); } catch { ok=false; }
-      return json(res,{ ok,service:'waspeed',keys:k,mongo:ok,uptime:Math.floor(process.uptime()) },ok?200:503);
+    if (path==='/health'||path==='/api/system/health') {
+      let k=0,ok=ready&&!!db,dbLatencyMs=null;
+      if (ok) try {
+        const t0=Date.now(); k=await db.collection(COL.licenses).countDocuments(); dbLatencyMs=Date.now()-t0;
+      } catch { ok=false; }
+      const mem=process.memoryUsage();
+      const toMb=b=>+(b/1024/1024).toFixed(2);
+      return json(res,{
+        ok, service:'waspeed', version:'5.2', uptime:Math.floor(process.uptime()),
+        mongo:{ ok, latencyMs:dbLatencyMs, keys:k },
+        memory:{ heapUsedMb:toMb(mem.heapUsed), heapTotalMb:toMb(mem.heapTotal), rssMb:toMb(mem.rss), externalMb:toMb(mem.external) },
+        caches:{ sessions:sessCache.size, keys:keyCache.size, rate:rateMap.size, pw:pwCache.size, panelRows:_pkCache?'cached':'empty' },
+        node:process.version,
+      },ok?200:503);
     }
     if (!ready||!db) return json(res,{ success:false,msg_id:'db_unavailable' },503);
     if (path==='/') { res.writeHead(302,{ Location:`${RA}/login` }); return res.end(); }
@@ -1234,7 +1272,7 @@ async function boot() {
   srv.keepAliveTimeout=65_000; srv.headersTimeout=66_000; srv.requestTimeout=30_000; srv.maxHeadersCount=50;
   srv.on('clientError',(e,s)=>{ if (!s.destroyed) s.end('HTTP/1.1 400 Bad Request\r\n\r\n'); });
   srv.listen(cfg.port,()=>{
-    console.log(`[WS] v5.1 porta ${cfg.port} | db=${cfg.db}`);
+    console.log(`[WS] v5.2 porta ${cfg.port} | db=${cfg.db}`);
     console.log(`[WS] Admin: ${cfg.base}${RA}/login | Mod: ${cfg.base}${RM}/login`);
     antiSleep();
   });
