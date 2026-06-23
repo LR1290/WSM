@@ -48,8 +48,10 @@ const RM = `/${cfg.mPath}`;
 let client=null, db=null, ready=false, srv=null;
 let settings=null, cfgJson=null;
 let _pkCache=null, _pkTs=0, _trimT=null;
-const rateMap = new Map();
+const rateMap  = new Map();
 const pwCache  = new Map();
+const sessCache = new Map();
+setInterval(()=>{ const n=Date.now(); for (const [k,v] of sessCache) if (v.exp<=n) sessCache.delete(k); }, 300_000).unref();
 
 function invPk() { _pkCache=null; _pkTs=0; }
 setInterval(()=>{ const n=Date.now(); for (const [k,v] of rateMap) if (n>(v.blockedUntil||0)&&n>(v.reset||0)) rateMap.delete(k); }, 600_000).unref();
@@ -160,10 +162,26 @@ async function verMod(u,p) {
 async function mkSession(role,meta={}) {
   if (!db) return null;
   const tok=crypto.randomBytes(32).toString('hex'), exp=new Date(Date.now()+SESSION_TTL_MS);
-  try { await db.collection(COL.sessions).insertOne({ token:tok,role,...meta,createdAt:new Date(),expiresAt:exp }); return { token:tok,exp }; } catch { return null; }
+  try {
+    await db.collection(COL.sessions).insertOne({ token:tok,role,...meta,createdAt:new Date(),expiresAt:exp });
+    sessCache.set(tok,{ token:tok,role,...meta,exp:exp.getTime() });
+    return { token:tok,exp };
+  } catch { return null; }
 }
-async function valSession(tok) { if (!tok||!db) return null; try { return await db.collection(COL.sessions).findOne({ token:tok,expiresAt:{ $gt:new Date() } }); } catch { return null; } }
-async function delSession(tok) { if (tok&&db) try { await db.collection(COL.sessions).deleteOne({ token:tok }); } catch {} }
+async function valSession(tok) {
+  if (!tok||!db) return null;
+  const cached=sessCache.get(tok);
+  if (cached) { if (cached.exp>Date.now()) return cached; sessCache.delete(tok); }
+  try {
+    const s=await db.collection(COL.sessions).findOne({ token:tok,expiresAt:{ $gt:new Date() } });
+    if (s) sessCache.set(tok,{ ...s,exp:new Date(s.expiresAt).getTime() });
+    return s;
+  } catch { return null; }
+}
+async function delSession(tok) {
+  sessCache.delete(tok);
+  if (tok&&db) try { await db.collection(COL.sessions).deleteOne({ token:tok }); } catch {}
+}
 function cookieHdr(tok,age=86400) { const s=cfg.base.startsWith('https'); return [`ws_session=${tok}`,'Path=/','HttpOnly','SameSite=Strict',...(s?['Secure']:[]),`Max-Age=${age}`].join('; '); }
 function parseCookies(req) { const o={}; for (const p of (req.headers.cookie||'').split(';')) { const [k,...v]=p.trim().split('='); if(k) o[k]=decodeURIComponent(v.join('=')); } return o; }
 async function guard(req,res,role) {
@@ -187,8 +205,23 @@ function daysLeft(r) {
 }
 
 const APROJ={ projection:{ code:1,bearer:1,bearer_token:1,access_token_plugin:1,active:1,premium:1,expiresAt:1,user_id:1,label:1,lastPhone:1,lastIp:1,lastUsed:1,phones:1,createdAt:1,maxUses:1,uses:1,wppVersion:1,note:1 } };
-async function findK(code) { const k=normK(code); if (!k||!db) return null; try { return await db.collection(COL.licenses).findOne({ code:k },APROJ); } catch { return null; } }
-async function findBearer(b) { if (!b||!db) return null; try { return await db.collection(COL.licenses).findOne({ $or:[{ bearer:b },{ code:normK(b) },{ access_token_plugin:b },{ bearer_token:b }] },APROJ); } catch { return null; } }
+const keyCache = new Map();
+const KEY_CACHE_TTL = 30_000;
+function kCachePut(rec) { if (rec?.code) keyCache.set(rec.code,{ rec,exp:Date.now()+KEY_CACHE_TTL }); }
+function kCacheGet(code) { const e=keyCache.get(code); if (!e) return null; if (e.exp<Date.now()) { keyCache.delete(code); return null; } return e.rec; }
+function kCacheDel(code) { keyCache.delete(code); }
+setInterval(()=>{ const n=Date.now(); for (const [k,v] of keyCache) if (v.exp<=n) keyCache.delete(k); }, 60_000).unref();
+
+async function findK(code) {
+  const k=normK(code); if (!k||!db) return null;
+  const cached=kCacheGet(k); if (cached) return cached;
+  try { const r=await db.collection(COL.licenses).findOne({ code:k },APROJ); if (r) kCachePut(r); return r; } catch { return null; }
+}
+async function findBearer(b) {
+  if (!b||!db) return null;
+  const k=normK(b); const cached=kCacheGet(k); if (cached) return cached;
+  try { const r=await db.collection(COL.licenses).findOne({ $or:[{ bearer:b },{ code:k },{ access_token_plugin:b },{ bearer_token:b }] },APROJ); if (r) kCachePut(r); return r; } catch { return null; }
+}
 async function listKeys(f={}) { if (!db) return []; try { return await db.collection(COL.licenses).find(f).sort({ createdAt:-1 }).toArray(); } catch { return []; } }
 
 async function mkKey(inp={},modName=null) {
@@ -202,8 +235,8 @@ async function mkKey(inp={},modName=null) {
   await db.collection(COL.licenses).insertOne(rec);
   addLog('key_create',`Chave ${code} criada`,{ code,modName }); invPk(); return rec;
 }
-async function updKey(code,patch) { if (!db) return false; try { await db.collection(COL.licenses).updateOne({ code:normK(code) },{ $set:patch }); invPk(); return true; } catch { return false; } }
-async function delKey(code) { if (!db) return false; try { await db.collection(COL.licenses).deleteOne({ code:normK(code) }); invPk(); return true; } catch { return false; } }
+async function updKey(code,patch) { if (!db) return false; try { await db.collection(COL.licenses).updateOne({ code:normK(code) },{ $set:patch }); invPk(); kCacheDel(normK(code)); return true; } catch { return false; } }
+async function delKey(code) { if (!db) return false; try { await db.collection(COL.licenses).deleteOne({ code:normK(code) }); invPk(); kCacheDel(normK(code)); return true; } catch { return false; } }
 async function freeKey(extId,ip) {
   const seed=String(extId||ip||'anon');
   const code=normK(`ws-free-${crypto.createHash('sha256').update(seed).digest('hex').slice(0,16)}`);
@@ -243,7 +276,13 @@ async function addLog(type,msg,meta={}) {
 }
 async function getLogs(n=200) { if (!db) return []; try { return await db.collection(COL.logs).find({}).sort({ at:-1 }).limit(n).toArray(); } catch { return []; } }
 
-function chkRate(ip) { const k=`${ip}:l`,n=Date.now(); let e=rateMap.get(k); if (!e||n>e.reset) e={ count:0,reset:n+60_000,blockedUntil:0 }; if (n<e.blockedUntil) return false; e.count++; if (e.count>10) e.blockedUntil=n+300_000; rateMap.set(k,e); return e.count<=10; }
+function chkRate(ip,limit=10,windowMs=60_000,blockMs=300_000) {
+  const k=`${ip}:l`,n=Date.now(); let e=rateMap.get(k);
+  if (!e||n>e.reset) e={ count:0,reset:n+windowMs,blockedUntil:0 };
+  if (n<e.blockedUntil) return false;
+  e.count++; if (e.count>limit) e.blockedUntil=n+blockMs;
+  rateMap.set(k,e); return e.count<=limit;
+}
 function recentVal(code,w=240_000) { const k=`v:${code}`,n=Date.now(); if (n-(rateMap.get(k)||0)<w) return true; rateMap.set(k,n); return false; }
 
 function x(s) { return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -252,12 +291,23 @@ function sanUrl(v) { if (v==null) return v; if (typeof v==='string') return BURL
 function json(res,d,s=200) { if (res.headersSent) return; const b=JSON.stringify(d); res.writeHead(s,{ 'Content-Type':'application/json; charset=utf-8','Content-Length':Buffer.byteLength(b) }); res.end(b); }
 function html(res,h,s=200) { if (res.headersSent) return; res.writeHead(s,{ 'Content-Type':'text/html; charset=utf-8' }); res.end(h); }
 function txt(res,t,s=200) { if (res.headersSent) return; res.writeHead(s,{ 'Content-Type':'text/plain; charset=utf-8' }); res.end(t); }
+const SEC_HEADERS = {
+  'X-Content-Type-Options':    'nosniff',
+  'X-Frame-Options':           'DENY',
+  'X-XSS-Protection':          '0',
+  'Referrer-Policy':           'strict-origin-when-cross-origin',
+  'Permissions-Policy':        'camera=(), microphone=(), geolocation=()',
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+};
+function applyHeaders(res,extra={}) { for (const [k,v] of Object.entries({ ...SEC_HEADERS,...extra })) res.setHeader(k,v); }
 function cors(req,res,p) {
   const panel=p.startsWith(RA)||p.startsWith(RM);
-  res.setHeader('Access-Control-Allow-Origin',panel?'null':(req.headers.origin||'*'));
-  res.setHeader('Access-Control-Allow-Methods','GET,POST,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers','Content-Type,Authorization,access-token,accept');
-  res.setHeader('Access-Control-Max-Age','86400'); res.setHeader('X-Content-Type-Options','nosniff');
+  applyHeaders(res,{
+    'Access-Control-Allow-Origin':  panel?'null':(req.headers.origin||'*'),
+    'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type,Authorization,access-token,accept',
+    'Access-Control-Max-Age':       '86400',
+  });
 }
 async function readBody(req,max=2*1024*1024) { return new Promise((res,rej)=>{ const c=[];let sz=0; req.on('data',d=>{ sz+=d.length; if(sz>max){rej(new Error('too_large'));req.destroy();return;} c.push(d); }); req.on('end',()=>res(Buffer.concat(c).toString('utf8'))); req.on('error',rej); }); }
 async function bodyJson(req) { try { const r=await readBody(req); return r?JSON.parse(r):{}; } catch { return {}; } }
@@ -320,7 +370,9 @@ body{background-image:radial-gradient(ellipse 60% 40% at 20% 0,rgba(42,255,110,.
 .stat .sd .lbl{font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--t2);margin-top:1px}
 .panel{background:var(--s1);border:1px solid var(--bd);border-radius:13px;overflow:hidden;margin-bottom:18px}
 .ph{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 16px;border-bottom:1px solid var(--bd)}
-.pt{font-weight:600;font-size:.85rem;display:flex;align-items:center;gap:8px;color:var(--t0)}
+.pt{font-weight:600;font-size:.85rem;display:flex;align-items:center;gap:8px;color:var(--t0);white-space:nowrap}
+.pt svg{width:14px;height:14px;flex-shrink:0}
+.btn svg{width:13px;height:13px;flex-shrink:0}
 .gen-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .gen-row input,.gen-row select{padding:6px 9px;border-radius:7px;border:1px solid var(--bd);background:var(--s0);color:var(--t0);font:inherit;font-size:.78rem;transition:border-color .15s;height:30px}
 .gen-row input:focus,.gen-row select:focus{outline:none;border-color:var(--g)}
@@ -737,7 +789,7 @@ function clientPage(storeId,token,page,rec) {
   if (!rec) return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Acesso negado — WaSpeed</title><style>${CLIENT_CSS}</style></head><body>
 <div class="cw"><div class="c-brand"><div class="c-logo">WS</div><div class="c-name">WaSpeed</div></div>
 <div class="c-card"><h2>Sessão inválida</h2><p style="color:var(--t1);font-size:.85rem;margin-bottom:16px">Token inválido ou sessão expirada. Faça login novamente pela extensão WaSpeed.</p>
-<div class="c-actions"><button class="c-btn c-btn-ghost" onclick="window.close()">Fechar aba</button></div></div></div></body></html>`;
+<div class="c-actions"><button class="c-btn c-btn-ghost" onclick="history.length>1?history.back():window.close()">← Voltar</button></div></div></div></body></html>`;
   const code=rec.code||token,user=toUser(code,rec),st=kStatus(rec),prem=mkPremium(code,rec);
   const exp=rec.expiresAt?new Date(rec.expiresAt).toLocaleDateString('pt-BR',{ day:'2-digit',month:'2-digit',year:'numeric' }):'Sem vencimento';
   const dl=daysLeft(rec);
@@ -766,7 +818,6 @@ ${page?`<div class="kv-row"><span class="kv-lbl">Seção</span><span class="kv-v
 </div>
 <div class="c-actions">
 <button class="c-btn c-btn-ghost" onclick="history.length>1?history.back():window.close()">← Voltar</button>
-<button class="c-btn c-btn-ghost" onclick="window.close()">Fechar aba</button>
 </div>
 </div></body></html>`;
 }
@@ -786,7 +837,6 @@ function clientLoginPage(storeId) {
 </ol>
 <div class="c-actions">
 <a href="https://web.whatsapp.com" target="_blank" rel="noopener" class="c-btn">Abrir WhatsApp Web</a>
-<button class="c-btn c-btn-ghost" onclick="window.close()">Fechar aba</button>
 </div>
 </div>
 </div></body></html>`;
@@ -800,7 +850,7 @@ async function handleClientPanel(req,res,path,url) {
   if (route==='auth-painel') { if (!tok) { res.writeHead(302,{ Location:`/${sid}/login` }); res.end(); return true; } html(res,clientPage(sid,tok,pg,await findBearer(tok))); return true; }
   if (route==='auth-plugin') { res.writeHead(302,{ Location:tok?`/${sid}/auth-painel?token=${encodeURIComponent(tok)}`:`/${sid}/login` }); res.end(); return true; }
   if (route==='redirect-plugin-register'||route==='register') { html(res,clientLoginPage(sid)); return true; }
-  if (route==='recovery') { html(res,`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Recuperar — WaSpeed</title><style>${CLIENT_CSS}</style></head><body><div class="cw"><div class="c-brand"><div class="c-logo">WS</div><div class="c-name">WaSpeed</div></div><div class="c-card"><h2>Recuperar acesso</h2><p style="color:var(--t1);font-size:.84rem;margin-bottom:12px">Entre em contato com o administrador para obter uma nova chave de ativação.</p><div class="c-actions"><a href="/${x(sid)}/login" class="c-btn c-btn-ghost">← Voltar</a><button class="c-btn c-btn-ghost" onclick="window.close()">Fechar aba</button></div></div></div></body></html>`); return true; }
+  if (route==='recovery') { html(res,`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Recuperar — WaSpeed</title><style>${CLIENT_CSS}</style></head><body><div class="cw"><div class="c-brand"><div class="c-logo">WS</div><div class="c-name">WaSpeed</div></div><div class="c-card"><h2>Recuperar acesso</h2><p style="color:var(--t1);font-size:.84rem;margin-bottom:12px">Entre em contato com o administrador para obter uma nova chave de ativação.</p><div class="c-actions"><a href="/${x(sid)}/login" class="c-btn c-btn-ghost">← Voltar</a></div></div></div></body></html>`); return true; }
   if (route==='login') { html(res,clientLoginPage(sid)); return true; }
   return false;
 }
