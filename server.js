@@ -321,15 +321,17 @@ const SEC_HEADERS = {
   'Referrer-Policy':           'strict-origin-when-cross-origin',
   'Permissions-Policy':        'camera=(), microphone=(), geolocation=()',
   'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-  'Content-Security-Policy':   "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'none'; manifest-src 'none'; frame-ancestors 'none'; base-uri 'self'",
+  'Content-Security-Policy':   "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https:; worker-src 'none'; manifest-src 'none'; frame-ancestors 'none'; base-uri 'self'",
 };
 function applyHeaders(res,extra={}) { for (const [k,v] of Object.entries({ ...SEC_HEADERS,...extra })) res.setHeader(k,v); }
 function cors(req,res,p) {
-  const panel=p.startsWith(RA)||p.startsWith(RM);
+  const origin=req.headers.origin||'';
+  const isPanel=p.startsWith(RA)||p.startsWith(RM);
   applyHeaders(res,{
-    'Access-Control-Allow-Origin':  panel?'null':(req.headers.origin||'*'),
+    'Access-Control-Allow-Origin':  isPanel?(origin||cfg.base):(origin||'*'),
     'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type,Authorization,access-token,accept',
+    'Access-Control-Allow-Credentials': isPanel?'true':'false',
     'Access-Control-Max-Age':       '86400',
   });
 }
@@ -339,7 +341,7 @@ async function bodyJson(req) {
     const r=await readBody(req);
     if (!r) return {};
     const parsed=JSON.parse(r);
-    if (parsed && typeof parsed === 'object') return safeDeepClone(parsed);
+    if (parsed && typeof parsed === 'object') return Object.assign({}, safeDeepClone(parsed));
     return {};
   } catch { return {}; }
 }
@@ -488,8 +490,8 @@ body{display:flex;align-items:center;justify-content:center;min-height:100vh;pad
 .l-err{background:rgba(255,51,85,.08);border:1px solid rgba(255,51,85,.2);color:var(--rt);padding:9px 12px;border-radius:7px;font-size:.78rem;margin-bottom:12px}`;
 
 const CLIENT_CSS = BASE_CSS+`
-body{padding:0}
-.cw{max-width:860px;margin:0 auto;padding:44px 28px 64px;position:relative;z-index:1}
+body{padding:0;min-height:100vh}
+.cw{max-width:920px;margin:0 auto;padding:48px 32px 72px;position:relative;z-index:1}
 .c-brand{display:flex;align-items:center;gap:9px;margin-bottom:32px}
 .c-logo{width:34px;height:34px;border-radius:9px;background:var(--gg);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.68rem;color:#020904;box-shadow:var(--glow);flex-shrink:0}
 .c-name{font-weight:800;font-size:.95rem;letter-spacing:-.02em}
@@ -962,7 +964,7 @@ draw();
 <h2>Minha conta</h2>${mets}
 <div class="kv">
 <div class="kv-row"><span class="kv-lbl">Nome</span><span class="kv-val" style="font-weight:600">${x(user.name)}</span></div>
-<div class="kv-row"><span class="kv-lbl">Identificador</span><code class="chip" style="font-size:.72rem">${x(code)}</code></div>
+<div class="kv-row"><span class="kv-lbl">Chave</span><code class="chip" style="font-size:.72rem">${x(code)}</code></div>
 ${page?`<div class="kv-row"><span class="kv-lbl">Seção</span><span class="kv-val">${x(decodeURIComponent(page))}</span></div>`:''}
 </div>
 </div>
