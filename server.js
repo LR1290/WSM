@@ -321,12 +321,13 @@ const BASE_CSS = `@import url('https://fonts.googleapis.com/css2?family=Inter:wg
 *{box-sizing:border-box;margin:0;padding:0}html{scroll-behavior:smooth}
 body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--t0);line-height:1.6;min-height:100vh}
 a{color:var(--g);text-decoration:none;transition:color .15s}a:hover{color:#7fffaa}
-::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:var(--s0)}::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:3px}`;
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:var(--s0)}::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:3px}
+#bg-canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;opacity:.5}`;
 
 const ADMIN_CSS = BASE_CSS+`
 body{background-image:radial-gradient(ellipse 60% 40% at 20% 0,rgba(42,255,110,.06),transparent),radial-gradient(ellipse 40% 30% at 80% 100%,rgba(0,255,136,.04),transparent)}
-.layout{display:flex;min-height:100vh}
-.sidebar{width:52px;min-height:100vh;background:var(--s0);border-right:1px solid var(--bd);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden;flex-shrink:0;transition:width .2s ease}
+.layout{display:flex;min-height:100vh;position:relative;z-index:1}
+.sidebar{width:52px;min-height:100vh;background:rgba(6,14,9,.95);backdrop-filter:blur(16px);border-right:1px solid var(--bd);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden;flex-shrink:0;transition:width .2s ease;z-index:10}
 .sidebar:hover,.sidebar.open{width:210px}
 .sb-brand{padding:14px 10px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--bd);white-space:nowrap;overflow:hidden;min-height:56px}
 .sb-logo{width:32px;height:32px;border-radius:9px;background:var(--gg);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.7rem;color:#020904;letter-spacing:.04em;box-shadow:var(--glow);flex-shrink:0}
@@ -351,7 +352,7 @@ body{background-image:radial-gradient(ellipse 60% 40% at 20% 0,rgba(42,255,110,.
 .sb-out span{overflow:hidden;opacity:0;transition:opacity .15s .05s}
 .sidebar:hover .sb-out span,.sidebar.open .sb-out span{opacity:1}
 .main{flex:1;overflow-x:hidden;min-width:0}
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:52px;border-bottom:1px solid var(--bd);background:rgba(6,14,9,.9);backdrop-filter:blur(12px);position:sticky;top:0;z-index:20;gap:12px}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:52px;border-bottom:1px solid var(--bd);background:rgba(2,9,4,.92);backdrop-filter:blur(16px);position:sticky;top:0;z-index:20;gap:12px}
 .pg-title{font-size:1rem;font-weight:700;letter-spacing:-.02em;display:flex;align-items:center;gap:8px}
 .tb-right{display:flex;align-items:center;gap:8px}
 .ts{font-size:.7rem;color:var(--t2);font-variant-numeric:tabular-nums}
@@ -368,7 +369,7 @@ body{background-image:radial-gradient(ellipse 60% 40% at 20% 0,rgba(42,255,110,.
 .stat.hi .sd .val{color:var(--g);text-shadow:0 0 16px rgba(42,255,110,.35)}
 .stat.warn .sd .val{color:var(--ya)} .stat.danger .sd .val{color:var(--re)}
 .stat .sd .lbl{font-size:.62rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--t2);margin-top:1px}
-.panel{background:var(--s1);border:1px solid var(--bd);border-radius:13px;overflow:hidden;margin-bottom:18px}
+.panel{background:var(--s1);border:1px solid var(--bd);border-radius:13px;margin-bottom:18px}
 .ph{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;padding:12px 16px;border-bottom:1px solid var(--bd)}
 .pt{font-weight:600;font-size:.85rem;display:flex;align-items:center;gap:8px;color:var(--t0);white-space:nowrap}
 .pt svg{width:14px;height:14px;flex-shrink:0}
@@ -384,9 +385,9 @@ body{background-image:radial-gradient(ellipse 60% 40% at 20% 0,rgba(42,255,110,.
 .flt-row input,.flt-row select{flex:1;min-width:160px;padding:7px 11px;border-radius:7px;border:1px solid var(--bd);background:var(--s0);color:var(--t0);font:inherit;font-size:.8rem;height:32px}
 .flt-row input:focus,.flt-row select:focus{outline:none;border-color:var(--g)}
 .flt-count{font-size:.72rem;color:var(--t2);white-space:nowrap}
-.ov{overflow-x:auto}
+.ov{overflow-x:auto;overflow-y:auto;max-height:420px;border-radius:0 0 13px 13px}
 table{width:100%;border-collapse:collapse;font-size:.78rem}
-thead{position:sticky;top:52px;background:var(--s0);z-index:1}
+thead{position:sticky;top:0;background:var(--s0);z-index:2}
 th{padding:9px 13px;text-align:left;font-size:.62rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--t2);border-bottom:1px solid var(--bd);white-space:nowrap;cursor:pointer;user-select:none;transition:color .15s}
 th:hover{color:var(--g)} th.sort-asc::after{content:' ↑'} th.sort-desc::after{content:' ↓'}
 td{padding:9px 13px;border-bottom:1px solid rgba(26,61,38,.4);vertical-align:middle}
@@ -455,16 +456,16 @@ body{display:flex;align-items:center;justify-content:center;min-height:100vh;pad
 .l-err{background:rgba(255,51,85,.08);border:1px solid rgba(255,51,85,.2);color:var(--rt);padding:9px 12px;border-radius:7px;font-size:.78rem;margin-bottom:12px}`;
 
 const CLIENT_CSS = BASE_CSS+`
-body{padding:0;background-image:radial-gradient(ellipse 60% 50% at 50% -5%,rgba(42,255,110,.07),transparent)}
-.cw{max-width:500px;margin:0 auto;padding:32px 20px 60px}
-.c-brand{display:flex;align-items:center;gap:9px;margin-bottom:28px}
+body{padding:0}
+.cw{max-width:680px;margin:0 auto;padding:40px 24px 60px;position:relative;z-index:1}
+.c-brand{display:flex;align-items:center;gap:9px;margin-bottom:32px}
 .c-logo{width:34px;height:34px;border-radius:9px;background:var(--gg);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.68rem;color:#020904;box-shadow:var(--glow);flex-shrink:0}
 .c-name{font-weight:800;font-size:.95rem;letter-spacing:-.02em}
-.c-card{background:var(--s1);border:1px solid var(--bd);border-radius:13px;padding:20px;margin-bottom:12px;box-shadow:var(--sh)}
+.c-card{background:rgba(11,26,15,.88);backdrop-filter:blur(14px);border:1px solid var(--bd);border-radius:14px;padding:24px;margin-bottom:14px;box-shadow:var(--sh)}
 .c-card h2{font-size:.88rem;font-weight:700;margin-bottom:14px;color:var(--t1);text-transform:uppercase;letter-spacing:.05em;font-size:.68rem}
-.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
-.met{background:var(--s0);border:1px solid var(--bd);border-radius:9px;padding:12px;text-align:center}
-.met .mv{font-size:.95rem;font-weight:800;margin-bottom:2px;line-height:1.2}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+.met{background:rgba(6,14,9,.7);border:1px solid var(--bd);border-radius:10px;padding:16px;text-align:center}
+.met .mv{font-size:1rem;font-weight:800;margin-bottom:4px;line-height:1.2}
 .met .ml{font-size:.6rem;color:var(--t2);text-transform:uppercase;letter-spacing:.05em}
 .kv{display:flex;flex-direction:column;gap:9px}
 .kv-row{display:flex;flex-wrap:wrap;gap:4px;align-items:baseline}
@@ -511,6 +512,38 @@ function sidebar(active,role='admin',name='') {
 }
 function adminPage(title,content,active,role='admin',name='',extra='') {
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${x(title)} — WaSpeed</title><style>${ADMIN_CSS}</style></head><body>
+<canvas id="bg-canvas"></canvas><script>
+(function(){
+const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
+const G='#2aff6e',G2='rgba(42,255,110,',N=90;
+let W,H,pts=[];
+function rsz(){W=c.width=innerWidth;H=c.height=innerHeight;}
+rsz(); window.addEventListener('resize',rsz);
+function mk(){return{x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*1.1,vy:(Math.random()-.5)*.6+.3,r:Math.random()*1.4+.3,a:Math.random()};}
+for(let i=0;i<N;i++)pts.push(mk());
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  for(let i=0;i<N;i++){
+    const p=pts[i];
+    p.x+=p.vx; p.y+=p.vy;
+    if(p.x<-10)p.x=W+10; if(p.x>W+10)p.x=-10;
+    if(p.y<-10)p.y=H+10; if(p.y>H+10)p.y=-10;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);
+    ctx.fillStyle=G2+(.5+p.a*.5)+')';ctx.fill();
+    for(let j=i+1;j<N;j++){
+      const q=pts[j],dx=p.x-q.x,dy=p.y-q.y,d=dx*dx+dy*dy;
+      if(d<14000){
+        const al=1-d/14000;
+        ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);
+        ctx.strokeStyle=G2+(al*.35)+')';ctx.lineWidth=al*.8;ctx.stroke();
+      }
+    }
+  }
+  requestAnimationFrame(draw);
+}
+draw();
+})();
+</script>
 <div class="layout">${sidebar(active,role,name)}
 <div class="main"><div class="topbar"><span class="pg-title">${x(title)}</span><div class="tb-right"><span class="ts" id="ts"></span>${extra}</div></div>
 <div class="content">${content}</div></div></div>
@@ -524,6 +557,38 @@ document.getElementById('ts').textContent=new Date().toLocaleTimeString('pt-BR')
 }
 function loginPage(role,base,err='') {
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Entrar — WaSpeed</title><style>${LOGIN_CSS}</style></head><body>
+<canvas id="bg-canvas"></canvas><script>
+(function(){
+const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
+const G='#2aff6e',G2='rgba(42,255,110,',N=90;
+let W,H,pts=[];
+function rsz(){W=c.width=innerWidth;H=c.height=innerHeight;}
+rsz(); window.addEventListener('resize',rsz);
+function mk(){return{x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*1.1,vy:(Math.random()-.5)*.6+.3,r:Math.random()*1.4+.3,a:Math.random()};}
+for(let i=0;i<N;i++)pts.push(mk());
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  for(let i=0;i<N;i++){
+    const p=pts[i];
+    p.x+=p.vx; p.y+=p.vy;
+    if(p.x<-10)p.x=W+10; if(p.x>W+10)p.x=-10;
+    if(p.y<-10)p.y=H+10; if(p.y>H+10)p.y=-10;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);
+    ctx.fillStyle=G2+(.5+p.a*.5)+')';ctx.fill();
+    for(let j=i+1;j<N;j++){
+      const q=pts[j],dx=p.x-q.x,dy=p.y-q.y,d=dx*dx+dy*dy;
+      if(d<14000){
+        const al=1-d/14000;
+        ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);
+        ctx.strokeStyle=G2+(al*.35)+')';ctx.lineWidth=al*.8;ctx.stroke();
+      }
+    }
+  }
+  requestAnimationFrame(draw);
+}
+draw();
+})();
+</script>
 <div class="lw"><div class="l-brand"><div class="l-logo">WS</div><div class="l-name">WaSpeed</div></div>
 <div class="l-card"><h2>Bem-vindo</h2><p class="sub">Painel ${x(role)}</p>
 ${err?`<div class="l-err">${x(err)}</div>`:''}
@@ -787,6 +852,38 @@ const CLIENT_RE=/^\/([a-z0-9]{16,32})\/(auth-painel|login|recovery|auth-plugin|r
 
 function clientPage(storeId,token,page,rec) {
   if (!rec) return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Acesso negado — WaSpeed</title><style>${CLIENT_CSS}</style></head><body>
+<canvas id="bg-canvas"></canvas><script>
+(function(){
+const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
+const G='#2aff6e',G2='rgba(42,255,110,',N=90;
+let W,H,pts=[];
+function rsz(){W=c.width=innerWidth;H=c.height=innerHeight;}
+rsz(); window.addEventListener('resize',rsz);
+function mk(){return{x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*1.1,vy:(Math.random()-.5)*.6+.3,r:Math.random()*1.4+.3,a:Math.random()};}
+for(let i=0;i<N;i++)pts.push(mk());
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  for(let i=0;i<N;i++){
+    const p=pts[i];
+    p.x+=p.vx; p.y+=p.vy;
+    if(p.x<-10)p.x=W+10; if(p.x>W+10)p.x=-10;
+    if(p.y<-10)p.y=H+10; if(p.y>H+10)p.y=-10;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);
+    ctx.fillStyle=G2+(.5+p.a*.5)+')';ctx.fill();
+    for(let j=i+1;j<N;j++){
+      const q=pts[j],dx=p.x-q.x,dy=p.y-q.y,d=dx*dx+dy*dy;
+      if(d<14000){
+        const al=1-d/14000;
+        ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);
+        ctx.strokeStyle=G2+(al*.35)+')';ctx.lineWidth=al*.8;ctx.stroke();
+      }
+    }
+  }
+  requestAnimationFrame(draw);
+}
+draw();
+})();
+</script>
 <div class="cw"><div class="c-brand"><div class="c-logo">WS</div><div class="c-name">WaSpeed</div></div>
 <div class="c-card"><h2>Sessão inválida</h2><p style="color:var(--t1);font-size:.85rem;margin-bottom:16px">Token inválido ou sessão expirada. Faça login novamente pela extensão WaSpeed.</p>
 <div class="c-actions"><button class="c-btn c-btn-ghost" onclick="history.length>1?history.back():window.close()">← Voltar</button></div></div></div></body></html>`;
@@ -799,6 +896,38 @@ function clientPage(storeId,token,page,rec) {
 <div class="met"><div class="mv" style="font-size:.85rem${dl&&dl<=7?';color:var(--ya)':''}">${dl!==null?dl+'d':exp}</div><div class="ml">${dl!==null?'Restantes':'Validade'}</div></div>
 </div>`;
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Minha conta — WaSpeed</title><style>${CLIENT_CSS}</style></head><body>
+<canvas id="bg-canvas"></canvas><script>
+(function(){
+const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
+const G='#2aff6e',G2='rgba(42,255,110,',N=90;
+let W,H,pts=[];
+function rsz(){W=c.width=innerWidth;H=c.height=innerHeight;}
+rsz(); window.addEventListener('resize',rsz);
+function mk(){return{x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*1.1,vy:(Math.random()-.5)*.6+.3,r:Math.random()*1.4+.3,a:Math.random()};}
+for(let i=0;i<N;i++)pts.push(mk());
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  for(let i=0;i<N;i++){
+    const p=pts[i];
+    p.x+=p.vx; p.y+=p.vy;
+    if(p.x<-10)p.x=W+10; if(p.x>W+10)p.x=-10;
+    if(p.y<-10)p.y=H+10; if(p.y>H+10)p.y=-10;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);
+    ctx.fillStyle=G2+(.5+p.a*.5)+')';ctx.fill();
+    for(let j=i+1;j<N;j++){
+      const q=pts[j],dx=p.x-q.x,dy=p.y-q.y,d=dx*dx+dy*dy;
+      if(d<14000){
+        const al=1-d/14000;
+        ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);
+        ctx.strokeStyle=G2+(al*.35)+')';ctx.lineWidth=al*.8;ctx.stroke();
+      }
+    }
+  }
+  requestAnimationFrame(draw);
+}
+draw();
+})();
+</script>
 <div class="cw">
 <div class="c-brand"><div class="c-logo">WS</div><div class="c-name">WaSpeed</div></div>
 <div class="c-card">
@@ -824,6 +953,38 @@ ${page?`<div class="kv-row"><span class="kv-lbl">Seção</span><span class="kv-v
 
 function clientLoginPage(storeId) {
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Painel — WaSpeed</title><style>${CLIENT_CSS}</style></head><body>
+<canvas id="bg-canvas"></canvas><script>
+(function(){
+const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
+const G='#2aff6e',G2='rgba(42,255,110,',N=90;
+let W,H,pts=[];
+function rsz(){W=c.width=innerWidth;H=c.height=innerHeight;}
+rsz(); window.addEventListener('resize',rsz);
+function mk(){return{x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*1.1,vy:(Math.random()-.5)*.6+.3,r:Math.random()*1.4+.3,a:Math.random()};}
+for(let i=0;i<N;i++)pts.push(mk());
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  for(let i=0;i<N;i++){
+    const p=pts[i];
+    p.x+=p.vx; p.y+=p.vy;
+    if(p.x<-10)p.x=W+10; if(p.x>W+10)p.x=-10;
+    if(p.y<-10)p.y=H+10; if(p.y>H+10)p.y=-10;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);
+    ctx.fillStyle=G2+(.5+p.a*.5)+')';ctx.fill();
+    for(let j=i+1;j<N;j++){
+      const q=pts[j],dx=p.x-q.x,dy=p.y-q.y,d=dx*dx+dy*dy;
+      if(d<14000){
+        const al=1-d/14000;
+        ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);
+        ctx.strokeStyle=G2+(al*.35)+')';ctx.lineWidth=al*.8;ctx.stroke();
+      }
+    }
+  }
+  requestAnimationFrame(draw);
+}
+draw();
+})();
+</script>
 <div class="cw">
 <div class="c-brand"><div class="c-logo">WS</div><div class="c-name">WaSpeed</div></div>
 <div class="c-card">
@@ -850,7 +1011,7 @@ async function handleClientPanel(req,res,path,url) {
   if (route==='auth-painel') { if (!tok) { res.writeHead(302,{ Location:`/${sid}/login` }); res.end(); return true; } html(res,clientPage(sid,tok,pg,await findBearer(tok))); return true; }
   if (route==='auth-plugin') { res.writeHead(302,{ Location:tok?`/${sid}/auth-painel?token=${encodeURIComponent(tok)}`:`/${sid}/login` }); res.end(); return true; }
   if (route==='redirect-plugin-register'||route==='register') { html(res,clientLoginPage(sid)); return true; }
-  if (route==='recovery') { html(res,`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Recuperar — WaSpeed</title><style>${CLIENT_CSS}</style></head><body><div class="cw"><div class="c-brand"><div class="c-logo">WS</div><div class="c-name">WaSpeed</div></div><div class="c-card"><h2>Recuperar acesso</h2><p style="color:var(--t1);font-size:.84rem;margin-bottom:12px">Entre em contato com o administrador para obter uma nova chave de ativação.</p><div class="c-actions"><a href="/${x(sid)}/login" class="c-btn c-btn-ghost">← Voltar</a></div></div></div></body></html>`); return true; }
+  if (route==='recovery') { html(res,`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Recuperar — WaSpeed</title><style>${CLIENT_CSS}</style></head><body><canvas id="bg-canvas"></canvas><script>(function(){const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');const G2='rgba(42,255,110,',N=90;let W,H,pts=[];function rsz(){W=c.width=innerWidth;H=c.height=innerHeight;}rsz();window.addEventListener('resize',rsz);function mk(){return{x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*1.1,vy:(Math.random()-.5)*.6+.3,r:Math.random()*1.4+.3,a:Math.random()};}for(let i=0;i<N;i++)pts.push(mk());function draw(){ctx.clearRect(0,0,W,H);for(let i=0;i<N;i++){const p=pts[i];p.x+=p.vx;p.y+=p.vy;if(p.x<-10)p.x=W+10;if(p.x>W+10)p.x=-10;if(p.y<-10)p.y=H+10;if(p.y>H+10)p.y=-10;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);ctx.fillStyle=G2+(.5+p.a*.5)+')';ctx.fill();for(let j=i+1;j<N;j++){const q=pts[j],dx=p.x-q.x,dy=p.y-q.y,d=dx*dx+dy*dy;if(d<14000){const al=1-d/14000;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.strokeStyle=G2+(al*.35)+')';ctx.lineWidth=al*.8;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script><div class="cw"><div class="c-brand"><div class="c-logo">WS</div><div class="c-name">WaSpeed</div></div><div class="c-card"><h2>Recuperar acesso</h2><p style="color:var(--t1);font-size:.84rem;margin-bottom:12px">Entre em contato com o administrador para obter uma nova chave de ativação.</p><div class="c-actions"><a href="/${x(sid)}/login" class="c-btn c-btn-ghost">← Voltar</a></div></div></div></body></html>`); return true; }
   if (route==='login') { html(res,clientLoginPage(sid)); return true; }
   return false;
 }
