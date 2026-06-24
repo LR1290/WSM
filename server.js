@@ -1855,12 +1855,9 @@ function modApiPathRegex(suffix = '') {
 const CLIENT_PANEL_RE = /^\/([a-z0-9]{16,32})\/(auth-painel|login|recovery|auth-plugin|redirect-plugin-register|register)\/?$/i;
 
 function clientShell(title, body, navHtml = '', subtitle = '') {
-  const extraNav = `<a href="/faq" style="font-size:.82rem;color:var(--muted);padding:5px 12px;border-radius:7px;border:1px solid var(--border);text-decoration:none;transition:all .2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">FAQ</a>
-    <a href="/planos" style="font-size:.82rem;color:var(--muted);padding:5px 12px;border-radius:7px;border:1px solid var(--border);text-decoration:none;transition:all .2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">💳 Planos</a>
-    <a href="/privacidade" style="font-size:.82rem;color:var(--muted);padding:5px 12px;border-radius:7px;border:1px solid var(--border);text-decoration:none;transition:all .2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">🔒 Privacidade</a>`;
   const nav = navHtml
-    ? `<nav style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${navHtml}&nbsp;&nbsp;${extraNav}</nav>`
-    : `<nav style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${extraNav}</nav>`;
+    ? `<nav style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${navHtml}</nav>`
+    : '';
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} — WaSpeed</title><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23020604'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2339ff14'%3EWS%3C/text%3E%3C/svg%3E"><style>${PANEL_CSS}</style></head>
@@ -2712,7 +2709,6 @@ ${headExtra || ''}
 <header>
   <a href="/" class="logo">⚡ WaSpeed</a>
   <div class="hlinks">
-    <a href="/${config.chromeStoreId}/auth-painel">Portal</a>
     <a href="/faq">FAQ</a>
     <a href="/planos">💳 Planos</a>
     <a href="https://wa.me/5521996771552?text=Olá!%20Preciso%20de%20ajuda%20com%20o%20WaSpeed." target="_blank">💬 Suporte</a>
@@ -2727,36 +2723,22 @@ ${bodyContent}
 }
 
 function renderHomePage() {
-  return publicShell('Portal', `
-main{max-width:720px;margin:0 auto;padding:80px 24px}
-.hero{text-align:center;margin-bottom:56px}
-.hero-badge{display:inline-flex;align-items:center;gap:6px;background:#39ff1412;border:1px solid #39ff1430;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 16px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif}
-.hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,5vw,48px);font-weight:800;line-height:1.1;margin-bottom:14px}
-.hero h1 em{color:var(--green);font-style:normal;text-shadow:0 0 22px rgba(57,255,20,.4)}
-.hero-sub{color:#6a8a6c;font-size:14px;line-height:1.9;max-width:480px;margin:0 auto 36px;font-family:'Syne',sans-serif}
-.cta-box{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:36px;text-align:center}
-.cta-box h2{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;margin-bottom:8px}
-.cta-box p{color:#6a8a6c;font-size:13px;line-height:1.8;margin-bottom:24px;font-family:'Syne',sans-serif}
-.btn-g{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#39ff14,#00c80a);color:#020604;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;padding:14px 32px;border-radius:10px;text-decoration:none;transition:all .2s;box-shadow:0 4px 20px rgba(57,255,20,.3)}
-.btn-g:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(57,255,20,.45)}
-.links-row{display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap}
-.links-row a{font-size:13px;color:#4a6a4c;text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:8px;font-family:'Syne',sans-serif;transition:all .2s}
-.links-row a:hover{color:var(--green);border-color:var(--green)}`,
+  return publicShell('Servidor', `
+main{max-width:680px;margin:0 auto;padding:80px 24px}
+.srv-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:36px 32px}
+.srv-badge{display:inline-flex;align-items:center;gap:6px;background:#39ff1412;border:1px solid #39ff1430;color:var(--green);font-size:11px;letter-spacing:2px;text-transform:uppercase;padding:4px 14px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif}
+.srv-title{font-family:'Syne',sans-serif;font-size:1.6rem;font-weight:800;margin-bottom:6px}
+.srv-sub{color:#6a8a6c;font-size:.9rem;margin-bottom:28px;font-family:'Syne',sans-serif}
+.srv-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:.88rem;color:#6a8a6c;margin-bottom:10px;font-family:'Syne',sans-serif}
+.srv-row strong{color:var(--text)}
+.srv-chip{background:#0a140a;border:1px solid var(--border);border-radius:6px;padding:3px 10px;font-family:monospace;font-size:.8rem;color:var(--green)}`,
   `<main>
-  <div class="hero">
-    <div class="hero-badge">⚡ Extensão para WhatsApp Web</div>
-    <h1>CRM e automação<br>para o seu <em>WhatsApp</em></h1>
-    <p class="hero-sub">WaSpeed adiciona agendamentos, fluxos, funis, disparos em massa e muito mais ao WhatsApp Web.</p>
-  </div>
-  <div class="cta-box">
-    <h2>Acesse seu portal</h2>
-    <p>Consulte o status da sua chave, data de validade e informações da conta.</p>
-    <a class="btn-g" href="/${config.chromeStoreId}/auth-painel">🔑 Minha Conta</a>
-    <div class="links-row">
-      <a href="/planos">💳 Ver Planos</a>
-      <a href="/faq">❓ FAQ</a>
-      <a href="https://wa.me/5521996771552" target="_blank">💬 Suporte</a>
-    </div>
+  <div class="srv-card">
+    <div class="srv-badge">⚡ WaSpeed Server</div>
+    <div class="srv-title">WaSpeed Server</div>
+    <p class="srv-sub">Servidor de licenças e configuração</p>
+    <div class="srv-row"><strong>Backend ativo em</strong> <span class="srv-chip">${config.baseUrl}</span></div>
+    <div class="srv-row"><strong>Login extensão:</strong> somente chave · <strong>API:</strong> <span class="srv-chip">/api/auth/validation/:id</span></div>
   </div>
 </main>`);
 }
@@ -3196,9 +3178,8 @@ async function handleRequest(req, res) {
     }
 
     if (pathname === '/' || pathname === '') {
-      // Redireciona para o portal do cliente real
-      res.writeHead(302, { Location: `/${config.chromeStoreId}/auth-painel` });
-      res.end();
+      // Portal principal: renderiza a página de consulta de chave
+      sendHtml(res, renderClientLogin(config.chromeStoreId));
       return;
     }
 
