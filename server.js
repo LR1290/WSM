@@ -1229,7 +1229,7 @@ async function handleClientPanel(req, res, pathname, url) {
       const extensionId = pathParts[0];
       
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(`
+      return res.end(`
       <!DOCTYPE html>
       <html lang="pt-BR">
       <head>
@@ -1238,7 +1238,7 @@ async function handleClientPanel(req, res, pathname, url) {
           <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
           <style>
               body { background: #0f0f13; color: #e1e1e6; font-family: 'Segoe UI', sans-serif; }
-              .card-panel { background: #181820; border: 1px solid #282834; border-radius: 12px; }
+              .card-panel { background: #181820; border: 1px solid #282834; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
               .btn-gradient { background: linear-gradient(135deg, #00b4db, #0083b0); color: white; border: none; font-weight: 600; }
           </style>
       </head>
@@ -1249,14 +1249,18 @@ async function handleClientPanel(req, res, pathname, url) {
                       <div class="card card-panel p-4 text-center">
                           <h2 class="fw-bold text-white mb-1">WaSpeed <span class="text-info" style="font-size: 1rem;">v3.0</span></h2>
                           <p class="text-muted small">Autenticação do Dispositivo</p>
-                          <div class="form-floating mb-3">
-                              <input type="text" class="form-control bg-dark text-white border-secondary" id="licenseKey" placeholder="Chave">
-                              <label for="licenseKey" class="text-muted">Chave de Licença</label>
+                          
+                          <div id="authBox">
+                              <div class="form-floating mb-3">
+                                  <input type="text" class="form-control bg-dark text-white border-secondary" id="licenseKey" placeholder="Sua Chave">
+                                  <label for="licenseKey" class="text-muted">Chave de Licença</label>
+                              </div>
+                              <button id="btnVerify" class="w-100 btn btn-gradient py-3 rounded-3 mb-2">Verificar e Vincular</button>
                           </div>
-                          <button id="btnVerify" class="w-100 btn btn-gradient py-3 rounded-3 mb-2">Verificar e Vincular</button>
+
                           <div id="statusBox" class="mt-3 d-none">
                               <div class="alert alert-dark border-secondary bg-opacity-10 text-start">
-                                  <p class="mb-1 small"><strong>Status:</strong> <span class="badge bg-success">Vinculado</span></p>
+                                  <p class="mb-1 small"><strong>Status:</strong> <span class="badge bg-success">Ativo / Vinculado</span></p>
                                   <p class="mb-0 small text-muted text-truncate"><strong>ID:</strong> ${extensionId}</p>
                               </div>
                           </div>
@@ -1270,9 +1274,11 @@ async function handleClientPanel(req, res, pathname, url) {
               const btn = document.getElementById('btnVerify');
               const keyInput = document.getElementById('licenseKey');
               const msg = document.getElementById('msgResponse');
+
               if(localStorage.getItem('waspeed_token')) {
                   document.getElementById('statusBox').classList.remove('d-none');
               }
+
               btn.addEventListener('click', async () => {
                   const key = keyInput.value.trim();
                   if(!key) return;
@@ -1295,6 +1301,7 @@ async function handleClientPanel(req, res, pathname, url) {
       </body>
       </html>
       `);
+  }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
