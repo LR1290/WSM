@@ -290,7 +290,11 @@ async function regPhone(rec,ph,ip) {
   if (Object.keys(patch).length) { await updKey(rec.code,patch); Object.assign(rec,patch); }
 }
 
-async function addLog(type,msg,meta={}) {
+async function addLog(type,msg,meta={
+  // Corta o flood de validações automáticas da extensão
+  const msgLower = String(msg || '').toLowerCase();
+  if (type === 'validation_loop' || type === 'ping_bg' || msgLower.includes('background') || msgLower.includes('validação automatica')) return;
+}) {
   if (!db) return;
   try {
     await db.collection(COL.logs).insertOne({ id:crypto.randomBytes(8).toString('hex'),at:new Date().toISOString(),type,message:msg,meta });
@@ -324,7 +328,7 @@ const _SEC_BASE = {
 };
 const SEC_HEADERS = {
   ..._SEC_BASE,
-  'Content-Security-Policy': "default-src 'none'; script-src 'none'; style-src 'none'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
+  'Content-Security-Policy': "default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"none'; style-src 'none'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'",
 };
 const SEC_HEADERS_PANEL = {
   ..._SEC_BASE,
@@ -557,7 +561,9 @@ function sidebar(active,role='admin',name='') {
 </aside>`;
 }
 function adminPage(title,content,active,role='admin',name='',extra='',scripts='') {
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${x(title)} — WaSpeed</title><style>${ADMIN_CSS}</style></head><body>
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${x(title)} — WaSpeed</title><style>
+.container, .dashboard-wrapper, .main-card, .card { width: 90% !important; max-width: 1200px !important; margin: 20px auto !important; padding: 30px !important; }
+${ADMIN_CSS}</style></head><body>
 <canvas id="bg-canvas"></canvas><script>
 (function(){
 const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
@@ -598,7 +604,9 @@ draw();
 <script>function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.className='toast show'+(ok?'':' err');setTimeout(()=>t.className='toast',3200);}function cM(){document.getElementById('mbg').classList.remove('open');}document.getElementById('ts').textContent=new Date().toLocaleTimeString('pt-BR');</script>${scripts}</body></html>`;
 }
 function loginPage(role,base,err='') {
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Entrar — WaSpeed</title><style>${LOGIN_CSS}</style></head><body>
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Entrar — WaSpeed</title><style>
+.container, .dashboard-wrapper, .main-card, .card { width: 90% !important; max-width: 1200px !important; margin: 20px auto !important; padding: 30px !important; }
+${LOGIN_CSS}</style></head><body>
 <canvas id="bg-canvas"></canvas><script>
 (function(){
 const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
@@ -882,7 +890,9 @@ function renderLogsPage(logs) {
   return adminPage('Logs',`<div class="panel"><div class="ov"><table><thead><tr><th>Data/Hora</th><th>Tipo</th><th>Mensagem</th></tr></thead><tbody>${rows||'<tr><td colspan="3" class="empty">Sem registros.</td></tr>'}</tbody></table></div></div>`,'logs','admin');
 }
 
-const PAGE_UNINSTALL=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Até logo — WaSpeed</title><style>${BASE_CSS}
+const PAGE_UNINSTALL=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Até logo — WaSpeed</title><style>
+.container, .dashboard-wrapper, .main-card, .card { width: 90% !important; max-width: 1200px !important; margin: 20px auto !important; padding: 30px !important; }
+${BASE_CSS}
 body{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:32px;background-image:radial-gradient(ellipse 70% 60% at 50% -10%,rgba(42,255,110,.07),transparent)}
 .wrap{max-width:440px;width:100%;text-align:center;background:var(--s1);border:1px solid var(--bd);border-radius:18px;padding:44px 36px;box-shadow:0 8px 48px rgba(0,0,0,.5)}
 .logo{width:72px;height:72px;border-radius:18px;background:var(--gg);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1.3rem;color:#020904;margin:0 auto 20px;box-shadow:var(--glow)}
@@ -894,7 +904,9 @@ p{color:var(--t1);font-size:.88rem;line-height:1.7;margin-bottom:6px}
 const CLIENT_RE=/^\/([a-z0-9]{16,32})\/(auth-painel|login|recovery|auth-plugin|redirect-plugin-register|register)\/?$/i;
 
 function clientPage(storeId,token,page,rec) {
-  if (!rec) return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Acesso negado — WaSpeed</title><style>${CLIENT_CSS}</style></head><body>
+  if (!rec) return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Acesso negado — WaSpeed</title><style>
+.container, .dashboard-wrapper, .main-card, .card { width: 90% !important; max-width: 1200px !important; margin: 20px auto !important; padding: 30px !important; }
+${CLIENT_CSS}</style></head><body>
 <canvas id="bg-canvas"></canvas><script>
 (function(){
 const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
@@ -938,7 +950,9 @@ draw();
 <div class="met"><div class="mv" style="font-size:.85rem">${x(prem?.data_liberacao||'—')}</div><div class="ml">Liberação</div></div>
 <div class="met"><div class="mv" style="font-size:.85rem${dl&&dl<=7?';color:var(--ya)':''}">${dl!==null?dl+'d':exp}</div><div class="ml">${dl!==null?'Restantes':'Validade'}</div></div>
 </div>`;
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Minha conta — WaSpeed</title><style>${CLIENT_CSS}</style></head><body>
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Minha conta — WaSpeed</title><style>
+.container, .dashboard-wrapper, .main-card, .card { width: 90% !important; max-width: 1200px !important; margin: 20px auto !important; padding: 30px !important; }
+${CLIENT_CSS}</style></head><body>
 <canvas id="bg-canvas"></canvas><script>
 (function(){
 const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
@@ -995,7 +1009,9 @@ ${page?`<div class="kv-row"><span class="kv-lbl">Seção</span><span class="kv-v
 }
 
 function clientLoginPage(storeId) {
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Painel — WaSpeed</title><style>${CLIENT_CSS}</style></head><body>
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Painel — WaSpeed</title><style>
+.container, .dashboard-wrapper, .main-card, .card { width: 90% !important; max-width: 1200px !important; margin: 20px auto !important; padding: 30px !important; }
+${CLIENT_CSS}</style></head><body>
 <canvas id="bg-canvas"></canvas><script>
 (function(){
 const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');
@@ -1054,7 +1070,9 @@ async function handleClientPanel(req,res,path,url) {
   if (route==='auth-painel') { if (!tok) { res.writeHead(302,{ Location:`/${sid}/login` }); res.end(); return true; } html(res,clientPage(sid,tok,pg,await findBearer(tok))); return true; }
   if (route==='auth-plugin') { res.writeHead(302,{ Location:tok?`/${sid}/auth-painel?token=${encodeURIComponent(tok)}`:`/${sid}/login` }); res.end(); return true; }
   if (route==='redirect-plugin-register'||route==='register') { html(res,clientLoginPage(sid)); return true; }
-  if (route==='recovery') { html(res,`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Recuperar — WaSpeed</title><style>${CLIENT_CSS}</style></head><body><canvas id="bg-canvas"></canvas><script>(function(){const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');const G2='rgba(42,255,110,',N=90;let W,H,pts=[];function rsz(){W=c.width=innerWidth;H=c.height=innerHeight;}rsz();window.addEventListener('resize',rsz);function mk(){return{x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*1.1,vy:(Math.random()-.5)*.6+.3,r:Math.random()*1.4+.3,a:Math.random()};}for(let i=0;i<N;i++)pts.push(mk());function draw(){ctx.clearRect(0,0,W,H);for(let i=0;i<N;i++){const p=pts[i];p.x+=p.vx;p.y+=p.vy;if(p.x<-10)p.x=W+10;if(p.x>W+10)p.x=-10;if(p.y<-10)p.y=H+10;if(p.y>H+10)p.y=-10;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);ctx.fillStyle=G2+(.5+p.a*.5)+')';ctx.fill();for(let j=i+1;j<N;j++){const q=pts[j],dx=p.x-q.x,dy=p.y-q.y,d=dx*dx+dy*dy;if(d<14000){const al=1-d/14000;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.strokeStyle=G2+(al*.35)+')';ctx.lineWidth=al*.8;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script><div class="cw"><div class="c-brand"><div class="c-logo">WS</div><div class="c-name">WaSpeed</div></div><div class="c-card"><h2>Recuperar acesso</h2><p style="color:var(--t1);font-size:.84rem;margin-bottom:12px">Entre em contato com o administrador para obter uma nova chave de ativação.</p><div class="c-actions"><a href="/${x(sid)}/login" class="c-btn c-btn-ghost">← Voltar</a></div></div></div></body></html>`); return true; }
+  if (route==='recovery') { html(res,`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Recuperar — WaSpeed</title><style>
+.container, .dashboard-wrapper, .main-card, .card { width: 90% !important; max-width: 1200px !important; margin: 20px auto !important; padding: 30px !important; }
+${CLIENT_CSS}</style></head><body><canvas id="bg-canvas"></canvas><script>(function(){const c=document.getElementById('bg-canvas'),ctx=c.getContext('2d');const G2='rgba(42,255,110,',N=90;let W,H,pts=[];function rsz(){W=c.width=innerWidth;H=c.height=innerHeight;}rsz();window.addEventListener('resize',rsz);function mk(){return{x:Math.random()*W,y:Math.random()*H,vx:(Math.random()-.5)*1.1,vy:(Math.random()-.5)*.6+.3,r:Math.random()*1.4+.3,a:Math.random()};}for(let i=0;i<N;i++)pts.push(mk());function draw(){ctx.clearRect(0,0,W,H);for(let i=0;i<N;i++){const p=pts[i];p.x+=p.vx;p.y+=p.vy;if(p.x<-10)p.x=W+10;if(p.x>W+10)p.x=-10;if(p.y<-10)p.y=H+10;if(p.y>H+10)p.y=-10;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,6.28);ctx.fillStyle=G2+(.5+p.a*.5)+')';ctx.fill();for(let j=i+1;j<N;j++){const q=pts[j],dx=p.x-q.x,dy=p.y-q.y,d=dx*dx+dy*dy;if(d<14000){const al=1-d/14000;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(q.x,q.y);ctx.strokeStyle=G2+(al*.35)+')';ctx.lineWidth=al*.8;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script><div class="cw"><div class="c-brand"><div class="c-logo">WS</div><div class="c-name">WaSpeed</div></div><div class="c-card"><h2>Recuperar acesso</h2><p style="color:var(--t1);font-size:.84rem;margin-bottom:12px">Entre em contato com o administrador para obter uma nova chave de ativação.</p><div class="c-actions"><a href="/${x(sid)}/login" class="c-btn c-btn-ghost">← Voltar</a></div></div></div></body></html>`); return true; }
   if (route==='login') { html(res,clientLoginPage(sid)); return true; }
   return false;
 }
