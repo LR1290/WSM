@@ -960,115 +960,6 @@ function renderAdminSpa(keysHtml, logsHtml, stats) {
   return panelShell('Painel do Distribuidor', body, navHtml, 'Espaco do Moderador: ' + esc(modName));
 }
 
-// ====== ROTA DO PAINEL DO CLIENTE (INTERFAÇE GRÁFICA) ======
-const pathParts = pathname.split('/').filter(Boolean);
-if (pathParts.length === 2 && pathParts[1] === 'auth-painel') {
-    const extensionId = pathParts[0];
-    
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(`
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>WaSpeed - Painel do Cliente</title>
-        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-        <style>
-            body { background: #0f0f13; color: #e1e1e6; font-family: 'Segoe UI', system-ui, sans-serif; }
-            .card-panel { background: #181820; border: 1px solid #282834; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
-            .btn-gradient { background: linear-gradient(135deg, #00b4db, #0083b0); color: white; border: none; font-weight: 600; }
-            .btn-gradient:hover { background: linear-gradient(135deg, #0083b0, #005f81); color: white; }
-            .status-badge { font-size: 0.85rem; padding: 0.4rem 0.8rem; border-radius: 20px; }
-        </style>
-    </head>
-    <body class="d-flex align-items-center min-vh-100">
-        <div class="container">
-            <div class="row justify-content-center">
-                <div class="col-md-6 col-lg-5">
-                    <div class="card card-panel p-4 text-center">
-                        <div class="mb-4">
-                            <h2 class="fw-bold text-white mb-1">WaSpeed <span class="text-info" style="font-size: 1rem; vertical-align: super;">v3.0</span></h2>
-                            <p class="text-muted small">Autenticação do Dispositivo</p>
-                        </div>
-                        
-                        <div id="authBox">
-                            <div class="form-floating mb-3">
-                                <input type="text" class="form-control bg-dark text-white border-secondary" id="licenseKey" placeholder="Sua Chave de Acesso">
-                                <label for="licenseKey" class="text-muted">Chave de Licença</label>
-                            </div>
-                            <button id="btnVerify" class="w-100 btn btn-gradient py-3 rounded-3 mb-2">Verificar e Vincular</button>
-                        </div>
-
-                        <div id="statusBox" class="mt-3 d-none">
-                            <div class="alert alert-dark border-secondary bg-opacity-10 text-start">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <span class="small text-muted">Status do Sistema:</span>
-                                    <span id="badgeStatus" class="badge bg-success status-badge">Ativo</span>
-                                </div>
-                                <p class="mb-1 small"><strong>Expira em:</strong> <span id="txtExpiry" class="text-info">-</span></p>
-                                <p class="mb-0 small text-muted text-truncate"><strong>ID:</strong> ${extensionId}</p>
-                            </div>
-                        </div>
-                        
-                        <div id="msgResponse" class="mt-3 small"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <script>
-            const extId = "${extensionId}";
-            const btn = document.getElementById('btnVerify');
-            const keyInput = document.getElementById('licenseKey');
-            const msg = document.getElementById('msgResponse');
-
-            // Verifica se já possui sessão salva no localStorage local
-            if(localStorage.getItem('waspeed_token')) {
-                document.getElementById('statusBox').classList.remove('d-none');
-                document.getElementById('badgeStatus').innerText = "Vinculado";
-                document.getElementById('txtExpiry').innerText = localStorage.getItem('waspeed_expiry') || 'Permanente';
-            }
-
-            btn.addEventListener('click', async () => {
-                const key = keyInput.value.trim();
-                if(!key) {
-                    msg.innerHTML = '<span class="text-danger">Por favor, insira uma chave válida.</span>';
-                    return;
-                }
-                
-                btn.disabled = true;
-                msg.innerHTML = '<span class="text-warning">Processando ativação...</span>';
-
-                try {
-                    const res = await fetch('/api/user/login', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ key, token: extId })
-                    });
-                    const data = await res.json();
-
-                    if(data.success) {
-                        msg.innerHTML = '<span class="text-success">Sucesso! Licença vinculada com sucesso.</span>';
-                        localStorage.setItem('waspeed_token', extId);
-                        localStorage.setItem('waspeed_expiry', data.expiry || 'Ativa');
-                        setTimeout(() => location.reload(), 1500);
-                    } else {
-                        msg.innerHTML = '<span class="text-danger">' + (data.message || 'Chave inválida ou já utilizada.') + '</span>';
-                        btn.disabled = false;
-                    }
-                } catch(e) {
-                    msg.innerHTML = '<span class="text-danger">Erro ao conectar com o servidor.</span>';
-                    btn.disabled = false;
-                }
-            });
-        </script>
-    </body>
-    </html>
-    `);
-    return;
-}
-
 function adminApiPathRegex(suffix) {
   return new RegExp(`^${R_ADMIN.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}${suffix}$`);
 }async function handleAdminApi(req, res, pathname, ip) {
@@ -1332,6 +1223,78 @@ async function handleClientPanel(req, res, pathname, url) {
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = url.pathname;
+  
+  const pathParts = pathname.split('/').filter(Boolean);
+  if (pathParts.length === 2 && pathParts[1] === 'auth-painel') {
+      const extensionId = pathParts[0];
+      
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`
+      <!DOCTYPE html>
+      <html lang="pt-BR">
+      <head>
+          <meta charset="UTF-8">
+          <title>WaSpeed - Painel do Cliente</title>
+          <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+          <style>
+              body { background: #0f0f13; color: #e1e1e6; font-family: 'Segoe UI', sans-serif; }
+              .card-panel { background: #181820; border: 1px solid #282834; border-radius: 12px; }
+              .btn-gradient { background: linear-gradient(135deg, #00b4db, #0083b0); color: white; border: none; font-weight: 600; }
+          </style>
+      </head>
+      <body class="d-flex align-items-center min-vh-100">
+          <div class="container">
+              <div class="row justify-content-center">
+                  <div class="col-md-6 col-lg-5">
+                      <div class="card card-panel p-4 text-center">
+                          <h2 class="fw-bold text-white mb-1">WaSpeed <span class="text-info" style="font-size: 1rem;">v3.0</span></h2>
+                          <p class="text-muted small">Autenticação do Dispositivo</p>
+                          <div class="form-floating mb-3">
+                              <input type="text" class="form-control bg-dark text-white border-secondary" id="licenseKey" placeholder="Chave">
+                              <label for="licenseKey" class="text-muted">Chave de Licença</label>
+                          </div>
+                          <button id="btnVerify" class="w-100 btn btn-gradient py-3 rounded-3 mb-2">Verificar e Vincular</button>
+                          <div id="statusBox" class="mt-3 d-none">
+                              <div class="alert alert-dark border-secondary bg-opacity-10 text-start">
+                                  <p class="mb-1 small"><strong>Status:</strong> <span class="badge bg-success">Vinculado</span></p>
+                                  <p class="mb-0 small text-muted text-truncate"><strong>ID:</strong> ${extensionId}</p>
+                              </div>
+                          </div>
+                          <div id="msgResponse" class="mt-3 small"></div>
+                      </div>
+                  </div>
+              </div>
+          </div>
+          <script>
+              const extId = "${extensionId}";
+              const btn = document.getElementById('btnVerify');
+              const keyInput = document.getElementById('licenseKey');
+              const msg = document.getElementById('msgResponse');
+              if(localStorage.getItem('waspeed_token')) {
+                  document.getElementById('statusBox').classList.remove('d-none');
+              }
+              btn.addEventListener('click', async () => {
+                  const key = keyInput.value.trim();
+                  if(!key) return;
+                  try {
+                      const res = await fetch('/api/user/login', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ key, token: extId })
+                      });
+                      const data = await res.json();
+                      if(data.success) {
+                          localStorage.setItem('waspeed_token', extId);
+                          location.reload();
+                      } else {
+                          msg.innerHTML = '<span class="text-danger">' + (data.message || 'Erro') + '</span>';
+                      }
+                  } catch(e) { msg.innerHTML = '<span class="text-danger">Erro de conexão</span>'; }
+              });
+          </script>
+      </body>
+      </html>
+      `);
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
