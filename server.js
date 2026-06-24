@@ -606,7 +606,7 @@ function keyToUser(code, rec) {
   return {
     user_id: String(rec.user_id),
     name: rec.label || 'Usuario',
-    email: rec.email || `${code}@waspeed.local`,
+    email: rec.email || `${code}`,
     wl_id: config.wlId,
     bearer_token: rec.bearer_token || code,
     access_token_plugin: rec.access_token_plugin || code,
