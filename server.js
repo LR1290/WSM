@@ -1245,8 +1245,11 @@ textarea{resize:vertical;min-height:80px}
   border-radius:8px;border:1px solid var(--border);background:#040d06;color:var(--text)}
 /* Gerador inline */
 .gen-form{display:flex;flex-wrap:wrap;gap:7px;align-items:flex-end}
-.gen-form input,.gen-form select{padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:#040d06;color:var(--text);font-size:.82rem}
-.gen-form input[type=number]{width:58px}
+.gen-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:14px 18px;background:#020904;border-top:1px solid var(--border)}
+.gen-form input,.gen-form select{padding:9px 13px;border-radius:8px;border:1px solid var(--border);background:#040d06;color:var(--text);font-size:.9rem}
+.gen-form input[type=text]{min-width:180px;flex:1}
+.gen-form input[type=number]{width:80px}
+.gen-form select{min-width:90px}
 /* Toast */
 .toast{position:fixed;bottom:22px;right:22px;padding:12px 18px;border-radius:10px;
   background:var(--surface2);border:1px solid var(--accent);color:var(--accent);
@@ -1272,7 +1275,7 @@ textarea{resize:vertical;min-height:80px}
 .login-card .subtitle{color:var(--muted);font-size:.875rem;margin-bottom:22px;text-align:center}
 .login-card .btn{width:100%;margin-top:8px;color:#020604}
 /* Client panel */
-.app{max-width:900px;margin:0 auto;padding:28px 20px 56px}
+.app{max-width:1100px;margin:0 auto;padding:28px 24px 56px}
 .topbar-simple{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:16px;
   padding:14px 24px;margin-bottom:28px;border-radius:14px;
   background:var(--surface2);border:1px solid var(--border);box-shadow:var(--shadow)}
@@ -1894,26 +1897,26 @@ function renderClientAuthPainel(storeId, token, page, rec) {
     <a href="https://web.whatsapp.com" target="_blank" rel="noopener" style="font-size:.875rem;color:var(--muted);padding:6px 12px;border-radius:7px;border:1px solid var(--border)">WhatsApp Web</a>`;
 
   return clientShell('Minha conta', `
-    <div class="metrics">
-      <div class="metric"><div class="metric-value" style="font-size:1rem">${statusBadgeHtml(st)}</div><div class="metric-label">Status</div></div>
-      <div class="metric"><div class="metric-value" style="font-size:1.1rem">${esc(liberacao)}</div><div class="metric-label">Data liberação</div></div>
-      <div class="metric"><div class="metric-value" style="font-size:.95rem">${esc(exp)}</div><div class="metric-label">Validade</div></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:22px">
+      <div class="metric" style="padding:28px 20px"><div class="metric-value" style="font-size:1.1rem;margin-bottom:10px">${statusBadgeHtml(st)}</div><div class="metric-label">Status</div></div>
+      <div class="metric" style="padding:28px 20px"><div class="metric-value" style="font-size:1.3rem">${esc(liberacao)}</div><div class="metric-label">Data liberação</div></div>
+      <div class="metric" style="padding:28px 20px"><div class="metric-value" style="font-size:1.1rem">${esc(exp)}</div><div class="metric-label">Validade</div></div>
     </div>
-    <div class="card">
+    <div class="card" style="padding:28px 30px;margin-bottom:18px">
       <div class="card-title">Conta</div>
-      <p style="font-size:1.05rem;font-weight:700">${esc(user.name)}</p>
-      <p style="color:var(--muted);font-size:.875rem">${esc((user.email || '').replace(/@waspeed\.local$/i, ''))}</p>
-      <div class="info-grid" style="margin-top:14px">
-        <div class="info-row"><span class="label">Chave</span><code class="key-chip">${esc(code)}</code></div>
-        ${pageLabel ? `<div class="info-row"><span class="label">Seção</span><span>${pageLabel}</span></div>` : ''}
+      <p style="font-size:1.3rem;font-weight:700;margin-bottom:6px">${esc(user.name)}</p>
+      <p style="color:var(--muted);font-size:1rem;margin-bottom:18px">${esc((user.email || '').replace(/@waspeed\.local$/i, ''))}</p>
+      <div class="info-grid" style="gap:14px">
+        <div class="info-row" style="font-size:1rem"><span class="label" style="font-size:.85rem">Chave</span><code class="key-chip" style="font-size:.9rem">${esc(code)}</code></div>
+        ${pageLabel ? `<div class="info-row" style="font-size:1rem"><span class="label" style="font-size:.85rem">Seção</span><span>${pageLabel}</span></div>` : ''}
       </div>
     </div>
-    <div class="card">
+    <div class="card" style="padding:28px 30px">
       <div class="card-title">Informações</div>
-      <div class="info-grid">
-        <div class="info-row"><span class="label">Servidor</span><span class="key-chip">${esc(config.baseUrl)}</span></div>
-        <div class="info-row"><span class="label">WhatsApp</span><span>${esc(rec.lastPhone || '—')}</span></div>
-        <div class="info-row"><span class="label">Último uso</span><span>${rec.lastUsed ? esc(new Date(rec.lastUsed).toLocaleString('pt-BR')) : '—'}</span></div>
+      <div class="info-grid" style="gap:14px">
+        <div class="info-row" style="font-size:1rem"><span class="label" style="font-size:.85rem">Servidor</span><span class="key-chip" style="font-size:.9rem">Servidor de teste ativo</span></div>
+        <div class="info-row" style="font-size:1rem"><span class="label" style="font-size:.85rem">WhatsApp</span><span style="font-size:1rem">${esc(rec.lastPhone || '—')}</span></div>
+        <div class="info-row" style="font-size:1rem"><span class="label" style="font-size:.85rem">Último uso</span><span style="font-size:1rem">${rec.lastUsed ? esc(new Date(rec.lastUsed).toLocaleString('pt-BR')) : '—'}</span></div>
       </div>
     </div>`, nav, `Olá, ${esc(user.name)}`);
 }
@@ -2325,9 +2328,52 @@ async function handleAdmin(req, res, pathname, ip = '') {
     const licenses = await listLicenses();
     const stats    = await getPanelKeyStats();
     const sidebar  = adminSidebar('keys', stats);
-    const body = `<div class="toolbar"><a class="btn btn-success" href="${R_ADMIN}/keys/new">+ Nova Chave</a>
-      <span style="color:var(--muted);font-size:.875rem">${licenses.length} chave(s) cadastrada(s)</span></div>
-      <div class="sec"><div class="tbl-wrap">${buildLicenseTableRows(licenses) || '<div class="empty-state"><p>Nenhuma chave cadastrada</p></div>'}</div></div>`;
+    const keysHtml = buildLicenseTableRows(licenses);
+    const body = `
+<div class="toolbar"><a class="btn btn-success" href="${R_ADMIN}/keys/new">+ Nova Chave</a>
+  <span style="color:var(--muted);font-size:.875rem">${licenses.length} chave(s) cadastrada(s)</span></div>
+<div class="sec">
+  <div class="sh" style="gap:8px">
+    <input type="text" id="search-input" placeholder="🔍 Buscar chave, nome, telefone..." oninput="filterKeys()" style="flex:1;min-width:180px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:#040d06;color:var(--text)">
+    <select id="filter-status" onchange="filterKeys()" style="padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:#040d06;color:var(--text)">
+      <option value="">Todos os status</option>
+      <option value="ativo">PRO Ativas</option>
+      <option value="free">Free</option>
+      <option value="pendente">Pendentes</option>
+      <option value="expirando">Expirando</option>
+      <option value="expirada">Expiradas</option>
+      <option value="bloqueado">Bloqueadas</option>
+    </select>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr>
+        <th>Chave</th><th>Cliente</th><th>Status</th><th>Validade</th>
+        <th>Usos</th><th>Telefone</th><th>Último IP</th><th>Último acesso</th><th>Criada</th><th>Nota</th><th>Ações</th>
+      </tr></thead>
+      <tbody id="kb">${keysHtml || '<tr><td colspan="11" style="text-align:center;padding:32px;color:var(--muted)">Nenhuma chave cadastrada</td></tr>'}</tbody>
+    </table>
+  </div>
+</div>
+<script>
+const _RA='${R_ADMIN}';
+function filterKeys(){
+  const q=(document.getElementById('search-input').value||'').toLowerCase();
+  const st=document.getElementById('filter-status').value;
+  document.querySelectorAll('#kb tr.kr').forEach(r=>{
+    const row=(r.dataset.code+r.dataset.label+r.dataset.phone).toLowerCase();
+    r.style.display=(!q||row.includes(q))&&(!st||r.dataset.status===st)?'':'none';
+  });
+}
+function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.style.borderColor=ok?'var(--accent)':'var(--danger)';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500);}
+async function apiToggle(code){const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});if(r.ok){toast('Status alterado');location.reload();}else toast('Falha',false);}
+async function apiDelete(code){if(!confirm('Excluir '+code+'?'))return;const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});if(r.ok){toast('Removida');setTimeout(()=>location.reload(),800);}else toast('Falha',false);}
+async function apiActivate(code){const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/activate',{method:'POST'});if(r.ok){toast('Ativada');location.reload();}else toast('Falha',false);}
+function openRenew(code){document.getElementById('modal-box').innerHTML='<h3>Renovar '+code+'</h3><div class="field"><label>Dias</label><input id="rd" type="number" min="0" value="30"></div><div class="field"><label>Horas</label><input id="rh" type="number" min="0" value="0"></div><div class="mrow"><button class="btn-p" onclick="submitRenew(\''+code+'\')">Confirmar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>';document.getElementById('modal-bg').classList.add('open');}
+async function submitRenew(code){const days=+document.getElementById('rd').value||0,hours=+document.getElementById('rh').value||0;const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/renew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days,hours})});closeModal();if(r.ok){toast('Renovada');location.reload();}else toast('Falha',false);}
+function openUses(code,cur){document.getElementById('modal-box').innerHTML='<h3>Usos — '+code+'</h3><div class="field"><label>Máx (-1=∞)</label><input id="mu" type="number" value="'+cur+'"></div><div class="mrow"><button class="btn-p" onclick="submitUses(\''+code+'\')">Confirmar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>';document.getElementById('modal-bg').classList.add('open');}
+async function submitUses(code){const maxUses=parseInt(document.getElementById('mu').value);const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/max-uses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({maxUses})});closeModal();if(r.ok){toast('Atualizado');location.reload();}else toast('Falha',false);}
+</script>`;
     return sendHtml(res, spaShell('Chaves', sidebar, '🔑 Chaves de Acesso', body));
   }
 
@@ -2575,6 +2621,392 @@ async function runSecurityTests(req) {
   };
 }
 
+// --- Páginas públicas (FAQ / Planos / Privacidade) ---------------------------
+
+function publicShell(title, headExtra, bodyContent) {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WaSpeed — ${esc(title)}</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23020604'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2339ff14'%3EWS%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--green:#39ff14;--dark:#020604;--card:#0a0f0b;--card2:#0e1410;--border:#1a2a1c;--text:#e2f0e2;--muted:#4a6a4c;--radius:14px}
+body{background:var(--dark);color:var(--text);font-family:'Space Mono',monospace;min-height:100vh;overflow-x:hidden}
+header{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;border-bottom:1px solid var(--border);background:var(--card);position:sticky;top:0;z-index:50;box-shadow:0 2px 20px #00000060}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--green);text-decoration:none;display:flex;align-items:center;gap:8px;letter-spacing:-0.5px;text-shadow:0 0 18px rgba(57,255,20,.4)}
+.hlinks{display:flex;gap:10px}
+.hlinks a{font-size:13px;color:var(--muted);text-decoration:none;padding:6px 14px;border:1px solid var(--border);border-radius:6px;transition:all .2s;font-family:'Syne',sans-serif;font-weight:700}
+.hlinks a:hover{color:var(--green);border-color:var(--green)}
+footer{text-align:center;padding:28px;font-size:13px;color:#4a6a4c;border-top:1px solid var(--border);font-family:'Syne',sans-serif}
+footer a{color:#4a6a4c;text-decoration:none}footer a:hover{color:var(--green)}
+${headExtra || ''}
+</style></head><body>
+<header>
+  <a href="/" class="logo">⚡ WaSpeed</a>
+  <div class="hlinks">
+    <a href="/${config.chromeStoreId}/auth-painel">Portal</a>
+    <a href="/faq">FAQ</a>
+    <a href="/planos">💳 Planos</a>
+    <a href="https://wa.me/5521996771552?text=Olá!%20Preciso%20de%20ajuda%20com%20o%20WaSpeed." target="_blank">💬 Suporte</a>
+  </div>
+</header>
+${bodyContent}
+<footer>
+  <p>© ${new Date().getFullYear()} WaSpeed — <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/planos">Planos</a> · <a href="/privacidade">Privacidade</a></p>
+  <p style="margin-top:6px;font-size:12px;letter-spacing:2px;text-transform:uppercase;opacity:.5">Todos os direitos reservados</p>
+</footer>
+</body></html>`;
+}
+
+function renderHomePage() {
+  return publicShell('Portal', `
+main{max-width:720px;margin:0 auto;padding:80px 24px}
+.hero{text-align:center;margin-bottom:56px}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:#39ff1412;border:1px solid #39ff1430;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 16px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,5vw,48px);font-weight:800;line-height:1.1;margin-bottom:14px}
+.hero h1 em{color:var(--green);font-style:normal;text-shadow:0 0 22px rgba(57,255,20,.4)}
+.hero-sub{color:#6a8a6c;font-size:14px;line-height:1.9;max-width:480px;margin:0 auto 36px;font-family:'Syne',sans-serif}
+.cta-box{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:36px;text-align:center}
+.cta-box h2{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;margin-bottom:8px}
+.cta-box p{color:#6a8a6c;font-size:13px;line-height:1.8;margin-bottom:24px;font-family:'Syne',sans-serif}
+.btn-g{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(135deg,#39ff14,#00c80a);color:#020604;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;padding:14px 32px;border-radius:10px;text-decoration:none;transition:all .2s;box-shadow:0 4px 20px rgba(57,255,20,.3)}
+.btn-g:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(57,255,20,.45)}
+.links-row{display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap}
+.links-row a{font-size:13px;color:#4a6a4c;text-decoration:none;padding:8px 16px;border:1px solid var(--border);border-radius:8px;font-family:'Syne',sans-serif;transition:all .2s}
+.links-row a:hover{color:var(--green);border-color:var(--green)}`,
+  `<main>
+  <div class="hero">
+    <div class="hero-badge">⚡ Extensão para WhatsApp Web</div>
+    <h1>CRM e automação<br>para o seu <em>WhatsApp</em></h1>
+    <p class="hero-sub">WaSpeed adiciona agendamentos, fluxos, funis, disparos em massa e muito mais ao WhatsApp Web.</p>
+  </div>
+  <div class="cta-box">
+    <h2>Acesse seu portal</h2>
+    <p>Consulte o status da sua chave, data de validade e informações da conta.</p>
+    <a class="btn-g" href="/${config.chromeStoreId}/auth-painel">🔑 Minha Conta</a>
+    <div class="links-row">
+      <a href="/planos">💳 Ver Planos</a>
+      <a href="/faq">❓ FAQ</a>
+      <a href="https://wa.me/5521996771552" target="_blank">💬 Suporte</a>
+    </div>
+  </div>
+</main>`);
+}
+
+function renderPlanosPage() {
+  const PLANOS = [
+    { devices:1,  label:'Solo',        price:'24,99', oldPrice:null,    desc:'Para uso pessoal',    icon:'👤', perDevice:'24,99', link:'#', highlight:false },
+    { devices:3,  label:'Padrão',      price:'29,99', oldPrice:'44,99', desc:'O mais escolhido',    icon:'⚡', perDevice:'10,00', link:'#', highlight:true  },
+    { devices:5,  label:'Pro',         price:'39,99', oldPrice:'79,99', desc:'Para equipes',        icon:'🚀', perDevice:'8,00',  link:'#', highlight:false },
+    { devices:10, label:'Empresarial', price:'59,99', oldPrice:'149,99',desc:'Escala total',        icon:'🏢', perDevice:'6,00',  link:'#', highlight:false },
+  ];
+  const cards = PLANOS.map(p => {
+    const comingSoon = p.link === '#';
+    return `<div class="plan-card${p.highlight?' hl':''}">
+  ${p.highlight?'<div class="pop-badge">⚡ Mais popular</div>':''}
+  <div class="plan-top">
+    <div class="plan-icon">${p.icon}</div>
+    <div class="plan-name">${p.label}</div>
+    <div class="plan-sub">${p.devices} número${p.devices>1?'s':''} de WhatsApp</div>
+  </div>
+  <div class="plan-pricing">
+    ${p.oldPrice?`<div class="old-price">R$ ${p.oldPrice}</div>`:''}
+    <div class="plan-price"><span class="cur">R$</span><span class="val">${p.price}</span><span class="per">/mês</span></div>
+    <div class="per-device">R$ ${p.perDevice} por número</div>
+  </div>
+  <div class="plan-divider"></div>
+  <ul class="plan-features">
+    <li>✅ Até ${p.devices} número(s) de WhatsApp</li>
+    <li>✅ 30 dias de acesso</li>
+    <li>✅ Todos os recursos inclusos</li>
+    <li>✅ Renovação automática pelo portal</li>
+  </ul>
+  <a href="${p.link}" class="plan-btn${p.highlight?' btn-hl':''}" ${comingSoon?'onclick="return false;"':'target="_blank"'}>
+    ${comingSoon?'🔒 Em breve':'💳 Assinar agora'}
+  </a>
+</div>`;
+  }).join('');
+
+  return publicShell('Planos e Preços', `
+main{max-width:1060px;margin:0 auto;padding:56px 24px 80px}
+.hero{text-align:center;margin-bottom:48px}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;background:#39ff1412;border:1px solid #39ff1430;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 16px;border-radius:20px;margin-bottom:20px;font-family:'Syne',sans-serif}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,4vw,46px);font-weight:800;line-height:1.1;margin-bottom:14px}
+.hero h1 em{color:var(--green);font-style:normal}
+.hero-sub{color:#6a8a6c;font-size:13px;line-height:1.8;max-width:460px;margin:0 auto 28px;font-family:'Syne',sans-serif}
+.guarantee{display:inline-flex;align-items:center;gap:20px;background:var(--card);border:1px solid var(--border);border-radius:30px;padding:10px 24px;font-size:14px;color:#6a8a6c;font-family:'Syne',sans-serif}
+.guarantee span{display:flex;align-items:center;gap:6px}
+.wip-banner{background:#ffd32a08;border:1px solid #ffd32a25;border-radius:10px;padding:13px 20px;margin-bottom:36px;display:flex;align-items:center;gap:12px;font-size:13px;color:#c9a800;line-height:1.7;font-family:'Syne',sans-serif}
+.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:48px}
+.plan-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 20px 22px;text-align:center;position:relative;transition:border-color .25s,transform .2s;display:flex;flex-direction:column;width:100%}
+.plan-card:hover{border-color:#39ff1440;transform:translateY(-4px)}
+.plan-card.hl{border-color:#39ff1460;background:linear-gradient(165deg,#0a180a,#0e140e);box-shadow:0 0 30px #39ff1415}
+.pop-badge{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--green);color:#020604;font-family:'Syne',sans-serif;font-weight:800;font-size:14px;padding:5px 18px;border-radius:20px;white-space:nowrap}
+.plan-top{margin-bottom:20px}
+.plan-icon{font-size:36px;margin-bottom:10px}
+.plan-name{font-family:'Syne',sans-serif;font-size:17px;font-weight:800;margin-bottom:4px}
+.plan-sub{font-size:13px;color:#6a8a6c;font-family:'Syne',sans-serif}
+.plan-pricing{margin-bottom:18px}
+.old-price{font-size:13px;color:var(--muted);text-decoration:line-through;margin-bottom:4px}
+.plan-price{display:flex;align-items:baseline;justify-content:center;gap:3px;margin-bottom:4px}
+.cur{font-size:14px;color:var(--green);font-weight:700}
+.val{font-family:'Syne',sans-serif;font-size:34px;font-weight:800;color:var(--green);line-height:1}
+.per{font-size:14px;color:var(--muted);font-family:'Syne',sans-serif}
+.per-device{font-size:13px;color:#8ab08c;font-family:'Syne',sans-serif;font-weight:600;margin-top:2px}
+.plan-divider{height:1px;background:var(--border);margin:16px 0}
+.plan-features{list-style:none;text-align:left;font-size:13px;color:#8ab08c;line-height:1.5;display:flex;flex-direction:column;gap:10px;margin-bottom:20px;flex:1;font-family:'Syne',sans-serif}
+.plan-btn{display:block;padding:12px;border-radius:8px;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;text-decoration:none;text-align:center;transition:all .2s;background:#1a2a1c;color:var(--muted);border:1px solid var(--border);cursor:not-allowed;opacity:.65;margin-top:auto}
+.plan-btn.btn-hl{background:var(--green);color:#020604;border:none;cursor:not-allowed;opacity:.7}
+.compare{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:32px}
+.compare-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.5px;padding:16px 22px;border-bottom:1px solid var(--border);background:var(--card2)}
+.compare table{width:100%;border-collapse:collapse;font-size:13px;font-family:'Syne',sans-serif}
+.compare th{padding:11px 16px;text-align:center;color:#8ab08c;border-bottom:1px solid var(--border);font-weight:600;font-size:13px;background:var(--card2)}
+.compare th:first-child{text-align:left}
+.compare td{padding:11px 16px;text-align:center;border-bottom:1px solid var(--border);color:var(--text)}
+.compare td:first-child{text-align:left;color:#8ab08c;font-size:13px}
+.compare tr:last-child td{border-bottom:none}
+.ck{color:var(--green)}.cx{color:#ff475760}
+.includes{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px 26px;margin-bottom:32px}
+.inc-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:800;color:var(--green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}
+.inc-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.inc-item{display:flex;align-items:center;gap:12px;font-size:14px;color:#b0c8b0;line-height:1.5;font-family:'Syne',sans-serif;font-weight:500}
+.inc-item .ic{flex-shrink:0;font-size:20px}
+.faq2{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:26px 28px;margin-bottom:32px}
+.faq2-title{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:18px}
+.faq2-item{border-bottom:1px solid var(--border);padding:13px 0}
+.faq2-item:last-child{border-bottom:none;padding-bottom:0}
+.faq2-q{font-size:15px;color:#e2f0e2;font-weight:700;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;user-select:none;font-family:'Syne',sans-serif}
+.faq2-q .arr{color:var(--muted);transition:transform .2s;flex-shrink:0}
+.faq2-a{font-size:14px;color:#8ab08c;line-height:1.9;padding-top:10px;display:none;font-family:'Syne',sans-serif}
+.faq2-item.open .faq2-a{display:block}
+.faq2-item.open .arr{transform:rotate(90deg)}
+.cta2{background:linear-gradient(135deg,#0a1a0a,#0e140e);border:1px solid #39ff1440;border-radius:var(--radius);padding:36px 28px;text-align:center}
+.cta2 h3{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;margin-bottom:8px}
+.cta2 p{color:#6a8a6c;font-size:13px;margin-bottom:22px;line-height:1.8;font-family:'Syne',sans-serif}
+.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:12px 24px;border-radius:8px;text-decoration:none;transition:all .2s}
+.btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px)}
+@media(max-width:800px){.plans{grid-template-columns:1fr 1fr}.inc-grid{grid-template-columns:1fr}}
+@media(max-width:480px){.plans{grid-template-columns:1fr}.guarantee{flex-direction:column;gap:10px}}`,
+  `<main>
+  <div class="hero">
+    <div class="hero-badge">💳 Planos e Preços</div>
+    <h1>Simples, <em>transparente</em><br>e sem surpresas</h1>
+    <p class="hero-sub">Escolha o plano ideal. Todos incluem acesso completo à extensão WaSpeed por 30 dias.</p>
+    <div class="guarantee">
+      <span>✅ Sem fidelidade</span>
+      <span>⚡ Ativação imediata</span>
+      <span>💬 Suporte incluso</span>
+    </div>
+  </div>
+  <div class="wip-banner">
+    <span style="font-size:18px;flex-shrink:0">🚧</span>
+    <span><strong>Links de pagamento em breve!</strong> Os planos já estão configurados — assim que os links forem adicionados você poderá assinar direto por aqui.</span>
+  </div>
+  <div class="plans">${cards}</div>
+  <div class="compare">
+    <div class="compare-title">📊 Comparativo dos planos</div>
+    <table>
+      <thead><tr>
+        <th style="text-align:left">Recurso</th>
+        <th>Solo</th><th>Padrão</th><th>Pro</th><th>Empresarial</th>
+      </tr></thead>
+      <tbody>
+        <tr><td>Números de WhatsApp</td><td>1</td><td>3</td><td>5</td><td>10</td></tr>
+        <tr><td>Preço mensal</td><td>R$ 24,99</td><td>R$ 29,99</td><td>R$ 39,99</td><td>R$ 59,99</td></tr>
+        <tr><td>Preço por número</td><td>R$ 24,99</td><td style="color:var(--green)">R$ 10,00</td><td style="color:var(--green)">R$ 8,00</td><td style="color:var(--green)">R$ 6,00</td></tr>
+        <tr><td>Todos os recursos</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+        <tr><td>Portal do cliente</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+        <tr><td>Suporte WhatsApp</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+        <tr><td>Renovação automática</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td><td class="ck">✓</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="includes">
+    <div class="inc-title">✅ Incluso em todos os planos</div>
+    <div class="inc-grid">
+      <div class="inc-item"><span class="ic">⚡</span><span>Acesso completo à extensão WaSpeed para WhatsApp Web</span></div>
+      <div class="inc-item"><span class="ic">🔄</span><span>Atualizações automáticas durante a vigência</span></div>
+      <div class="inc-item"><span class="ic">📱</span><span>Portal do cliente para gerenciar sua chave</span></div>
+      <div class="inc-item"><span class="ic">⏰</span><span>30 dias a partir da primeira ativação</span></div>
+      <div class="inc-item"><span class="ic">💬</span><span>Suporte via WhatsApp com a equipe</span></div>
+      <div class="inc-item"><span class="ic">🎯</span><span>Fluxos, funis, agendamentos e disparos</span></div>
+      <div class="inc-item"><span class="ic">🔁</span><span>Renovação soma ao tempo restante</span></div>
+      <div class="inc-item"><span class="ic">🔒</span><span>Chave exclusiva e intransferível</span></div>
+    </div>
+  </div>
+  <div class="faq2">
+    <div class="faq2-title">💬 Dúvidas frequentes</div>
+    <div class="faq2-item">
+      <div class="faq2-q">O que é um "número de WhatsApp" no plano? <span class="arr">▶</span></div>
+      <div class="faq2-a">Cada número corresponde a um WhatsApp diferente que pode usar a extensão simultaneamente. No plano Padrão (3 números), três números distintos podem usar ao mesmo tempo.</div>
+    </div>
+    <div class="faq2-item">
+      <div class="faq2-q">Quando minha chave é ativada após o pagamento? <span class="arr">▶</span></div>
+      <div class="faq2-a">Imediatamente após a confirmação do pagamento. Para PIX é instantâneo. A chave já estará disponível no portal do cliente antes mesmo de você fechar a janela de confirmação.</div>
+    </div>
+    <div class="faq2-item">
+      <div class="faq2-q">Se eu já tenho uma chave e compro de novo, o que acontece? <span class="arr">▶</span></div>
+      <div class="faq2-a">Sua chave existente é renovada automaticamente — os 30 dias são somados ao tempo que ainda resta. Você não perde nenhum dia e não precisa de uma chave nova.</div>
+    </div>
+    <div class="faq2-item">
+      <div class="faq2-q">O que acontece quando minha chave expira? <span class="arr">▶</span></div>
+      <div class="faq2-a">A extensão para de funcionar até que você renove. Seu histórico e configurações são mantidos — basta renovar e tudo volta como estava.</div>
+    </div>
+  </div>
+  <div class="cta2">
+    <h3>Ainda tem dúvidas?</h3>
+    <p>Nossa equipe está disponível para te ajudar a escolher o melhor plano.</p>
+    <a class="btn-wpp" href="https://wa.me/5521996771552?text=Olá!%20Quero%20saber%20mais%20sobre%20os%20planos%20do%20WaSpeed." target="_blank">💬 Falar com o Suporte no WhatsApp</a>
+  </div>
+</main>
+<script>
+document.querySelectorAll('.faq2-item').forEach(item=>{
+  item.querySelector('.faq2-q').addEventListener('click',()=>item.classList.toggle('open'));
+});
+</script>`);
+}
+
+function renderFaqPage() {
+  return publicShell('FAQ', `
+main{max-width:920px;margin:0 auto;padding:60px 32px 80px}
+.hero{text-align:center;margin-bottom:64px}
+.hero-badge{display:inline-block;background:#39ff1412;border:1px solid #39ff1430;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:22px;font-family:'Syne',sans-serif}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(28px,5vw,48px);font-weight:800;line-height:1.1;margin-bottom:18px}
+.hero h1 span{color:var(--green)}
+.hero-sub{color:#6a8a6c;font-size:16px;line-height:1.8;max-width:600px;margin:0 auto 36px;font-family:'Syne',sans-serif}
+.wip-card{background:linear-gradient(135deg,#0a140a,#0e180a);border:1px solid #39ff1440;border-radius:var(--radius);padding:40px 36px;text-align:center;margin-bottom:56px;position:relative}
+.wip-icon{font-size:52px;margin-bottom:18px;display:block;animation:float 3s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.wip-title{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;margin-bottom:12px}
+.wip-title span{color:var(--green)}
+.wip-desc{color:#6a8a6c;font-size:15px;line-height:1.9;max-width:560px;margin:0 auto 28px;font-family:'Syne',sans-serif}
+.progress-wrap{background:#1a2a1c;border-radius:8px;height:6px;overflow:hidden;max-width:320px;margin:0 auto 10px}
+.progress-bar{height:6px;background:linear-gradient(90deg,#39ff14,#00c80a);border-radius:8px;animation:prog 2.5s ease-in-out infinite alternate}
+@keyframes prog{from{width:30%}to{width:50%}}
+.progress-label{font-size:12px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+.coming-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--muted);letter-spacing:2px;text-transform:uppercase;text-align:center;margin-bottom:20px}
+.coming-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:52px}
+.coming-item{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px 22px;display:flex;align-items:flex-start;gap:14px;transition:border-color .2s}
+.coming-item:hover{border-color:#39ff1440}
+.coming-item .ic{font-size:20px;flex-shrink:0;margin-top:1px}
+.coming-item h3{font-family:'Syne',sans-serif;font-size:15px;font-weight:700;margin-bottom:6px}
+.coming-item p{font-size:14px;color:#6a8a6c;line-height:1.6;font-family:'Syne',sans-serif}
+.support-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:32px;text-align:center}
+.support-section h2{font-family:'Syne',sans-serif;font-size:16px;font-weight:800;margin-bottom:8px}
+.support-section p{color:#6a8a6c;font-size:15px;line-height:1.8;margin-bottom:24px;font-family:'Syne',sans-serif}
+.support-btns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.btn-wpp{display:inline-flex;align-items:center;gap:8px;background:#25d36620;border:1px solid #25d36640;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
+.btn-wpp:hover{background:#25d36630;border-color:#25d366;transform:translateY(-2px)}
+.btn-portal{display:inline-flex;align-items:center;gap:8px;background:#39ff1412;border:1px solid #39ff1430;color:var(--green);font-family:'Syne',sans-serif;font-weight:700;font-size:12px;padding:11px 22px;border-radius:8px;text-decoration:none;transition:all .2s}
+.btn-portal:hover{background:#39ff1422;border-color:var(--green);transform:translateY(-2px)}
+@media(max-width:520px){.coming-grid{grid-template-columns:1fr}main{padding:40px 16px 60px}}`,
+  `<main>
+  <div class="hero">
+    <div class="hero-badge">Central de Ajuda</div>
+    <h1>Perguntas <span>Frequentes</span></h1>
+    <p class="hero-sub">Estamos construindo uma base de conhecimento completa. Em breve tudo estará aqui.</p>
+  </div>
+  <div class="wip-card">
+    <span class="wip-icon">🚧</span>
+    <div class="wip-title">Estamos <span>trabalhando nisso!</span></div>
+    <p class="wip-desc">Nossa central de FAQ está sendo desenvolvida. Em breve você encontrará aqui respostas sobre ativação, dispositivos, renovação, pagamentos e muito mais.</p>
+    <div class="progress-wrap"><div class="progress-bar"></div></div>
+    <p class="progress-label">Em desenvolvimento</p>
+  </div>
+  <p class="coming-title">O que vem por aí</p>
+  <div class="coming-grid">
+    <div class="coming-item"><span class="ic">🔑</span><div><h3>Ativação da Chave</h3><p>Como inserir e ativar sua chave no WhatsApp Web.</p></div></div>
+    <div class="coming-item"><span class="ic">📱</span><div><h3>Gerenciar Dispositivos</h3><p>Como adicionar, remover e trocar números vinculados.</p></div></div>
+    <div class="coming-item"><span class="ic">⏱</span><div><h3>Renovação e Validade</h3><p>Entenda como funciona a expiração e como renovar.</p></div></div>
+    <div class="coming-item"><span class="ic">💳</span><div><h3>Pagamentos</h3><p>Dúvidas sobre cobrança, planos e confirmação de compra.</p></div></div>
+    <div class="coming-item"><span class="ic">⚡</span><div><h3>Recursos da Extensão</h3><p>Como usar fluxos, funis, agendamentos e disparos.</p></div></div>
+    <div class="coming-item"><span class="ic">🔒</span><div><h3>Privacidade e LGPD</h3><p>Quais dados coletamos e como protegemos suas informações.</p></div></div>
+  </div>
+  <div class="support-section">
+    <h2>Ainda tem dúvidas?</h2>
+    <p>Enquanto o FAQ não está pronto, nossa equipe está disponível no WhatsApp.</p>
+    <div class="support-btns">
+      <a class="btn-wpp" href="https://wa.me/5521996771552?text=Olá!%20Preciso%20de%20ajuda%20com%20o%20WaSpeed." target="_blank">💬 Falar com o Suporte</a>
+      <a class="btn-portal" href="/${config.chromeStoreId}/auth-painel">🔑 Portal do Cliente</a>
+    </div>
+  </div>
+</main>`);
+}
+
+function renderPrivacyPage() {
+  return publicShell('Política de Privacidade', `
+main{max-width:720px;margin:0 auto;padding:56px 24px 80px}
+.hero{margin-bottom:48px}
+.hero-badge{display:inline-block;background:#39ff1412;border:1px solid #39ff1430;color:var(--green);font-size:12px;letter-spacing:2px;text-transform:uppercase;padding:5px 14px;border-radius:20px;margin-bottom:18px;font-family:'Syne',sans-serif}
+.hero h1{font-family:'Syne',sans-serif;font-size:clamp(24px,4vw,36px);font-weight:800;margin-bottom:12px}
+.hero-meta{font-size:13px;color:var(--muted);font-family:'Syne',sans-serif}
+.section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;margin-bottom:14px}
+.section h2{font-family:'Syne',sans-serif;font-size:14px;font-weight:700;color:var(--green);margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.section p,.section li{font-size:13px;color:#8ab08c;line-height:1.9;margin-bottom:10px}
+.section ul{padding-left:18px}
+.section li{margin-bottom:6px}
+.section li::marker{color:var(--green)}
+.section p:last-child,.section li:last-child{margin-bottom:0}
+.highlight{background:#39ff1408;border:1px solid #39ff1420;border-radius:8px;padding:14px 18px;margin-top:14px}
+.highlight p{color:var(--text);font-size:13px;margin:0;font-family:'Syne',sans-serif;line-height:1.7}
+.tag{display:inline-block;background:#1a2a1c;border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;color:var(--muted);margin:2px;vertical-align:middle}
+@media(max-width:520px){main{padding:32px 16px 60px}.section{padding:20px 18px}}`,
+  `<main>
+  <div class="hero">
+    <div class="hero-badge">Legal</div>
+    <h1>Política de Privacidade</h1>
+    <p class="hero-meta">Última atualização: ${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</p>
+  </div>
+  <div class="section">
+    <h2>📋 Visão Geral</h2>
+    <p>Esta Política descreve como o <strong style="color:var(--text)">WaSpeed</strong> coleta, utiliza e protege seus dados ao usar o serviço de licenciamento da extensão WaSpeed.</p>
+    <p>Ao ativar ou consultar sua chave de acesso, você concorda com estes termos, em conformidade com a <strong style="color:var(--text)">Lei Geral de Proteção de Dados (LGPD — Lei nº 13.709/2018)</strong>.</p>
+  </div>
+  <div class="section">
+    <h2>🗂 Dados que Coletamos</h2>
+    <p>Para fins exclusivos de licenciamento e controle de acesso, coletamos:</p>
+    <ul>
+      <li><strong style="color:var(--text)">Chave de ativação</strong> — identificador único do seu acesso</li>
+      <li><strong style="color:var(--text)">Número de telefone</strong> — vinculado à chave para controle de dispositivos</li>
+      <li><strong style="color:var(--text)">Endereço IP</strong> — para detecção de uso indevido e segurança</li>
+      <li><strong style="color:var(--text)">Versão do WhatsApp Web</strong> — para compatibilidade técnica</li>
+      <li><strong style="color:var(--text)">Timestamps de acesso</strong> — data e hora de cada uso registrado</li>
+    </ul>
+    <div class="highlight">
+      <p>⚠️ <strong>Não coletamos</strong> mensagens, contatos, conversas ou qualquer conteúdo do WhatsApp. Nosso serviço não tem acesso ao conteúdo das suas comunicações.</p>
+    </div>
+  </div>
+  <div class="section">
+    <h2>🎯 Finalidade</h2>
+    <p>Os dados são usados exclusivamente para:</p>
+    <ul>
+      <li>Validar e controlar o acesso à extensão WaSpeed</li>
+      <li>Detectar uso indevido ou compartilhamento não autorizado de chaves</li>
+      <li>Suporte técnico quando solicitado pelo usuário</li>
+      <li>Controle do número de dispositivos vinculados por chave</li>
+    </ul>
+    <p>Base legal: <strong style="color:var(--text)">execução de contrato</strong> (Art. 7º, V, LGPD).</p>
+  </div>
+  <div class="section">
+    <h2>⏱ Retenção</h2>
+    <p>Registros de acesso são removidos automaticamente após <strong style="color:var(--text)">90 dias</strong>. Dados da chave são mantidos enquanto ela estiver ativa. Ao excluir a chave, todos os dados associados são apagados permanentemente.</p>
+  </div>
+  <div class="section">
+    <h2>🔒 Segurança</h2>
+    <p>Dados armazenados no <strong style="color:var(--text)">MongoDB Atlas</strong> com criptografia AES-256 em repouso e TLS em trânsito. O painel administrativo é protegido por senha e sessão segura.</p>
+  </div>
+  <div class="section">
+    <h2>🤝 Compartilhamento</h2>
+    <p>Seus dados <strong style="color:var(--text)">não são vendidos ou compartilhados</strong> com terceiros para fins comerciais. Apenas os provedores de infraestrutura têm acesso técnico:</p>
+    <ul>
+      <li><span class="tag">MongoDB Atlas</span> armazenamento dos dados</li>
+      <li><span class="tag">Render.com</span> hospedagem do servidor</li>
+    </ul>
+  </div>
+</main>`);
+}
+
 // --- Router principal --------------------------------------------------------
 
 async function handleRequest(req, res) {
@@ -2674,6 +3106,22 @@ async function handleRequest(req, res) {
 
     if (pathname === '/obrigado') {
       return sendHtml(res, clientShell('Obrigado', '<div class="card" style="text-align:center;padding:48px"><h2 style="margin-bottom:8px">Obrigado!</h2><p style="color:var(--muted)">WaSpeed</p></div>'));
+    }
+
+    if (pathname === '/' || pathname === '') {
+      return sendHtml(res, renderHomePage());
+    }
+
+    if (pathname === '/faq' && req.method === 'GET') {
+      return sendHtml(res, renderFaqPage());
+    }
+
+    if (pathname === '/planos' && req.method === 'GET') {
+      return sendHtml(res, renderPlanosPage());
+    }
+
+    if (pathname === '/privacidade' && req.method === 'GET') {
+      return sendHtml(res, renderPrivacyPage());
     }
 
     if (pathname.startsWith('/utils/')) {
