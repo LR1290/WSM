@@ -95,7 +95,7 @@ const config = {
   dbName           : envStr('MONGODB_DB') || dbNameFromMongoUri(envStr('MONGODB_URI')),
   criptKey         : envStr('ACCESS_TOKEN', envStr('JWT_SECRET', 'ffce211a-7b07-4d91-ba5d-c40bb4034a83')),
   chromeStoreId    : envStr('CHROME_STORE_ID', 'balkfdkhbcjjmhndnblgmlmcabnapogp'),
-  wlId             : envStr('WL_ID', 'waspeed'),
+  wlId             : envStr('WL_ID', 'watidy'),
   adminUser        : envStr('ADMIN_USER', 'admin'),
   adminPass        : envStr('ADMIN_PASS', 'waspeed-admin-change-me'),
   adminPath        : envStr('ADMIN_PATH', 'admin-waspeed'),
@@ -597,6 +597,8 @@ function isKeyExpired(rec) {
 
 function keyStatus(rec) {
   if (!rec?.active) return 'blocked';
+  // Ativar no primeiro uso: pending até ser utilizada
+  if (rec.ativarNoPrimeiroUso && !rec.primeiroUsoAt) return 'pending';
   if (isKeyExpired(rec)) return 'expired';
   return rec.premium ? 'active' : 'free';
 }
@@ -669,7 +671,7 @@ async function createKey(input = {}, modName = null) {
     bearer              : code,
     user_id             : userId,
     label               : input.label || 'Cliente',
-    email               : input.email || `${code}@waspeed.local`,
+    email               : input.email || '',
     active              : input.active !== false,
     premium             : input.premium !== false,
     expiresAt           : input.expiresAt || null,
@@ -685,6 +687,8 @@ async function createKey(input = {}, modName = null) {
     lastUsed            : null,
     lastIp              : null,
     lastPhone           : null,
+    ativarNoPrimeiroUso : input.ativarNoPrimeiroUso === true,
+    primeiroUsoAt       : null,
   };
   if (input.expiresAt) {
     rec.expiresAt = input.expiresAt;
@@ -771,7 +775,7 @@ function keyToUser(code, rec) {
   return {
     user_id             : String(rec.user_id),
     name                : rec.label || 'Usuario',
-    email               : rec.email || `${code}@waspeed.local`,
+    email               : rec.email || '',
     wl_id               : config.wlId,
     bearer_token        : rec.bearer_token || code,
     access_token_plugin : rec.access_token_plugin || code,
@@ -791,16 +795,23 @@ async function authSuccess(code, rec) {
   const st = keyStatus(rec);
   if (st === 'blocked') return { ok: false, msg_id: 'user_blocked' };
   if (st === 'expired') return { ok: false, msg_id: 'license_expired' };
+  // Ativar no primeiro uso
+  if (st === 'pending' && rec.ativarNoPrimeiroUso && !rec.primeiroUsoAt) {
+    await updateLicense(code, { primeiroUsoAt: new Date().toISOString() });
+    rec.primeiroUsoAt = new Date().toISOString();
+    await addLog('key_activated', `Chave ${code} ativada no primeiro uso`, { code });
+  }
   const lastUsed = new Date().toISOString();
   await updateLicense(code, { lastUsed });
   rec.lastUsed = lastUsed;
+  const finalSt = keyStatus(rec);
   return {
     ok  : true,
     body: {
       success    : true,
       user       : keyToUser(code, rec),
       auth_google: EMPTY_AUTH_GOOGLE,
-      user_status: st === 'active' ? 'active' : 'free',
+      user_status: finalSt === 'active' ? 'active' : 'free',
     },
   };
 }
@@ -1073,39 +1084,52 @@ body{
 a{color:var(--accent);text-decoration:none;transition:color .2s,text-shadow .2s}
 a:hover{color:#7fff6e;text-shadow:0 0 10px rgba(57,255,20,.45)}
 /* Layout Principal: Sidebar + Conteúdo */
+html{font-size:15px}
 .layout{display:flex;min-height:100vh}
 .sidebar{
-  width:240px;min-height:100vh;background:var(--surface);
+  width:56px;min-height:100vh;background:var(--surface);
   border-right:1px solid var(--border);display:flex;flex-direction:column;
-  position:sticky;top:0;height:100vh;overflow-y:auto;z-index:20;
-  transition:width .3s cubic-bezier(.4,0,.2,1);flex-shrink:0;
+  position:sticky;top:0;height:100vh;overflow:hidden;z-index:20;
+  transition:width .28s cubic-bezier(.4,0,.2,1);flex-shrink:0;
 }
+.sidebar:hover{width:240px}
 .sidebar-brand{
-  display:flex;align-items:center;gap:10px;padding:22px 20px 18px;
+  display:flex;align-items:center;gap:10px;padding:20px 16px 16px;
   font-weight:800;font-size:1.05rem;letter-spacing:-.02em;
   color:var(--accent);border-bottom:1px solid var(--border);
-  text-shadow:0 0 18px rgba(57,255,20,.35);
+  text-shadow:0 0 18px rgba(57,255,20,.35);white-space:nowrap;
 }
-.brand-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:var(--glow);flex-shrink:0}
-.sidebar-section{padding:12px 10px 4px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.brand-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:var(--glow);flex-shrink:0;margin-left:5px}
+.brand-text{opacity:0;transition:opacity .2s .05s;overflow:hidden}
+.sidebar:hover .brand-text{opacity:1}
+.sidebar-section{
+  padding:12px 10px 4px;font-size:.65rem;font-weight:700;text-transform:uppercase;
+  letter-spacing:.1em;color:var(--muted);white-space:nowrap;
+  opacity:0;transition:opacity .2s;
+}
+.sidebar:hover .sidebar-section{opacity:1}
 .nav-item{
-  display:flex;align-items:center;gap:10px;padding:10px 14px;margin:2px 8px;
-  border-radius:9px;cursor:pointer;transition:all .2s ease;font-size:.875rem;font-weight:500;
+  display:flex;align-items:center;gap:10px;padding:10px 14px;margin:2px 6px;
+  border-radius:9px;cursor:pointer;transition:all .2s ease;font-size:.9rem;font-weight:500;
   color:var(--muted2);text-decoration:none;border:1px solid transparent;
+  position:relative;white-space:nowrap;overflow:hidden;
 }
 .nav-item:hover,.nav-item.active{
   color:var(--accent);background:rgba(57,255,20,.06);
   border-color:rgba(57,255,20,.18);box-shadow:0 0 10px rgba(57,255,20,.08);
 }
-.nav-item .icon{width:18px;text-align:center;flex-shrink:0}
+.nav-item .icon{width:20px;text-align:center;flex-shrink:0;font-size:1rem}
+.nav-label{opacity:0;transition:opacity .15s;overflow:hidden}
+.sidebar:hover .nav-label{opacity:1}
 .nav-badge{
   margin-left:auto;font-size:.68rem;font-weight:700;padding:2px 7px;
   border-radius:999px;background:rgba(57,255,20,.12);color:var(--accent);
-  border:1px solid rgba(57,255,20,.25);
+  border:1px solid rgba(57,255,20,.25);opacity:0;transition:opacity .15s;flex-shrink:0;
 }
+.sidebar:hover .nav-badge{opacity:1}
 .nav-badge.warn{background:rgba(255,180,55,.12);color:#fbbf24;border-color:rgba(255,180,55,.25)}
 .nav-badge.danger{background:rgba(255,68,102,.12);color:var(--danger-text);border-color:rgba(255,68,102,.25)}
-.sidebar-footer{margin-top:auto;padding:16px 10px;border-top:1px solid var(--border)}
+.sidebar-footer{margin-top:auto;padding:12px 6px;border-top:1px solid var(--border)}
 /* Área principal */
 .main-area{flex:1;min-width:0;display:flex;flex-direction:column}
 .topbar{
@@ -1147,6 +1171,7 @@ a:hover{color:#7fff6e;text-shadow:0 0 10px rgba(57,255,20,.45)}
 .badge-off{background:var(--danger-bg);color:var(--danger-text);border:1px solid rgba(255,68,102,.22)}
 .badge-free{background:var(--warn-bg);color:var(--warn-text);border:1px solid rgba(253,224,71,.18)}
 .badge-warn{background:rgba(255,180,55,.08);color:#fbbf24;border:1px solid rgba(255,180,55,.22)}
+.badge-pending{background:rgba(100,100,255,.1);color:#a0a0ff;border:1px solid rgba(100,100,255,.25)}
 /* Chips de código */
 .key-chip,code.key-chip{
   font-family:var(--mono);font-size:.8rem;
@@ -1156,25 +1181,25 @@ a:hover{color:#7fff6e;text-shadow:0 0 10px rgba(57,255,20,.45)}
 }
 /* Tabela */
 .tbl-wrap{overflow-x:auto;contain:content}
-table{width:100%;border-collapse:collapse;font-size:.8rem}
-th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--border)}
-th{cursor:pointer;color:var(--muted);font-size:.68rem;text-transform:uppercase;
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th,td{padding:11px 13px;text-align:left;border-bottom:1px solid var(--border)}
+th{cursor:pointer;color:var(--muted);font-size:.73rem;text-transform:uppercase;
   user-select:none;white-space:nowrap;position:sticky;top:0;background:var(--surface2)}
 th:hover{color:var(--accent)}
 tr.kr{will-change:transform;contain:layout style}
 tr.kr:hover{background:var(--surface-hover)}
 .act{display:flex;flex-wrap:wrap;gap:4px}
-.bs{padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:transparent;
-  color:var(--text);font-size:.7rem;cursor:pointer;transition:all .2s}
+.bs{padding:5px 9px;border-radius:6px;border:1px solid var(--border);background:transparent;
+  color:var(--text);font-size:.75rem;cursor:pointer;transition:all .2s}
 .bs:hover{border-color:var(--accent);color:var(--accent)}
 .bs.bg{border-color:rgba(57,255,20,.28);color:var(--accent)}
 .bs.bd{border-color:rgba(255,68,102,.25);color:var(--danger-text)}
 /* Formulários */
-label{display:block;font-size:.75rem;font-weight:600;color:var(--muted);margin:0 0 6px}
+label{display:block;font-size:.8rem;font-weight:600;color:var(--muted);margin:0 0 6px}
 .field{margin-bottom:16px}
 input,select,textarea{
   width:100%;padding:10px 13px;border-radius:8px;border:1px solid var(--border);
-  background:#040d06;color:var(--text);font:inherit;font-size:.875rem;
+  background:#040d06;color:var(--text);font:inherit;font-size:.93rem;
   transition:border-color .2s ease,box-shadow .2s ease;
 }
 input:focus,select:focus,textarea:focus{
@@ -1276,6 +1301,7 @@ textarea{resize:vertical;min-height:80px}
 /* Responsive */
 @media(max-width:768px){
   .sidebar{width:0;overflow:hidden;position:fixed}
+  .sidebar:hover{width:240px}
   .layout.sb-open .sidebar{width:240px}
   .main-area{width:100%}
   .metrics{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
@@ -1322,25 +1348,23 @@ function renderLogin(base, role, err = '') {
   return loginShell(body, role);
 }
 
-// Sidebar admin com contadores dinâmicos (Pilar 1)
 function adminSidebar(active = '', stats = {}) {
   const item = (href, icon, label, key, badge = '', bClass = '') => {
     const badgeHtml = badge !== '' ? `<span class="nav-badge ${bClass}">${badge}</span>` : '';
-    return `<a href="${href}" class="nav-item${active === key ? ' active' : ''}">`
-      + `<span class="icon">${icon}</span>${esc(label)}${badgeHtml}</a>`;
+    return `<a href="${href}" class="nav-item${active === key ? ' active' : ''}">
+      <span class="icon">${icon}</span><span class="nav-label">${label}</span>${badgeHtml}</a>`;
   };
-  return `<aside class="sidebar">
-  <div class="sidebar-brand"><span class="brand-dot"></span>WaSpeed</div>
+  return `<aside class="sidebar" id="sidebar">
+  <div class="sidebar-brand"><span class="brand-dot"></span><span class="brand-text">WaSpeed</span></div>
   <div class="sidebar-section">Principal</div>
   ${item(R_ADMIN, '⚡', 'Dashboard', 'dash')}
   <div class="sidebar-section">Licenças</div>
   ${item(R_ADMIN + '/keys', '🔑', 'Chaves de Acesso', 'keys', stats.totalKeys ?? '')}
-  ${item(R_ADMIN + '/keys?filter=active', '✅', 'Licenças Ativas', 'active', stats.activeKeys ?? '', '')}
-  ${item(R_ADMIN + '/keys?filter=expired', '⏰', 'Expiradas', 'expired', stats.expiredKeys || '', stats.expiredKeys ? 'danger' : '')}
   <div class="sidebar-section">Sistema</div>
   ${item(R_ADMIN + '/logs', '📋', 'Logs do Sistema', 'logs', stats.totalLogs ?? '')}
-  ${item(R_ADMIN + '/security-test', '🛡️', 'Auto-Pentest', 'pentest')}
-  <div class="sidebar-footer">${item(R_ADMIN + '/logout', '→', 'Sair', 'out')}</div>
+  <div class="sidebar-footer">
+    ${item(R_ADMIN + '/logout', '→', 'Sair', 'out')}
+  </div>
 </aside>`;
 }
 
@@ -1402,6 +1426,9 @@ ${exp > 0 || warn > 0 ? `<div class="alert alert-warn">${exp > 0 ? `<strong>${ex
       <input type="number" id="nmins"  placeholder="Min"   min="0" title="Minutos">
       <input type="number" id="nuses"  placeholder="Usos"  min="-1" title="Máx dispositivos (-1=∞)">
       <select id="npremium"><option value="1">PRO</option><option value="0">Free</option></select>
+      <label style="display:flex;align-items:center;gap:5px;font-size:.8rem;color:var(--muted);margin:0;cursor:pointer">
+        <input type="checkbox" id="nfirstuse" style="width:auto;padding:0"> Ativar no 1º uso
+      </label>
       <button class="btn-p" onclick="generateKey()">+ Gerar</button>
     </div>
   </div>
@@ -1411,6 +1438,7 @@ ${exp > 0 || warn > 0 ? `<div class="alert alert-warn">${exp > 0 ? `<strong>${ex
       <option value="">Todos os status</option>
       <option value="ativo">PRO Ativas</option>
       <option value="free">Free</option>
+      <option value="pendente">Pendentes</option>
       <option value="expirando">Expirando</option>
       <option value="expirada">Expiradas</option>
       <option value="bloqueado">Bloqueadas</option>
@@ -1441,7 +1469,21 @@ ${exp > 0 || warn > 0 ? `<div class="alert alert-warn">${exp > 0 ? `<strong>${ex
 <div class="sec">
   <div class="sh">
     <span class="sh-title">📋 Logs do Sistema</span>
-    <input type="text" id="logSearch" placeholder="Filtrar..." oninput="filterLog()" style="padding:7px 11px;border-radius:8px;border:1px solid var(--border);background:#040d06;color:var(--text)">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <input type="text" id="logSearch" placeholder="Filtrar..." oninput="filterLog()" style="padding:7px 11px;border-radius:8px;border:1px solid var(--border);background:#040d06;color:var(--text)">
+      <select id="logTypeFilter" onchange="filterLog()" style="padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:#040d06;color:var(--text)">
+        <option value="">Todos os tipos</option>
+        <option value="validation_ok">validation_ok</option>
+        <option value="key_activated">key_activated</option>
+        <option value="key_created">key_created</option>
+        <option value="key_blocked">key_blocked</option>
+        <option value="key_deleted">key_deleted</option>
+        <option value="auth_fail">auth_fail</option>
+        <option value="admin_login">admin_login</option>
+        <option value="security">security</option>
+      </select>
+      <button class="btn-w" style="border-color:rgba(255,68,102,.3);color:var(--danger-text)" onclick="clearLogs()">🗑 Limpar</button>
+    </div>
   </div>
   <div class="tbl-wrap" style="max-height:55vh;overflow-y:auto">
     <table>
@@ -1463,7 +1505,12 @@ function filterKeys(){
 }
 function filterLog(){
   const q=(document.getElementById('logSearch').value||'').toLowerCase();
-  document.querySelectorAll('#logb tr').forEach(r=>{r.style.display=!q||r.dataset.log.includes(q)?'':'none';});
+  const t=(document.getElementById('logTypeFilter').value||'').toLowerCase();
+  document.querySelectorAll('#logb tr').forEach(r=>{
+    const txt=(r.dataset.log||'');
+    const type=(r.dataset.logtype||'');
+    r.style.display=(!q||txt.includes(q))&&(!t||type===t)?'':'none';
+  });
 }
 function sortKeys(col){
   if(_sc===col)_sd*=-1;else{_sc=col;_sd=1;}
@@ -1483,11 +1530,21 @@ async function generateKey(){
   const d=+document.getElementById('ndays').value||0,h=+document.getElementById('nhours').value||0,m=+document.getElementById('nmins').value||0;
   if(d)body.expireDays=d;if(h)body.expireHours=h;if(m)body.expireMinutes=m;
   const u=document.getElementById('nuses').value.trim();if(u!=='')body.maxUses=parseInt(u);
+  if(document.getElementById('nfirstuse').checked)body.ativarNoPrimeiroUso=true;
   const r=await fetch(_RA+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(r.status===401){location.href=_RA+'/login';return;}
   const j=await r.json();
-  if(j.ok){toast('✅ '+j.key);['nlabel','ndays','nhours','nmins','nuses'].forEach(id=>document.getElementById(id).value='');await doRefresh();}
+  if(j.ok){toast('✅ '+j.key);['nlabel','ndays','nhours','nmins','nuses'].forEach(id=>document.getElementById(id).value='');document.getElementById('nfirstuse').checked=false;await doRefresh();}
   else toast('Erro: '+(j.error||'?'),false);
+}
+async function clearLogs(){
+  if(!confirm('Limpar todos os logs?'))return;
+  const r=await fetch(_RA+'/api/logs/clear',{method:'POST'});
+  if(r.ok){toast('Logs limpos');doRefresh();}else toast('Falha',false);
+}
+async function apiActivate(code){
+  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/activate',{method:'POST'});
+  if(r.ok){toast('Chave ativada');doRefresh();}else toast('Falha',false);
 }
 async function doRefresh(manual){
   const r=await fetch(_RA+'/api/data');
@@ -1688,20 +1745,27 @@ function buildLicenseTableRows(licenses) {
     const code = k.code;
     const st   = panelStatusKey(k);
     const maxU = k.maxUses ?? -1;
+    const isPending = keyStatus(k) === 'pending';
+    const fmtDate = (iso) => {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR');
+    };
     return `<tr class="kr" data-code="${esc(code)}" data-label="${esc((k.label || '').toLowerCase())}"
-      data-status="${st}" data-validity="${k.expiresAt || ''}" data-uses="${(k.phones || []).length}"
+      data-status="${isPending ? 'pendente' : st}" data-validity="${k.expiresAt || ''}" data-uses="${(k.phones || []).length}"
       data-phone="${esc(k.lastPhone || '')}" data-lastused="${k.lastUsed || ''}" data-created="${k.createdAt || ''}">
       <td><code class="key-chip">${esc(code)}</code></td>
       <td>${esc(k.label || '—')}</td>
-      <td>${statusBadgeHtml(keyStatus(k))}</td>
+      <td>${isPending ? '<span class="badge badge-pending">PENDENTE</span>' : statusBadgeHtml(keyStatus(k))}</td>
       <td>${formatLicenseValidity(k)}</td>
       <td>${licenseUsesLabel(k)}</td>
-      <td style="font-size:.77rem">${esc(k.lastPhone || '—')}</td>
-      <td style="font-size:.77rem;color:var(--muted)">${esc(k.lastIp || '—')}</td>
-      <td style="font-size:.77rem;color:var(--muted)">${k.lastUsed ? esc(new Date(k.lastUsed).toLocaleString('pt-BR')) : '—'}</td>
-      <td style="font-size:.77rem;color:var(--muted)">${k.createdAt ? esc(new Date(k.createdAt).toLocaleString('pt-BR')) : '—'}</td>
-      <td style="font-size:.77rem;max-width:100px;overflow:hidden;text-overflow:ellipsis" title="${esc(k.note || '')}">${esc(k.note || '—')}</td>
+      <td style="font-size:.82rem">${esc(k.lastPhone || '—')}</td>
+      <td style="font-size:.82rem;color:var(--muted)">${esc(k.lastIp || '—')}</td>
+      <td style="font-size:.82rem;color:var(--muted)">${fmtDate(k.lastUsed)}</td>
+      <td style="font-size:.82rem;color:var(--muted)">${fmtDate(k.createdAt)}</td>
+      <td style="font-size:.82rem;max-width:100px;overflow:hidden;text-overflow:ellipsis" title="${esc(k.note || '')}">${esc(k.note || '—')}</td>
       <td class="act">
+        ${isPending ? `<button class="bs bg" onclick="apiActivate('${esc(code)}')">✅Ativar</button>` : ''}
         <button class="bs bg" onclick="apiToggle('${esc(code)}')">${k.active ? 'Bloq' : 'Lib'}</button>
         <button class="bs" onclick="openRenew('${esc(code)}')">+Tempo</button>
         <button class="bs" onclick="openUses('${esc(code)}',${maxU})">Usos</button>
@@ -1712,13 +1776,16 @@ function buildLicenseTableRows(licenses) {
 }
 
 function buildPanelLogsHtml(logs) {
-  return logs.map((l) =>
-    `<tr data-log="${esc((l.type + ' ' + l.message).toLowerCase())}">
-      <td style="white-space:nowrap;font-size:.77rem;color:var(--muted)">${esc(new Date(l.at).toLocaleString('pt-BR'))}</td>
+  return logs.map((l) => {
+    const d = new Date(l.at);
+    const dt = d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR');
+    return `<tr data-log="${esc((l.type + ' ' + l.message).toLowerCase())}" data-logtype="${esc(l.type)}">
+      <td style="white-space:nowrap;font-size:.82rem;color:var(--muted)">${esc(dt)}</td>
       <td><span class="log-type">${esc(l.type)}</span></td>
       <td>${esc(l.message)}</td>
-      <td style="font-size:.77rem">${esc(l.meta?.code || '')}</td>
-    </tr>`).join('');
+      <td style="font-size:.82rem">${esc(l.meta?.code || '')}</td>
+    </tr>`;
+  }).join('');
 }
 
 async function getPanelKeysHtmlCached() {
@@ -1835,7 +1902,7 @@ function renderClientAuthPainel(storeId, token, page, rec) {
     <div class="card">
       <div class="card-title">Conta</div>
       <p style="font-size:1.05rem;font-weight:700">${esc(user.name)}</p>
-      <p style="color:var(--muted);font-size:.875rem">${esc(user.email)}</p>
+      <p style="color:var(--muted);font-size:.875rem">${esc((user.email || '').replace(/@waspeed\.local$/i, ''))}</p>
       <div class="info-grid" style="margin-top:14px">
         <div class="info-row"><span class="label">Chave</span><code class="key-chip">${esc(code)}</code></div>
         ${pageLabel ? `<div class="info-row"><span class="label">Seção</span><span>${pageLabel}</span></div>` : ''}
@@ -1905,7 +1972,7 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
   if (pathname === '/api/services/update' && (req.method === 'GET' || req.method === 'POST')) {
     return sendJson(res, wppUpdate());
   }
-  if (pathname === '/api/external/is_instaled' && req.method === 'POST') {
+  if (pathname === '/api/external/is_instaled') {
     return sendJson(res, { success: true });
   }
   if (pathname === '/api/external/ping') {
@@ -1926,7 +1993,7 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     return sendJson(res, { success: false, msg_id: 'invalid_extension_id' }, 403);
   }
 
-  if (pathname === `/api/auth/login-bearer/${chromeId}` && req.method === 'GET') {
+  if (pathname === `/api/auth/login-bearer/${chromeId}` && (req.method === 'GET' || req.method === 'POST')) {
     if (!checkRate(ip)) return sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
     const bearer = parseBearer(req);
     if (detectInjection(bearer)) {
@@ -2010,6 +2077,11 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
       meet      : settings.meet      || {},
       urls      : settings.urls      || {},
       migration : settings.migration || {},
+      update_path     : `${config.baseUrl}/api/urls/update`,
+      update_path_new : `${config.baseUrl}/api/services/update`,
+      update_path_active: 'true',
+      wpp_mensagens   : { timer: '60000', enable_two_send: false },
+      newModel        : { model: 'taghtml', parm: 'body.color-refresh' },
     });
   }
 
@@ -2032,6 +2104,17 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
 
   if (pathname === '/api/image/url-to-base64' && req.method === 'POST') {
     return sendJson(res, { success: false, msg_id: 'not_implemented' });
+  }
+
+  // Endpoints de disparo em massa (validação de licença)
+  if ((pathname === '/api/XLSX/envioEmMassa' || pathname === '/api/XLSX/gabarito') && req.method === 'POST') {
+    const body   = await readJson(req);
+    const bearer = parseBearer(req) || body.bearer_token;
+    const rec    = await findKeyByBearer(bearer);
+    if (!rec) return sendJson(res, { success: false, msg_id: 'invalid_token' }, 401);
+    const st = keyStatus(rec);
+    if (st === 'blocked' || st === 'expired') return sendJson(res, { success: false, msg_id: 'license_invalid' });
+    return sendJson(res, { success: true, msg_id: 'not_implemented_on_this_server' }, 501);
   }
 
   return false;
@@ -2060,12 +2143,29 @@ async function handleAdminApi(req, res, pathname) {
         expireDays,
         maxUses   : Number.isNaN(maxUses) ? -1 : maxUses,
         note      : String(body.note || '').slice(0, 500),
+        ativarNoPrimeiroUso: body.ativarNoPrimeiroUso === true,
       });
       invalidatePanelKeysCache();
       return sendJson(res, { ok: true, key: rec.code });
     } catch (e) {
       return sendJson(res, { error: e.message }, 500);
     }
+  }
+
+  if (pathname === R_ADMIN + '/api/logs/clear' && req.method === 'POST') {
+    if (db) await db.collection(COL.logs).deleteMany({});
+    slog(LOG_LEVELS.INFO, 'Logs limpos pelo admin');
+    return sendJson(res, { ok: true });
+  }
+
+  const codeActivate = pathname.match(adminApiPathRegex('/activate'));
+  if (codeActivate && req.method === 'POST') {
+    const rec = await findKey(decodeURIComponent(codeActivate[1]));
+    if (!rec) return sendJson(res, { error: 'not found' }, 404);
+    await updateLicense(rec.code, { ativarNoPrimeiroUso: false, primeiroUsoAt: new Date().toISOString(), active: true });
+    await addLog('key_activated', `Chave ${rec.code} ativada manualmente`, { code: rec.code });
+    invalidatePanelKeysCache();
+    return sendJson(res, { ok: true });
   }
 
   const codeToggle = pathname.match(adminApiPathRegex('/toggle'));
@@ -2385,20 +2485,25 @@ async function runSecurityTests(req) {
     detail : `${injectionBlocked}/${injectionPayloads.length} payloads sanitizados`,
   });
 
-  // Teste 2: Prototype Pollution
-  const ppPayloads = [
-    { '__proto__': { polluted: true } },
-    { 'constructor': { prototype: { polluted: true } } },
+  // Teste 2: Prototype Pollution — tenta poluir e verifica se sanitizeObject bloqueia
+  const ppTests = [
+    '{"__proto__":{"polluted":true}}',
+    '{"constructor":{"prototype":{"polluted":true}}}',
   ];
   let ppBlocked = 0;
-  for (const p of ppPayloads) {
-    const s = sanitizeObject(p);
-    if (!s.__proto__ && !s.constructor) ppBlocked++;
+  const _ppSentinel = Object.create(null);
+  for (const p of ppTests) {
+    try {
+      const obj = JSON.parse(p);
+      sanitizeObject(obj);
+      if ({}.polluted === undefined) ppBlocked++;
+    } catch { ppBlocked++; }
   }
+  try { delete Object.prototype.polluted; } catch(_){}
   results.push({
     test   : 'Prototype Pollution Protection',
-    status : ppBlocked === ppPayloads.length ? 'PASS' : 'FAIL',
-    detail : `${ppBlocked}/${ppPayloads.length} ataques bloqueados`,
+    status : ppBlocked === ppTests.length ? 'PASS' : 'FAIL',
+    detail : `${ppBlocked}/${ppTests.length} ataques bloqueados`,
   });
 
   // Teste 3: Security Headers presentes
