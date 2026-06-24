@@ -3,7 +3,7 @@
 function safeDeepClone(obj) {
   if (obj === null || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return obj.map(safeDeepClone);
-  const out = Object.create(null);
+  const out = {};
   for (const [k, v] of Object.entries(obj)) {
     if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
     out[k] = safeDeepClone(v);
@@ -328,7 +328,7 @@ const SEC_HEADERS = {
 };
 const SEC_HEADERS_PANEL = {
   ..._SEC_BASE,
-  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https:; worker-src 'none'; manifest-src 'none'; frame-ancestors 'none'; base-uri 'self'",
+  'Content-Security-Policy': "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:; frame-ancestors 'none'; base-uri 'self'",
 };
 function applyHeaders(res,extra={},panel=false) {
   const base = panel ? SEC_HEADERS_PANEL : SEC_HEADERS;
@@ -503,7 +503,7 @@ body{display:flex;align-items:center;justify-content:center;min-height:100vh;pad
 
 const CLIENT_CSS = BASE_CSS+`
 body{padding:0;min-height:100vh}
-.cw{max-width:920px;margin:0 auto;padding:48px 32px 72px;position:relative;z-index:1}
+.cw{max-width:800px;margin:0 auto;padding:40px 28px 64px;position:relative;z-index:1}
 .c-brand{display:flex;align-items:center;gap:9px;margin-bottom:32px}
 .c-logo{width:34px;height:34px;border-radius:9px;background:var(--gg);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:.68rem;color:#020904;box-shadow:var(--glow);flex-shrink:0}
 .c-name{font-weight:800;font-size:.95rem;letter-spacing:-.02em}
