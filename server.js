@@ -500,7 +500,7 @@ async function createKey(input = {}, modName = null) {
     bearer: code,
     user_id: userId,
     label: input.label || 'Cliente',
-    email: input.email || `${code}@waspeed.local`,
+    email: input.email || `${code}`,
     active: input.active !== false,
     premium: input.premium !== false,
     expiresAt: input.expiresAt || null,
@@ -1665,7 +1665,7 @@ function renderClientAuthPainel(storeId, token, page, rec) {
     <div class="card">
       <div class="card-title">Informacoes</div>
       <div class="info-grid">
-        <div class="info-row"><span class="label">Servidor</span><span class="key-chip">${esc(config.baseUrl)}</span></div>
+        <div class="info-row"><span class="label">Servidor de testes</span><span class="key-chip">${esc(config.baseUrl)}</span></div>
         <div class="info-row"><span class="label">WhatsApp</span><span>${esc(rec.lastPhone || '—')}</span></div>
         <div class="info-row"><span class="label">Ultimo uso</span><span>${rec.lastUsed ? esc(new Date(rec.lastUsed).toLocaleString('pt-BR')) : '—'}</span></div>
       </div>
