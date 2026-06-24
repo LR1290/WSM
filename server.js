@@ -1085,7 +1085,7 @@ a{color:var(--accent);text-decoration:none;transition:color .2s,text-shadow .2s}
 a:hover{color:#7fff6e;text-shadow:0 0 10px rgba(57,255,20,.45)}
 /* Layout Principal: Sidebar + Conteúdo */
 html{font-size:15px}
-.layout{display:flex;min-height:100vh}
+.layout{display:flex;min-height:100vh;position:relative;z-index:1}
 .sidebar{
   width:56px;min-height:100vh;background:var(--surface);
   border-right:1px solid var(--border);display:flex;flex-direction:column;
@@ -1312,6 +1312,9 @@ textarea{resize:vertical;min-height:80px}
 }
 `;
 
+const CANVAS_BG = `<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas>
+<script>(function(){var c=document.getElementById('_cvs'),ctx=c.getContext('2d');function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}resize();window.addEventListener('resize',resize);var pts=Array.from({length:55},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.35,vy:(Math.random()-.5)*.35,r:Math.random()*1.8+.4};});function draw(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(57,255,20,0.45)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<120){ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(57,255,20,'+(0.1*(1-d/120))+')';ctx.lineWidth=.6;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script>`;
+
 // --- Funções de renderização de UI (Pilar 1) ----------------------------------
 
 function escAll(obj) {
@@ -1330,11 +1333,11 @@ function statusBadgeHtml(st) {
 function loginShell(body, roleLabel = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Login — WaSpeed</title><style>${PANEL_CSS}</style></head>
-<body class="login-page"><div class="login-inner">
+<title>Login — WaSpeed</title><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23020604'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2339ff14'%3EWS%3C/text%3E%3C/svg%3E"><style>${PANEL_CSS}</style></head>
+<body class="login-page"><div class="login-inner" style="position:relative;z-index:1">
 <div class="login-brand"><span class="brand-dot"></span>WaSpeed</div>
 ${body}
-</div></body></html>`;
+</div>${CANVAS_BG}</body></html>`;
 }
 
 function renderLogin(base, role, err = '') {
@@ -1375,6 +1378,7 @@ function spaShell(title, sidebar, topbarTitle, body, extraCss = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} — WaSpeed</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23020604'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2339ff14'%3EWS%3C/text%3E%3C/svg%3E">
 <style>${PANEL_CSS}${extraCss}</style></head>
 <body>
 <div class="layout" id="layout">
@@ -1400,6 +1404,7 @@ function toggleSb(){document.getElementById('layout').classList.toggle('sb-open'
 function toast(m,ok=true){const t=document.getElementById('toast');t.textContent=m;t.style.borderColor=ok?'var(--accent)':'var(--danger)';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500);}
 function closeModal(){document.getElementById('modal-bg').classList.remove('open');}
 </script>
+${CANVAS_BG}
 </body></html>`;
 }
 
@@ -1591,6 +1596,16 @@ async function submitUses(code){
   const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/max-uses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({maxUses})});
   closeModal();if(r.ok){toast('Atualizado');doRefresh();}else toast('Falha',false);
 }
+function openNote(code,cur){
+  document.getElementById('modal-box').innerHTML='<h3>📝 Nota — '+code+'</h3><div class="field"><label>Nota interna</label><textarea id="nt" rows="4" style="width:100%;resize:vertical;min-height:80px;padding:10px;border-radius:8px;border:1px solid var(--border);background:#040d06;color:var(--text);font:inherit">'+cur.replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</textarea></div><div class="mrow"><button class="btn-p" onclick="submitNote(\''+code+'\')">Salvar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>';
+  document.getElementById('modal-bg').classList.add('open');
+  setTimeout(()=>{const t=document.getElementById('nt');if(t)t.focus();},100);
+}
+async function submitNote(code){
+  const note=document.getElementById('nt').value;
+  const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});
+  closeModal();if(r.ok){toast('Nota salva ✓');doRefresh();}else toast('Falha',false);
+}
 function exportCsv(){window.location.href=_RA+'/api/export/csv';}
 setInterval(()=>doRefresh(),60000);
 </script>`;
@@ -1772,6 +1787,7 @@ function buildLicenseTableRows(licenses) {
         <button class="bs bg" onclick="apiToggle('${esc(code)}')">${k.active ? 'Bloq' : 'Lib'}</button>
         <button class="bs" onclick="openRenew('${esc(code)}')">+Tempo</button>
         <button class="bs" onclick="openUses('${esc(code)}',${maxU})">Usos</button>
+        <button class="bs" onclick="openNote('${esc(code)}','${esc((k.note||'').replace(/'/g,"\\'"))}')">📝</button>
         <button class="bs bd" onclick="apiDelete('${esc(code)}')">Del</button>
       </td>
     </tr>`;
@@ -1839,28 +1855,58 @@ function modApiPathRegex(suffix = '') {
 const CLIENT_PANEL_RE = /^\/([a-z0-9]{16,32})\/(auth-painel|login|recovery|auth-plugin|redirect-plugin-register|register)\/?$/i;
 
 function clientShell(title, body, navHtml = '', subtitle = '') {
-  const nav = navHtml ? `<nav style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center">${navHtml}</nav>` : '';
+  const extraNav = `<a href="/faq" style="font-size:.82rem;color:var(--muted);padding:5px 12px;border-radius:7px;border:1px solid var(--border);text-decoration:none;transition:all .2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">FAQ</a>
+    <a href="/planos" style="font-size:.82rem;color:var(--muted);padding:5px 12px;border-radius:7px;border:1px solid var(--border);text-decoration:none;transition:all .2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">💳 Planos</a>
+    <a href="/privacidade" style="font-size:.82rem;color:var(--muted);padding:5px 12px;border-radius:7px;border:1px solid var(--border);text-decoration:none;transition:all .2s" onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--muted)'">🔒 Privacidade</a>`;
+  const nav = navHtml
+    ? `<nav style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${navHtml}&nbsp;&nbsp;${extraNav}</nav>`
+    : `<nav style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">${extraNav}</nav>`;
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)} — WaSpeed</title><style>${PANEL_CSS}</style></head>
-<body><div class="app">
-<header class="topbar-simple"><div style="display:flex;align-items:center;gap:10px;font-weight:800;font-size:1rem;color:var(--accent)"><span class="brand-dot"></span>WaSpeed</div>${nav}</header>
+<title>${esc(title)} — WaSpeed</title><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23020604'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2339ff14'%3EWS%3C/text%3E%3C/svg%3E"><style>${PANEL_CSS}</style></head>
+<body><div class="app" style="position:relative;z-index:1">
+<header class="topbar-simple" style="justify-content:space-between"><div style="display:flex;align-items:center;gap:10px;font-weight:800;font-size:1rem;color:var(--accent)"><span class="brand-dot"></span>WaSpeed</div>${nav}</header>
 <div class="page-head"><h1>${esc(title)}</h1>${subtitle ? `<p class="subtitle">${subtitle}</p>` : ''}</div>
 ${body}
-</div></body></html>`;
+</div>${CANVAS_BG}</body></html>`;
 }
 
 function renderClientLogin(storeId) {
-  return clientShell('Painel Clientes', `<div class="card">
-    <p style="color:var(--muted);font-size:.875rem;margin-bottom:14px">Extensão WaSpeed · ID ${esc(storeId)}</p>
-    <p style="margin-bottom:18px">O acesso ao painel é feito pela extensão no WhatsApp Web.</p>
-    <ol class="steps">
-      <li>Abra o WhatsApp Web</li>
-      <li>Na extensão WaSpeed, faça login com sua <strong>chave de ativação</strong></li>
-      <li>Clique em <strong>Painel Clientes</strong> na barra lateral</li>
-    </ol>
-    <p style="margin-top:22px"><a class="btn" href="https://web.whatsapp.com" target="_blank" rel="noopener">Abrir WhatsApp Web</a></p>
-  </div>`, '', 'Instruções de acesso');
+  return clientShell('Portal WaSpeed', `
+  <div class="card" style="max-width:540px;margin:0 auto;padding:36px 32px">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="font-size:2.5rem;margin-bottom:12px">🔑</div>
+      <h2 style="font-size:1.3rem;font-weight:700;margin-bottom:8px">Consultar minha chave</h2>
+      <p style="color:var(--muted);font-size:.9rem">Digite sua chave de ativação para ver o status da sua licença.</p>
+    </div>
+    <div class="field">
+      <label>Chave de ativação</label>
+      <input type="text" id="chave-input" placeholder="ws-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" style="font-family:var(--mono);letter-spacing:.02em" oninput="this.value=this.value.trim()">
+    </div>
+    <button class="btn" style="width:100%;margin-top:4px" onclick="consultarChave()">🔍 Consultar status</button>
+    <div id="chave-result" style="margin-top:18px;display:none"></div>
+    <hr style="margin:24px 0;border:none;border-top:1px solid var(--border)">
+    <p style="color:var(--muted);font-size:.82rem;text-align:center">Ainda não tem uma chave? <a href="/planos" style="color:var(--accent)">Ver planos →</a></p>
+    <p style="color:var(--muted);font-size:.78rem;text-align:center;margin-top:10px">O acesso completo ao painel é feito pela extensão WaSpeed no WhatsApp Web.</p>
+  </div>
+  <script>
+  async function consultarChave(){
+    const chave=document.getElementById('chave-input').value.trim();
+    const div=document.getElementById('chave-result');
+    if(!chave){div.style.display='block';div.innerHTML='<div class="alert alert-warn">Digite sua chave de ativação.</div>';return;}
+    div.style.display='block';div.innerHTML='<div class="alert">Consultando...</div>';
+    try{
+      const r=await fetch('/api/auth/validate-portal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:chave})});
+      const j=await r.json();
+      if(j.success){
+        window.location.href='/${esc(storeId)}/auth-painel?token='+encodeURIComponent(chave);
+      } else {
+        div.innerHTML='<div class="alert alert-danger">Chave não encontrada ou inválida. Verifique e tente novamente.</div>';
+      }
+    }catch(e){div.innerHTML='<div class="alert alert-danger">Erro ao consultar. Tente novamente.</div>';}
+  }
+  document.getElementById('chave-input').addEventListener('keydown',function(e){if(e.key==='Enter')consultarChave();});
+  </script>`, '', 'Portal do Cliente');
 }
 
 function renderClientRecovery(storeId) {
@@ -2120,6 +2166,16 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     return sendJson(res, { success: true, msg_id: 'not_implemented_on_this_server' }, 501);
   }
 
+  // Endpoint de consulta de chave pelo portal do cliente
+  if (pathname === '/api/auth/validate-portal' && req.method === 'POST') {
+    const body   = await readJson(req);
+    const key    = sanitizeString(String(body.key || '').trim());
+    if (!key) return sendJson(res, { success: false });
+    const rec = await findKey(key) || await findKeyByBearer(key);
+    if (!rec) return sendJson(res, { success: false });
+    return sendJson(res, { success: true });
+  }
+
   return false;
 }
 
@@ -2214,6 +2270,17 @@ async function handleAdminApi(req, res, pathname) {
     await addLog('key_delete', `Chave ${code} excluída`, { code });
     invalidatePanelKeysCache();
     return sendJson(res, { ok: true });
+  }
+
+  const codeNote = pathname.match(adminApiPathRegex('/note'));
+  if (codeNote && req.method === 'POST') {
+    const rec  = await findKey(decodeURIComponent(codeNote[1]));
+    if (!rec) return sendJson(res, { error: 'not found' }, 404);
+    const body = await readJson(req);
+    const note = sanitizeString(String(body.note || '').slice(0, 500));
+    await updateLicense(rec.code, { note });
+    invalidatePanelKeysCache();
+    return sendJson(res, { ok: true, note });
   }
 
   if (pathname === R_ADMIN + '/api/export/csv' && req.method === 'GET') {
@@ -3105,11 +3172,34 @@ async function handleRequest(req, res) {
     }
 
     if (pathname === '/obrigado') {
-      return sendHtml(res, clientShell('Obrigado', '<div class="card" style="text-align:center;padding:48px"><h2 style="margin-bottom:8px">Obrigado!</h2><p style="color:var(--muted)">WaSpeed</p></div>'));
+      return sendHtml(res, clientShell('Até logo!', `
+  <div class="card" style="max-width:560px;margin:0 auto;text-align:center;padding:52px 40px">
+    <div style="font-size:3.5rem;margin-bottom:20px">👋</div>
+    <h2 style="font-size:1.6rem;font-weight:800;margin-bottom:10px">Até logo!</h2>
+    <p style="color:var(--muted);font-size:1rem;line-height:1.8;margin-bottom:28px">
+      O WaSpeed foi desinstalado do seu navegador.<br>
+      Agradecemos por ter usado o serviço!
+    </p>
+    <div style="background:rgba(57,255,20,.05);border:1px solid rgba(57,255,20,.15);border-radius:12px;padding:20px 24px;margin-bottom:28px;text-align:left">
+      <p style="font-size:.9rem;color:var(--muted2);line-height:1.9">
+        ✅ Seus dados de licença foram preservados.<br>
+        ✅ Você pode reinstalar a qualquer momento.<br>
+        ✅ Sua chave continua válida se ainda estiver no prazo.
+      </p>
+    </div>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+      <a class="btn" href="https://chromewebstore.google.com/detail/balkfdkhbcjjmhndnblgmlmcabnapogp" target="_blank" rel="noopener" style="font-size:.9rem">🔄 Reinstalar extensão</a>
+      <a class="btn btn-ghost" href="/${config.chromeStoreId}/auth-painel" style="font-size:.9rem">🔑 Ver minha conta</a>
+    </div>
+    <p style="margin-top:28px;font-size:.8rem;color:var(--muted)">Precisa de ajuda? <a href="https://wa.me/5521996771552" target="_blank" style="color:var(--accent)">Fale com o suporte →</a></p>
+  </div>`, '', 'WaSpeed'));
     }
 
     if (pathname === '/' || pathname === '') {
-      return sendHtml(res, renderHomePage());
+      // Redireciona para o portal do cliente real
+      res.writeHead(302, { Location: `/${config.chromeStoreId}/auth-painel` });
+      res.end();
+      return;
     }
 
     if (pathname === '/faq' && req.method === 'GET') {
