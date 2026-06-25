@@ -2151,79 +2151,102 @@ async function handleAdminApi(req, res, pathname) {
     const stats    = await getKeyStats();
     const licenses = await getKeysCached();
     const logs     = await getRecentLogs(150);
-    return sendJsonGzip(req, res, { ok: true, ...stats, keysHtml: buildLicenseRows(licenses), logsHtml: buildLogRows(logs) });
+    sendJsonGzip(req, res, { ok: true, ...stats, keysHtml: buildLicenseRows(licenses), logsHtml: buildLogRows(logs) });
+    return true;
   }
   if (pathname === R_ADMIN + '/api/keys' && req.method === 'POST') {
-    const body = await readJson(req);
-    if (!body.label) return sendJson(res, { error: 'label obrigatorio' }, 400);
+    const body    = await readJson(req);
+    if (!body.label) { sendJson(res, { error: 'label obrigatorio' }, 400); return true; }
     const { expiresAt, expireDays } = parseLicenseExpiry(body);
     const maxUses = body.maxUses !== undefined ? parseInt(body.maxUses, 10) : -1;
     try {
       const rec = await createKey({ label: String(body.label).trim().slice(0, 60), premium: body.premium !== false && body.premium !== 0 && body.premium !== '0', expiresAt, expireDays, maxUses: Number.isNaN(maxUses) ? -1 : maxUses, note: String(body.note || '').slice(0, 500), ativarNoPrimeiroUso: body.ativarNoPrimeiroUso === true });
       invalidateKeysCache();
-      return sendJson(res, { ok: true, key: rec.code });
-    } catch (e) { return sendJson(res, { error: e.message }, 500); }
+      sendJson(res, { ok: true, key: rec.code });
+    } catch (e) {
+      if (!res.headersSent) sendJson(res, { error: e.message }, 500);
+    }
+    return true;
   }
   if (pathname === R_ADMIN + '/api/logs/clear' && req.method === 'POST') {
     if (db) await db.collection(COL.logs).deleteMany({});
-    return sendJson(res, { ok: true });
+    sendJson(res, { ok: true });
+    return true;
+  }
+  if (pathname === R_ADMIN + '/api/export/csv' && req.method === 'GET') {
+    const licenses = await listLicenses();
+    const csvLines = ['code,label,premium,active,expiresAt,uses,maxUses,lastPhone,lastIp,createdAt,note'];
+    for (const k of licenses) {
+      csvLines.push([k.code, k.label, k.premium, k.active, k.expiresAt || '', (k.phones || []).length, k.maxUses != null ? k.maxUses : -1, k.lastPhone || '', k.lastIp || '', k.createdAt || '', (k.note || '').replace(/,/g, ';')].map(function(v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(','));
+    }
+    if (!res.headersSent) {
+      res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="wspeed-licenses.csv"' });
+      res.end('\ufeff' + csvLines.join('\n'));
+    }
+    return true;
   }
   const codeAct = pathname.match(adminApiRe('/activate'));
   if (codeAct && req.method === 'POST') {
     const rec = await findKey(decodeURIComponent(codeAct[1]));
-    if (!rec) return sendJson(res, { error: 'not found' }, 404);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
     await updateLicense(rec.code, { ativarNoPrimeiroUso: false, primeiroUsoAt: new Date().toISOString(), active: true });
     await addLog('key_activated', 'Chave ' + rec.code + ' ativada manualmente', { code: rec.code });
     invalidateKeysCache();
-    return sendJson(res, { ok: true });
+    sendJson(res, { ok: true });
+    return true;
   }
   const codeToggle = pathname.match(adminApiRe('/toggle'));
   if (codeToggle && req.method === 'POST') {
     const rec = await findKey(decodeURIComponent(codeToggle[1]));
-    if (!rec) return sendJson(res, { error: 'not found' }, 404);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
     await updateLicense(rec.code, { active: !rec.active });
     invalidateKeysCache();
-    return sendJson(res, { ok: true, active: !rec.active });
+    sendJson(res, { ok: true, active: !rec.active });
+    return true;
   }
   const codeRenew = pathname.match(adminApiRe('/renew'));
   if (codeRenew && req.method === 'POST') {
     const rec = await findKey(decodeURIComponent(codeRenew[1]));
-    if (!rec) return sendJson(res, { error: 'not found' }, 404);
-    const body = await readJson(req);
-    const addMs = ((parseInt(body.days || 0, 10) * 1440) + (parseInt(body.hours || 0, 10) * 60)) * 60000;
-    if (!addMs) return sendJson(res, { error: 'informe tempo' }, 400);
-    const base2 = (rec.expiresAt && new Date(rec.expiresAt).getTime() > Date.now()) ? new Date(rec.expiresAt).getTime() : Date.now();
-    await updateLicense(rec.code, { expiresAt: new Date(base2 + addMs).toISOString(), active: true });
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const rbody  = await readJson(req);
+    const addMs  = ((parseInt(rbody.days || 0, 10) * 1440) + (parseInt(rbody.hours || 0, 10) * 60)) * 60000;
+    if (!addMs) { sendJson(res, { error: 'informe tempo' }, 400); return true; }
+    const baseTs = (rec.expiresAt && new Date(rec.expiresAt).getTime() > Date.now()) ? new Date(rec.expiresAt).getTime() : Date.now();
+    await updateLicense(rec.code, { expiresAt: new Date(baseTs + addMs).toISOString(), active: true });
     invalidateKeysCache();
-    return sendJson(res, { ok: true });
+    sendJson(res, { ok: true });
+    return true;
   }
   const codeMu = pathname.match(adminApiRe('/max-uses'));
   if (codeMu && req.method === 'POST') {
-    const rec = await findKey(decodeURIComponent(codeMu[1]));
-    if (!rec) return sendJson(res, { error: 'not found' }, 404);
-    const body = await readJson(req);
-    const maxUses = parseInt(body.maxUses, 10);
-    if (Number.isNaN(maxUses) || maxUses < -1) return sendJson(res, { error: 'invalid' }, 400);
+    const rec     = await findKey(decodeURIComponent(codeMu[1]));
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const mbody   = await readJson(req);
+    const maxUses = parseInt(mbody.maxUses, 10);
+    if (Number.isNaN(maxUses) || maxUses < -1) { sendJson(res, { error: 'invalid' }, 400); return true; }
     await updateLicense(rec.code, { maxUses });
     invalidateKeysCache();
-    return sendJson(res, { ok: true, maxUses });
+    sendJson(res, { ok: true, maxUses });
+    return true;
   }
   const codeNote = pathname.match(adminApiRe('/note'));
   if (codeNote && req.method === 'POST') {
     const rawCode = decodeURIComponent(codeNote[1]);
-    const rec = await findKey(rawCode);
-    if (!rec) return sendJson(res, { error: 'not found' }, 404);
-    const body = await readJson(req);
-    const note = sanitizeString(String(body.note != null ? body.note : '').slice(0, 500));
-    if (!db) return sendJson(res, { error: 'db_unavailable' }, 503);
+    const rec     = await findKey(rawCode);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const nbody   = await readJson(req);
+    const note    = sanitizeString(String(nbody.note != null ? nbody.note : '').slice(0, 500));
+    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
     try {
-      await db.collection(COL.licenses).updateOne(
-        { code: normKey(rawCode) },
-        { $set: { note } }
-      );
-    } catch (e) { slog(LOG_LEVELS.WARN, 'codeNote update', { err: e.message }); return sendJson(res, { error: 'update_failed' }, 500); }
+      await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $set: { note } });
+    } catch (e) {
+      slog(LOG_LEVELS.WARN, 'codeNote update', { err: e.message });
+      if (!res.headersSent) sendJson(res, { error: 'update_failed' }, 500);
+      return true;
+    }
     invalidateKeysCache();
-    return sendJson(res, { ok: true, note });
+    sendJson(res, { ok: true, note });
+    return true;
   }
   const codeDel = pathname.match(adminApiRe());
   if (codeDel && req.method === 'DELETE' && !/\/(toggle|renew|max-uses|activate|note)$/.test(pathname)) {
@@ -2231,18 +2254,12 @@ async function handleAdminApi(req, res, pathname) {
     await deleteLicense(code);
     await addLog('key_delete', 'Chave ' + code + ' excluida', { code });
     invalidateKeysCache();
-    return sendJson(res, { ok: true });
-  }
-  if (pathname === R_ADMIN + '/api/export/csv' && req.method === 'GET') {
-    const licenses = await listLicenses();
-    const lines = ['code,label,premium,active,expiresAt,uses,maxUses,lastPhone,lastIp,createdAt,note'];
-    for (const k of licenses) lines.push([k.code,k.label,k.premium,k.active,k.expiresAt||'',(k.phones||[]).length,k.maxUses!=null?k.maxUses:-1,k.lastPhone||'',k.lastIp||'',k.createdAt||'',(k.note||'').replace(/,/g,';')].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(','));
-    res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="wspeed-licenses.csv"' });
-    res.end('\ufeff' + lines.join('\n'));
+    sendJson(res, { ok: true });
     return true;
   }
   return false;
 }
+
 
 function renderAdminDash(keysHtml, logsHtml, stats) {
   const sc = function(id, val, lbl, style) {
@@ -2499,15 +2516,15 @@ async function handleRequest(req, res) {
 
     if (await handleClientPanel(req, res, pathname, url)) return;
 
+    if (pathname.startsWith(R_ADMIN)) {
+      await handleAdmin(req, res, pathname, ip);
+      return;
+    }
+
     if (pathname.startsWith('/api/')) {
       const handled = await handleWaSpeedApi(req, res, pathname, ip);
       if (handled !== false) return;
       sendJson(res, { success: false, msg_id: 'not_found' }, 404);
-      return;
-    }
-
-    if (pathname.startsWith(R_ADMIN)) {
-      await handleAdmin(req, res, pathname, ip);
       return;
     }
 
