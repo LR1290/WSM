@@ -1417,13 +1417,6 @@ function pubShell(title, body, activePath, _storeId) {
 }
 
 function renderPortal(storeId) {
-  const statusLabel = function(st) {
-    if (st==='active')  return '<span style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:.7rem;font-weight:700;letter-spacing:.05em;background:#041f10;color:#39ff14;border:1px solid rgba(57,255,20,.3)">PRO ATIVO</span>';
-    if (st==='blocked') return '<span style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:.7rem;font-weight:700;letter-spacing:.05em;background:#200810;color:#ff8899;border:1px solid rgba(255,68,102,.22)">BLOQUEADA</span>';
-    if (st==='expired') return '<span style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:.7rem;font-weight:700;letter-spacing:.05em;background:#200810;color:#ff8899;border:1px solid rgba(255,68,102,.22)">EXPIRADA</span>';
-    if (st==='pending') return '<span style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:.7rem;font-weight:700;letter-spacing:.05em;background:rgba(100,100,255,.1);color:#a0a0ff;border:1px solid rgba(100,100,255,.25)">PENDENTE</span>';
-    return '<span style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:.7rem;font-weight:700;letter-spacing:.05em;background:#1e1800;color:#fde047;border:1px solid rgba(253,224,71,.18)">FREE</span>';
-  };
   return pubShell('Portal do Cliente', [
     '<style>',
     '.portal-bg{min-height:calc(100vh - 52px);display:flex;align-items:center;justify-content:center;padding:32px 16px;background:radial-gradient(ellipse 70% 60% at 50% 40%,rgba(57,255,20,.07),transparent)}',
@@ -1456,6 +1449,8 @@ function renderPortal(storeId) {
     '.rc-key{font-size:.75rem;color:rgba(57,255,20,.45);min-width:80px;flex-shrink:0}',
     '.rc-val2{font-size:.85rem;color:#c8e8c8}',
     '.kchip{font-family:"JetBrains Mono",monospace;font-size:.75rem;background:#040d06;border:1px solid rgba(57,255,20,.22);color:#7fff6e;padding:3px 9px;border-radius:6px}',
+    '.p-rem-btn{padding:3px 10px;border-radius:5px;border:1px solid rgba(255,68,102,.3);background:transparent;color:#ff8899;font-size:.7rem;font-weight:700;cursor:pointer;transition:all .15s}',
+    '.p-rem-btn:hover{background:rgba(255,68,102,.1)}',
     '</style>',
     '<div class="portal-bg">',
     '<div class="glass">',
@@ -1477,10 +1472,9 @@ function renderPortal(storeId) {
     '<div class="rc-row"><span class="rc-key">Chave</span><code class="kchip" id="rc-code">—</code></div>',
     '<div class="rc-row"><span class="rc-key">Dispositivos</span><span class="rc-val2" id="rc-devices">—</span></div>',
     '</div>',
-    '<div class="rc-section">',
-    '<div class="rc-stitle">Informações</div>',
-    '<div class="rc-row"><span class="rc-key">WhatsApp</span><span class="rc-val2" id="rc-phone">—</span></div>',
-    '<div class="rc-row"><span class="rc-key">Último uso</span><span class="rc-val2" id="rc-last">—</span></div>',
+    '<div class="rc-section" id="rc-phones-section" style="display:none">',
+    '<div class="rc-stitle">Dispositivos cadastrados — <small style="color:rgba(57,255,20,.35);font-size:.6rem">Clique em Remover para desvincular</small></div>',
+    '<div id="rc-phones-list" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto"></div>',
     '</div>',
     '</div>',
     '<div class="divider"></div>',
@@ -1489,38 +1483,60 @@ function renderPortal(storeId) {
     '<p class="p-lgpd">Ao acessar, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com o tratamento de dados conforme a <strong>LGPD – Lei nº 13.709/2018</strong>.</p>',
     '</div></div>',
     '<script>',
-    'var _STATUS_LABELS={active:"PRO ATIVO",blocked:"BLOQUEADA",expired:"EXPIRADA",free:"FREE",pending:"PENDENTE"};',
-    'var _STATUS_COLORS={active:"#39ff14",blocked:"#ff8899",expired:"#ff8899",free:"#fde047",pending:"#a0a0ff"};',
+    'var _SL={active:"PRO ATIVO",blocked:"BLOQUEADA",expired:"EXPIRADA",free:"FREE",pending:"PENDENTE"};',
+    'var _SC={active:"#39ff14",blocked:"#ff8899",expired:"#ff8899",free:"#fde047",pending:"#a0a0ff"};',
+    'var _curKey="";',
     'function setStatus(msg,ok){var el=document.getElementById("status-msg");el.style.display="block";el.style.color=ok?"#7fff6e":"#ff8899";el.style.borderColor=ok?"rgba(57,255,20,.18)":"rgba(255,68,102,.22)";el.style.background=ok?"rgba(57,255,20,.05)":"rgba(255,68,102,.07)";el.textContent=msg;}',
-    'function fmt(iso){if(!iso)return"—";var d=new Date(iso);return d.toLocaleDateString("pt-BR")+" "+d.toLocaleTimeString("pt-BR");}',
+    'function renderPhones(phones){',
+    '  var sec=document.getElementById("rc-phones-section");',
+    '  var list=document.getElementById("rc-phones-list");',
+    '  if(!phones||!phones.length){sec.style.display="none";return;}',
+    '  sec.style.display="block";',
+    '  list.innerHTML=phones.map(function(p){',
+    '    var masked=p.length>6?p.slice(0,2)+"••••"+p.slice(-4):p;',
+    '    return \'<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:7px;border:1px solid rgba(57,255,20,.12);background:rgba(4,13,6,.7)">\'+',
+    '      \'<span style="font-family:monospace;font-size:.82rem;color:#c8e8c8">\'+p+\'</span>\'+',
+    '      \'<button class="p-rem-btn" onclick="removePhone(this,\\\'\'+p+\'\\\')">\u2715 Remover</button>\'+',
+    '    \'</div>\';',
+    '  }).join("");',
+    '}',
+    'async function removePhone(btn,phone){',
+    '  if(!_curKey)return;',
+    '  btn.disabled=true;btn.textContent="...";',
+    '  try{',
+    '    var r=await fetch("/api/portal/remove-phone",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:_curKey.toLowerCase(),phone:phone})});',
+    '    var j=await r.json();',
+    '    if(j.success){setStatus("N\u00famero removido.",true);consultarChave();}',
+    '    else{btn.disabled=false;btn.textContent="\u2715 Remover";setStatus("Erro ao remover.",false);}',
+    '  }catch(e){btn.disabled=false;btn.textContent="\u2715 Remover";setStatus("Erro de conex\u00e3o.",false);}',
+    '}',
     'async function consultarChave(){',
     '  var k=document.getElementById("ki").value.trim();',
-    '  if(!k){setStatus("Digite sua chave de ativação.",false);return;}',
+    '  if(!k){setStatus("Digite sua chave de ativa\u00e7\u00e3o.",false);return;}',
+    '  _curKey=k;',
     '  setStatus("Consultando...",true);',
     '  document.getElementById("result-box").style.display="none";',
     '  try{',
     '    var r=await fetch("/api/auth/validate-portal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k.toLowerCase()})});',
     '    var j=await r.json();',
-    '    if(!j.success){setStatus(j.msg_id==="not_found"?"Chave não encontrada. Verifique e tente novamente.":"Chave inválida.",false);return;}',
-    '    var sl=_STATUS_LABELS[j.status]||j.status.toUpperCase();',
-    '    var sc=_STATUS_COLORS[j.status]||"#fde047";',
+    '    if(!j.success){setStatus(j.msg_id==="not_found"?"Chave n\u00e3o encontrada. Verifique e tente novamente.":"Chave inv\u00e1lida.",false);return;}',
+    '    var sl=_SL[j.status]||j.status.toUpperCase();',
+    '    var sc=_SC[j.status]||"#fde047";',
     '    document.getElementById("rc-status").innerHTML=\'<span style="font-size:.72rem;font-weight:800;color:\'+sc+\';background:\'+sc+\'18;border:1px solid \'+sc+\'28;padding:3px 10px;border-radius:999px;letter-spacing:.06em">\'+sl+"</span>";',
-    '    document.getElementById("rc-lib").textContent=j.liberacao||"—";',
+    '    document.getElementById("rc-lib").textContent=j.liberacao||"\u2014";',
     '    document.getElementById("rc-val").textContent=j.expiresAt?new Date(j.expiresAt).toLocaleDateString("pt-BR"):"Sem vencimento";',
-    '    document.getElementById("rc-label").textContent=j.label||"—";',
+    '    document.getElementById("rc-label").textContent=j.label||"\u2014";',
     '    document.getElementById("rc-code").textContent=j.code||k;',
-    '    document.getElementById("rc-devices").textContent=j.phones+"/"+(j.isUnlimited?"∞":String(j.maxUses));',
-    '    document.getElementById("rc-phone").textContent=j.lastPhone||"—";',
-    '    document.getElementById("rc-last").textContent=fmt(j.lastUsed);',
+    '    document.getElementById("rc-devices").textContent=j.phones+"/"+(j.isUnlimited?"\u221e":String(j.maxUses));',
+    '    renderPhones(j.phoneList||[]);',
     '    document.getElementById("result-box").style.display="block";',
     '    setStatus("Chave encontrada.",true);',
-    '  }catch(e){setStatus("Erro de conexão. Tente novamente.",false);}',
+    '  }catch(e){setStatus("Erro de conex\u00e3o. Tente novamente.",false);}',
     '}',
     'document.getElementById("ki").addEventListener("keydown",function(e){if(e.key==="Enter")consultarChave();});',
     '</scr' + 'ipt>',
   ].join('\n'), '/', storeId);
 }
-
 
 function renderFaqPage() {
   const faqs = [
@@ -1802,6 +1818,21 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
   }
 
   // A partir daqui: requer access-token
+  if (pathname === '/api/portal/remove-phone' && req.method === 'POST') {
+    const body = await readJson(req);
+    const raw  = sanitizeString(String(body.key || '').trim());
+    const key  = normKey(raw);
+    const ph   = sanitizeString(String(body.phone || '').trim());
+    if (!key || !ph) { sendJson(res, { success: false, msg_id: 'missing_params' }); return true; }
+    if (detectInjection(key) || detectInjection(ph)) { sendJson(res, { success: false, msg_id: 'invalid_input' }); return true; }
+    const rec = await findKey(key) || await findKeyByBearer(raw);
+    if (!rec) { sendJson(res, { success: false, msg_id: 'not_found' }); return true; }
+    if (!db) { sendJson(res, { success: false, msg_id: 'db_unavailable' }); return true; }
+    await db.collection(COL.licenses).updateOne({ code: normKey(rec.code || key) }, { $pull: { phones: ph } });
+    sendJson(res, { success: true });
+    return true;
+  }
+
   if (pathname === '/api/auth/validate-portal' && req.method === 'POST') {
     const body = await readJson(req);
     const raw  = sanitizeString(String(body.key || '').trim());
@@ -1828,6 +1859,7 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
       maxUses    : maxU,
       isUnlimited: isUnlim,
       phones     : (rec.phones || []).length,
+      phoneList  : (rec.phones || []),
       premium    : rec.premium || false,
       liberacao  : premium ? premium.data_liberacao : null,
     });
@@ -2068,9 +2100,6 @@ function panelStatusKey(rec) {
 }
 
 function buildLicenseRows(licenses) {
-  var ACT_BTN = function(fn, code, cls, lbl) {
-    return '<button class="zvm-btn' + (cls ? ' ' + cls : '') + '" onclick="' + fn + '(\'' + esc(code) + '\')">' + lbl + '</button>';
-  };
   return licenses.map(function(k) {
     var code      = k.code;
     var st        = panelStatusKey(k);
@@ -2087,14 +2116,17 @@ function buildLicenseRows(licenses) {
       ? '<span class="zvm-badge" style="background:rgba(100,100,255,.12);color:#a0a0ff;border-color:rgba(100,100,255,.28)">PENDENTE</span>'
       : statusBadgeHtml(keyStatus(k));
     var rawNote   = k.note || '';
-    var noteShort = rawNote.length > 20 ? rawNote.slice(0, 20) + '\u2026' : rawNote;
+    var noteShort = rawNote.length > 22 ? rawNote.slice(0, 22) + '\u2026' : rawNote;
+    var phonesJson = esc(JSON.stringify(k.phones || []));
     var actBtns   =
       (isPending ? '<button class="zvm-btn zvm-btn-ok" onclick="apiActivate(\'' + esc(code) + '\')">✓ Ativar</button>' : '') +
       '<button class="zvm-btn' + (k.active ? ' zvm-btn-warn' : ' zvm-btn-ok') + '" onclick="apiToggle(\'' + esc(code) + '\')">' + (k.active ? 'Bloq' : 'Liber') + '</button>' +
       '<button class="zvm-btn" onclick="openRenew(\'' + esc(code) + '\')">+Dias</button>' +
       '<button class="zvm-btn" onclick="openUses(\'' + esc(code) + '\',' + maxU + ')">Usos</button>' +
-      '<button class="zvm-btn zvm-btn-note" onclick="openNote(\'' + esc(code) + '\',\'' + esc(rawNote.replace(/'/g, "\\'")) + '\')">📝 Nota</button>' +
+      '<button class="zvm-btn zvm-btn-ok" onclick="openRename(\'' + esc(code) + '\',\'' + esc((k.label||'').replace(/'/g,"\\'")) + '\')">Renomear</button>' +
+      '<button class="zvm-btn" onclick="openNumbers(\'' + esc(code) + '\',' + phonesJson + ')">Números</button>' +
       '<button class="zvm-btn zvm-btn-del" onclick="apiDelete(\'' + esc(code) + '\')">✕ Del</button>';
+    var noteTd = '<td class="zvm-td zvm-note-cell" style="min-width:70px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.74rem;cursor:pointer" title="' + esc(rawNote) + '" onclick="openNote(\'' + esc(code) + '\',\'' + esc(rawNote.replace(/'/g,"\\'")) + '\')">' + (esc(noteShort) || '<span class="zvm-muted">\u2014</span>') + '</td>';
     return '<tr class="zvm-row" data-code="' + esc(code) + '" data-label="' + esc((k.label||'').toLowerCase()) + '" data-status="' + (isPending?'pendente':st) + '" data-phone="' + esc(k.lastPhone||'') + '" data-lastused="' + (k.lastUsed||'') + '" data-created="' + (k.createdAt||'') + '">' +
       '<td class="zvm-td" style="min-width:160px"><code class="zvm-code">' + esc(code) + '</code></td>' +
       '<td class="zvm-td" style="min-width:90px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(k.label||'—') + '</td>' +
@@ -2105,8 +2137,8 @@ function buildLicenseRows(licenses) {
       '<td class="zvm-td zvm-muted" style="min-width:86px;font-size:.75rem">' + esc(k.lastIp||'—') + '</td>' +
       '<td class="zvm-td zvm-muted" style="min-width:100px;font-size:.75rem">' + fmtDate(k.lastUsed) + '</td>' +
       '<td class="zvm-td zvm-muted" style="min-width:100px;font-size:.75rem">' + fmtDate(k.createdAt) + '</td>' +
-      '<td class="zvm-td" style="min-width:70px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.74rem" title="' + esc(rawNote) + '">' + esc(noteShort||'—') + '</td>' +
-      '<td class="zvm-td" style="min-width:180px"><div class="zvm-acts">' + actBtns + '</div></td></tr>';
+      noteTd +
+      '<td class="zvm-td" style="min-width:220px"><div class="zvm-acts">' + actBtns + '</div></td></tr>';
   }).join('');
 }
 
@@ -2160,28 +2192,33 @@ function buildLogRows(logs) {
 
 
 const ADMIN_JS_SAFE = (function() {
-  const lines = [
-    "var _RA='" + R_ADMIN + "';",
-    "function toast(m,ok){var t=document.getElementById('toast');t.textContent=m;t.style.borderColor=(ok===false)?'var(--dg)':'var(--ac)';t.classList.add('show');setTimeout(function(){t.classList.remove('show');},3500);}",
-    "function closeModal(){document.getElementById('modal-bg').classList.remove('open');}",
-    "function filterKeys(){var q=(document.getElementById('search-input').value||'').toLowerCase();var st=document.getElementById('filter-status').value;document.querySelectorAll('#kb tr').forEach(function(r){var row=(r.dataset.code+r.dataset.label+r.dataset.phone).toLowerCase();r.style.display=((!q||row.includes(q))&&(!st||r.dataset.status===st))?'':'none';});}",
-    "function filterLog(){var q=(document.getElementById('logSearch').value||'').toLowerCase();var t=(document.getElementById('logTypeFilter')||{}).value||'';document.querySelectorAll('#logb tr').forEach(function(r){r.style.display=((!q||(r.dataset.log||'').includes(q))&&(!t||(r.dataset.logtype||'')===t))?'':'none';});}",
-    "async function generateKey(){var label=document.getElementById('nlabel').value.trim();if(!label){toast('Informe o cliente',false);return;}var body={label:label,premium:document.getElementById('npremium').value==='1'};var dv=+(document.getElementById('ndays').value)||0,h=+(document.getElementById('nhours').value)||0,m=+(document.getElementById('nmins').value)||0;if(dv)body.expireDays=dv;if(h)body.expireHours=h;if(m)body.expireMinutes=m;var u=document.getElementById('nuses').value.trim();if(u!=='')body.maxUses=parseInt(u);if(document.getElementById('nfirstuse').checked)body.ativarNoPrimeiroUso=true;var r=await fetch(_RA+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(r.status===401){location.href=_RA+'/login';return;}var j=await r.json();if(j.ok){toast('Chave gerada: '+j.key);['nlabel','ndays','nhours','nmins','nuses'].forEach(function(id){document.getElementById(id).value='';});document.getElementById('nfirstuse').checked=false;doRefresh();}else{toast('Erro: '+(j.error||'?'),false);}}",
-    "async function clearLogs(){if(!confirm('Limpar todos os logs?'))return;var r=await fetch(_RA+'/api/logs/clear',{method:'POST'});if(r.ok){toast('Logs limpos');doRefresh();}else{toast('Falha',false);}}",
-    "async function apiActivate(code){var r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/activate',{method:'POST'});if(r.ok){toast('Chave ativada');doRefresh();}else{toast('Falha',false);}}",
-    "async function doRefresh(manual){try{var r=await fetch(_RA+'/api/data');if(r.status===401){if(manual)location.href=_RA+'/login';return;}var d=await r.json();if(!d.ok)return;document.getElementById('s-total').textContent=d.totalKeys;document.getElementById('s-active').textContent=d.activeKeys;document.getElementById('s-free').textContent=d.freeKeys;document.getElementById('s-expired').textContent=d.expiredKeys;document.getElementById('s-logs').textContent=d.totalLogs;document.getElementById('kb').innerHTML=d.keysHtml;document.getElementById('logb').innerHTML=d.logsHtml;var lr=document.getElementById('last-r');if(lr)lr.textContent=new Date().toLocaleTimeString('pt-BR');filterKeys();}catch(e){if(manual)toast('Erro ao atualizar',false);}}",
-    "async function apiToggle(code){var r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});if(r.ok){toast('Status alterado');doRefresh();}else{toast('Falha',false);}}",
-    "async function apiDelete(code){if(!confirm('Excluir chave '+code+'?'))return;var r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});if(r.ok){toast('Chave removida');doRefresh();}else{toast('Falha',false);}}",
-    "function openRenew(code){var box=document.getElementById('modal-box');box.innerHTML='<h3 style=\"margin-bottom:14px\">Renovar '+code+'</h3><div class=\"field\"><label>Dias</label><input id=\"rd\" type=\"number\" min=\"0\" value=\"30\"></div><div class=\"field\"><label>Horas</label><input id=\"rh\" type=\"number\" min=\"0\" value=\"0\"></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitRenew(this.dataset.code)\" data-code=\"'+code+'\">Confirmar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>';document.getElementById('modal-bg').classList.add('open');}",
-    "async function submitRenew(code){var days=+(document.getElementById('rd').value)||0,hours=+(document.getElementById('rh').value)||0;var r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/renew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days:days,hours:hours})});closeModal();if(r.ok){toast('Renovada');doRefresh();}else{toast('Falha',false);}}",
-    "function openUses(code,cur){var box=document.getElementById('modal-box');box.innerHTML='<h3 style=\"margin-bottom:14px\">Limite de usos &mdash; '+code+'</h3><div class=\"field\"><label>Máx (-1 = ilimitado)</label><input id=\"mu\" type=\"number\" value=\"'+cur+'\"></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitUses(this.dataset.code)\" data-code=\"'+code+'\">Confirmar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>';document.getElementById('modal-bg').classList.add('open');}",
-    "async function submitUses(code){var maxUses=parseInt(document.getElementById('mu').value);var r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/max-uses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({maxUses:maxUses})});closeModal();if(r.ok){toast('Atualizado');doRefresh();}else{toast('Falha',false);}}",
-    "function openNote(code,cur){var box=document.getElementById('modal-box');var safe=cur.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');box.innerHTML='<h3 style=\"margin-bottom:14px\">Nota &mdash; '+code+'</h3><div class=\"field\"><textarea id=\"nt\" rows=\"4\" style=\"width:100%;padding:10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font:inherit;resize:vertical\">'+safe+'</textarea></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitNote(this.dataset.code)\" data-code=\"'+code+'\">Salvar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>';document.getElementById('modal-bg').classList.add('open');setTimeout(function(){var t=document.getElementById('nt');if(t)t.focus();},60);}",
-    "async function submitNote(code){var note=document.getElementById('nt').value;var r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note:note})});closeModal();if(r.ok){toast('Nota salva');doRefresh();}else{toast('Falha',false);}}",
-    "function exportCsv(){window.location.href=_RA+'/api/export/csv';}",
-    "setInterval(doRefresh, 60000);",
-  ];
-  return lines.join('\n');
+  var RA = R_ADMIN;
+  var js = '';
+  js += 'var _RA="' + RA + '";\n';
+  js += 'function toast(m,ok){var t=document.getElementById("toast");t.textContent=m;t.style.borderColor=(ok===false)?"var(--dg)":"var(--ac)";t.classList.add("show");setTimeout(function(){t.classList.remove("show");},3500);}\n';
+  js += 'function closeModal(){document.getElementById("modal-bg").classList.remove("open");}\n';
+  js += 'function filterKeys(){var q=(document.getElementById("search-input").value||"").toLowerCase();var st=document.getElementById("filter-status").value;document.querySelectorAll("#kb tr").forEach(function(r){var row=(r.dataset.code+r.dataset.label+r.dataset.phone).toLowerCase();r.style.display=((!q||row.includes(q))&&(!st||r.dataset.status===st))?"":"none";});}\n';
+  js += 'function filterLog(){var q=(document.getElementById("logSearch").value||"").toLowerCase();var t=(document.getElementById("logTypeFilter")||{}).value||"";document.querySelectorAll("#logb tr").forEach(function(r){r.style.display=((!q||(r.dataset.log||"").includes(q))&&(!t||(r.dataset.logtype||"")===t))?"":"none";});}\n';
+  js += 'async function generateKey(){var label=document.getElementById("nlabel").value.trim();if(!label){toast("Informe o cliente",false);return;}var body={label:label,premium:document.getElementById("npremium").value==="1"};var dv=+(document.getElementById("ndays").value)||0,h=+(document.getElementById("nhours").value)||0,m=+(document.getElementById("nmins").value)||0;if(dv)body.expireDays=dv;if(h)body.expireHours=h;if(m)body.expireMinutes=m;var u=document.getElementById("nuses").value.trim();if(u!=="")body.maxUses=parseInt(u);if(document.getElementById("nfirstuse").checked)body.ativarNoPrimeiroUso=true;var r=await fetch(_RA+"/api/keys",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});if(r.status===401){location.href=_RA+"/login";return;}var j=await r.json();if(j.ok){toast("Chave gerada: "+j.key);["nlabel","ndays","nhours","nmins","nuses"].forEach(function(id){document.getElementById(id).value="";});document.getElementById("nfirstuse").checked=false;doRefresh();}else{toast("Erro: "+(j.error||"?"),false);}}\n';
+  js += 'async function clearLogs(){if(!confirm("Limpar todos os logs?"))return;var r=await fetch(_RA+"/api/logs/clear",{method:"POST"});if(r.ok){toast("Logs limpos");doRefresh();}else{toast("Falha",false);}}\n';
+  js += 'async function apiActivate(code){var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/activate",{method:"POST"});if(r.ok){toast("Chave ativada");doRefresh();}else{toast("Falha",false);}}\n';
+  js += 'async function doRefresh(manual){try{var r=await fetch(_RA+"/api/data");if(r.status===401){if(manual)location.href=_RA+"/login";return;}var d=await r.json();if(!d.ok)return;document.getElementById("s-total").textContent=d.totalKeys;document.getElementById("s-active").textContent=d.activeKeys;document.getElementById("s-free").textContent=d.freeKeys;document.getElementById("s-expired").textContent=d.expiredKeys;document.getElementById("s-logs").textContent=d.totalLogs;document.getElementById("kb").innerHTML=d.keysHtml;document.getElementById("logb").innerHTML=d.logsHtml;var lr=document.getElementById("last-r");if(lr)lr.textContent=new Date().toLocaleTimeString("pt-BR");filterKeys();}catch(e){if(manual)toast("Erro ao atualizar",false);}}\n';
+  js += 'async function apiToggle(code){var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/toggle",{method:"POST"});if(r.ok){toast("Status alterado");doRefresh();}else{toast("Falha",false);}}\n';
+  js += 'async function apiDelete(code){if(!confirm("Excluir chave "+code+"?"))return;var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code),{method:"DELETE"});if(r.ok){toast("Chave removida");doRefresh();}else{toast("Falha",false);}}\n';
+  js += 'function openRenew(code){var b=document.getElementById("modal-box");b.innerHTML="<h3>Renovar "+code+"</h3><div class=\"field\"><label>Dias</label><input id=\"rd\" type=\"number\" min=\"0\" value=\"30\"></div><div class=\"field\"><label>Horas</label><input id=\"rh\" type=\"number\" min=\"0\" value=\"0\"></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitRenew(this.dataset.code)\" data-code=\\"+code+"\\\">Confirmar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");}\n';
+  js += 'async function submitRenew(code){var days=+(document.getElementById("rd").value)||0,hours=+(document.getElementById("rh").value)||0;var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/renew",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({days:days,hours:hours})});closeModal();if(r.ok){toast("Renovada");doRefresh();}else{toast("Falha",false);}}\n';
+  js += 'function openUses(code,cur){var b=document.getElementById("modal-box");b.innerHTML="<h3>Limite de usos</h3><div class=\"field\"><label>M\u00e1x (-1=∞)</label><input id=\"mu\" type=\"number\" value=\""+cur+"\"></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitUses(this.dataset.code)\" data-code=\\"+code+"\\\">Confirmar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");}\n';
+  js += 'async function submitUses(code){var maxUses=parseInt(document.getElementById("mu").value);var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/max-uses",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({maxUses:maxUses})});closeModal();if(r.ok){toast("Atualizado");doRefresh();}else{toast("Falha",false);}}\n';
+  js += 'function openNote(code,cur){var b=document.getElementById("modal-box");var safe=cur.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");b.innerHTML="<h3>Nota</h3><div class=\"field\"><textarea id=\"nt\" rows=\"4\" style=\"width:100%;padding:10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font:inherit;resize:vertical\">"+safe+"</textarea></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitNote(this.dataset.code)\" data-code=\\"+code+"\\\">Salvar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");setTimeout(function(){var t=document.getElementById("nt");if(t)t.focus();},60);}\n';
+  js += 'async function submitNote(code){var note=document.getElementById("nt").value;var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/note",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({note:note})});closeModal();if(r.ok){toast("Nota salva");doRefresh();}else{toast("Falha",false);}}\n';
+  js += 'function openRename(code,cur){var b=document.getElementById("modal-box");b.innerHTML="<h3>Renomear</h3><div class=\"field\"><label>Novo nome</label><input id=\"rn\" type=\"text\" maxlength=\"60\" value=\""+cur.replace(/"/g,"&quot;")+"\"></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitRename(this.dataset.code)\" data-code=\\"+code+"\\\">Salvar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");setTimeout(function(){var t=document.getElementById("rn");if(t){t.focus();t.select();}},60);}\n';
+  js += 'async function submitRename(code){var label=document.getElementById("rn").value.trim();if(!label){alert("Informe um nome.");return;}var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/rename",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:label})});closeModal();if(r.ok){toast("Renomeado");doRefresh();}else{toast("Falha",false);}}\n';
+  js += 'function openNumbers(code,phones){var b=document.getElementById("modal-box");var rows=phones&&phones.length?phones.map(function(p){return"<div style=\"display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:6px;border:1px solid rgba(57,255,20,.12);background:#040d06;margin-bottom:5px\"><span style=\"font-family:monospace;font-size:.82rem;color:#c8e8c8\">"+p+"</span><button class=\"zvm-btn zvm-btn-del\" onclick=\"apiRemovePhone(this,\'"+code+"\',\'"+p+"\')\">&times;</button></div>";}).join(""):"<p style=\"color:#5a8a6e;font-size:.85rem;padding:8px 0\">Nenhum n\u00famero.</p>";b.innerHTML="<h3 style=\"margin-bottom:12px\">N\u00fameros &mdash; "+code+"</h3><div style=\"max-height:260px;overflow-y:auto\">"+rows+"</div><div class=\"mrow\"><button class=\"zvm-btn zvm-btn-del\" onclick=\"apiRemoveAllPhones(this,\'"+code+"\')\">&times; Remover Todos</button><button class=\"btn-w\" onclick=\"closeModal()\">Fechar</button></div>";document.getElementById("modal-bg").classList.add("open");}\n';
+  js += 'async function apiRemovePhone(btn,code,phone){btn.disabled=true;var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/remove-phone",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:phone})});if(r.ok){var row=btn.parentElement;if(row)row.remove();toast("N\u00famero removido");doRefresh();}else{btn.disabled=false;toast("Falha",false);}}\n';
+  js += 'async function apiRemoveAllPhones(btn,code){if(!confirm("Remover todos os n\u00fameros de "+code+"?"))return;btn.disabled=true;var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/remove-all-phones",{method:"POST"});if(r.ok){closeModal();toast("Todos removidos");doRefresh();}else{btn.disabled=false;toast("Falha",false);}}\n';
+  js += 'function exportCsv(){window.location.href=_RA+"/api/export/csv";}\n';
+  js += 'setInterval(doRefresh,60000);\n';
+  return js;
 })();
 
 let _keysCache = null;
@@ -2337,12 +2374,51 @@ async function handleAdminApi(req, res, pathname) {
     return true;
   }
   const codeDel = pathname.match(adminApiRe());
-  if (codeDel && req.method === 'DELETE' && !/\/(toggle|renew|max-uses|activate|note)$/.test(pathname)) {
+  if (codeDel && req.method === 'DELETE' && !/\/(toggle|renew|max-uses|activate|note|remove-phone|remove-all-phones|rename)$/.test(pathname)) {
     const code = decodeURIComponent(codeDel[1]);
     await deleteLicense(code);
     await addLog('key_delete', 'Chave ' + code + ' excluida', { code });
     invalidateKeysCache();
     sendJson(res, { ok: true });
+    return true;
+  }
+  const codeRemPhone = pathname.match(adminApiRe('/remove-phone'));
+  if (codeRemPhone && req.method === 'POST') {
+    const rawCode = decodeURIComponent(codeRemPhone[1]);
+    const rec     = await findKey(rawCode);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const pb = await readJson(req);
+    const ph = sanitizeString(String(pb.phone || '').trim());
+    if (!ph) { sendJson(res, { error: 'phone required' }, 400); return true; }
+    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
+    await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $pull: { phones: ph } });
+    invalidateKeysCache();
+    sendJson(res, { ok: true });
+    return true;
+  }
+  const codeRemAll = pathname.match(adminApiRe('/remove-all-phones'));
+  if (codeRemAll && req.method === 'POST') {
+    const rawCode = decodeURIComponent(codeRemAll[1]);
+    const rec     = await findKey(rawCode);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
+    await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $set: { phones: [], uses: 0 } });
+    invalidateKeysCache();
+    sendJson(res, { ok: true });
+    return true;
+  }
+  const codeRename = pathname.match(adminApiRe('/rename'));
+  if (codeRename && req.method === 'POST') {
+    const rawCode = decodeURIComponent(codeRename[1]);
+    const rec     = await findKey(rawCode);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const rb   = await readJson(req);
+    const lbl  = sanitizeString(String(rb.label || '').trim().slice(0, 60));
+    if (!lbl) { sendJson(res, { error: 'label required' }, 400); return true; }
+    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
+    await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $set: { label: lbl } });
+    invalidateKeysCache();
+    sendJson(res, { ok: true, label: lbl });
     return true;
   }
   return false;
