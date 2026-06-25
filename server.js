@@ -776,21 +776,22 @@ async function authSuccess(code, rec, meta) {
   if (st === 'pending' && rec.ativarNoPrimeiroUso && !rec.primeiroUsoAt) {
     await updateLicense(code, { primeiroUsoAt: new Date().toISOString() });
     rec.primeiroUsoAt = new Date().toISOString();
-    await addLog('key_activated', `Chave ${code} ativada no primeiro uso`, { code });
+    await addLog('key_activated', 'Chave ' + code + ' ativada no primeiro uso', { code });
   }
-  const now       = new Date().toISOString();
-  const phone     = sanitizeString(String(meta?.phone || rec.lastPhone || '').slice(0, 40));
-  const ip        = sanitizeString(String(meta?.ip    || rec.lastIp   || '').slice(0, 64));
+  const now   = new Date().toISOString();
+  const phone = sanitizeString(String((meta && meta.phone) || rec.lastPhone || '').slice(0, 40));
+  const ip    = sanitizeString(String((meta && meta.ip)    || rec.lastIp   || '').slice(0, 64));
   const atomicPatch = { lastUsed: now };
   if (phone) atomicPatch.lastPhone = phone;
   if (ip)    atomicPatch.lastIp    = ip;
+  const maxU = (rec.maxUses != null) ? rec.maxUses : -1;
+  const isUnlimited = maxU <= 0 || maxU === -1;
   const phoneAlreadyLinked = phone && (rec.phones || []).includes(phone);
-  const maxU = rec.maxUses ?? -1;
   if (!db) return { ok: false, msg_id: 'db_unavailable' };
   try {
     const updateOp = { $set: atomicPatch, $inc: { uses: 1 } };
     if (phone && !phoneAlreadyLinked) {
-      if (maxU !== -1 && (rec.phones || []).length >= maxU) {
+      if (!isUnlimited && (rec.phones || []).length >= maxU) {
         return { ok: false, msg_id: 'max_devices_reached' };
       }
       updateOp.$addToSet = { phones: phone };
@@ -803,7 +804,7 @@ async function authSuccess(code, rec, meta) {
   rec.lastPhone = phone || rec.lastPhone;
   rec.lastIp    = ip    || rec.lastIp;
   if (phone && !phoneAlreadyLinked) {
-    rec.phones = [...(rec.phones || []), phone];
+    rec.phones = (rec.phones || []).concat([phone]);
     rec.uses   = (rec.uses || 0) + 1;
   }
   const finalSt = keyStatus(rec);
@@ -1402,96 +1403,124 @@ const PUB_CSS = `*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}:
 
 const PUB_CANVAS = `<canvas id="_c" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas><script>(function(){var c=document.getElementById('_c'),x=c.getContext('2d');function r(){c.width=innerWidth;c.height=innerHeight;}r();addEventListener('resize',r);var p=Array.from({length:40},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3,r:Math.random()*1.5+.4};});function d(){x.clearRect(0,0,c.width,c.height);p.forEach(function(a){a.x+=a.vx;a.y+=a.vy;if(a.x<0||a.x>c.width)a.vx*=-1;if(a.y<0||a.y>c.height)a.vy*=-1;x.beginPath();x.arc(a.x,a.y,a.r,0,Math.PI*2);x.fillStyle='rgba(57,255,20,.4)';x.fill();});for(var i=0;i<p.length;i++)for(var j=i+1;j<p.length;j++){var dx=p[i].x-p[j].x,dy=p[i].y-p[j].y,dd=Math.sqrt(dx*dx+dy*dy);if(dd<110){x.beginPath();x.moveTo(p[i].x,p[i].y);x.lineTo(p[j].x,p[j].y);x.strokeStyle='rgba(57,255,20,'+(0.09*(1-dd/110))+')';x.lineWidth=.5;x.stroke();}}requestAnimationFrame(d);}d();})();</script>`;
 
-function pubShell(title, body, activePath) {
+function pubShell(title, body, activePath, _storeId) {
   activePath = activePath || '/';
   const nl = (href, label) => {
     const isActive = href === '/' ? activePath === '/' : activePath === href;
     const activeStyle = isActive
       ? 'color:var(--g);border-color:var(--g);background:rgba(57,255,20,.08);text-shadow:0 0 10px rgba(57,255,20,.4)'
       : 'color:var(--muted);border-color:var(--bdr);background:transparent';
-    return `<a href="${href}" style="font-size:.8rem;padding:5px 13px;border:1px solid;border-radius:6px;transition:all .2s;font-weight:700;text-decoration:none;${activeStyle}">${label}${isActive ? ' <span style="color:var(--g);font-size:.6rem">●</span>' : ''}</a>`;
+    return '<a href="' + href + '" style="font-size:.8rem;padding:5px 13px;border:1px solid;border-radius:6px;transition:all .2s;font-weight:700;text-decoration:none;' + activeStyle + '">' + label + (isActive ? ' <span style="color:var(--g);font-size:.6rem">●</span>' : '') + '</a>';
   };
-  return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)} — WaSpeed</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23020604'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='13' fill='%2339ff14'%3EWS%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
-<style>${PUB_CSS}</style></head>
-<body>
-<nav class="pub-nav">
-  <div class="pub-logo">⚡ WaSpeed</div>
-  <div class="pub-links">
-    ${nl('/','Portal')}
-    ${nl('/faq','FAQ')}
-    ${nl('/privacidade','🔒 Privacidade')}
-    ${nl('/planos','💳 Planos')}
-    <a href="https://wa.me/5521996771552" target="_blank" style="font-size:.8rem;padding:5px 13px;border:1px solid var(--bdr);border-radius:6px;font-weight:600;color:var(--muted);text-decoration:none;transition:all .2s;background:transparent">💬 Suporte</a>
-  </div>
-</nav>
-<div style="position:relative;z-index:1;min-height:calc(100vh - 52px - 54px)">${body}</div>
-<footer class="pub-footer">
-  <p>© ${new Date().getFullYear()} WaSpeed · <a href="/">Portal</a> · <a href="/faq">FAQ</a> · <a href="/planos">Planos</a> · <a href="/privacidade">Privacidade</a></p>
-</footer>
-${PUB_CANVAS}</body></html>`;
+  const bodyStr = Array.isArray(body) ? body.join('\n') : body;
+  return '<!DOCTYPE html><html lang="pt-BR"><head>\n<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">\n<title>' + esc(title) + ' — WaSpeed</title>\n<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 32 32\'%3E%3Crect width=\'32\' height=\'32\' rx=\'8\' fill=\'%23020604\'/%3E%3Ctext x=\'50%25\' y=\'54%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' font-family=\'monospace\' font-weight=\'700\' font-size=\'13\' fill=\'%2339ff14\'%3EWS%3C/text%3E%3C/svg%3E">\n<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">\n<style>' + PUB_CSS + '</style></head>\n<body>\n<nav class="pub-nav">\n  <div class="pub-logo">\u26a1 WaSpeed</div>\n  <div class="pub-links">\n    ' + nl('/','Portal') + '\n    ' + nl('/faq','FAQ') + '\n    ' + nl('/privacidade','\uD83D\uDD12 Privacidade') + '\n    ' + nl('/planos','\uD83D\uDCB3 Planos') + '\n    <a href="https://wa.me/5521996771552" target="_blank" style="font-size:.8rem;padding:5px 13px;border:1px solid var(--bdr);border-radius:6px;font-weight:600;color:var(--muted);text-decoration:none;transition:all .2s;background:transparent">\uD83D\uDCAC Suporte</a>\n  </div>\n</nav>\n<div style="position:relative;z-index:1;min-height:calc(100vh - 52px - 54px)">' + bodyStr + '</div>\n<footer class="pub-footer">\n  <p>\u00a9 ' + new Date().getFullYear() + ' WaSpeed \u00b7 <a href="/">Portal</a> \u00b7 <a href="/faq">FAQ</a> \u00b7 <a href="/planos">Planos</a> \u00b7 <a href="/privacidade">Privacidade</a></p>\n</footer>\n' + PUB_CANVAS + '</body></html>';
 }
 
 function renderPortal(storeId) {
-  return pubShell('Portal do Cliente', `
-<style>
-.portal-bg{min-height:calc(100vh - 52px);display:flex;align-items:center;justify-content:center;padding:32px 16px;background:radial-gradient(ellipse 70% 60% at 50% 40%,rgba(57,255,20,.07),transparent)}
-.glass{background:rgba(8,14,9,.75);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border:1px solid rgba(57,255,20,.18);border-radius:20px;padding:44px 40px;width:100%;max-width:460px;box-shadow:0 8px 48px rgba(0,0,0,.6),0 0 60px rgba(57,255,20,.06)}
-.portal-logo{display:flex;flex-direction:column;align-items:center;margin-bottom:30px}
-.portal-icon{font-size:2.4rem;margin-bottom:12px}
-.portal-brand{font-weight:800;font-size:1.4rem;color:var(--g);letter-spacing:-.02em;text-shadow:0 0 24px rgba(57,255,20,.45)}
-.portal-title{font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-top:4px;font-weight:600}
-.key-label{font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--g);font-weight:700;margin-bottom:7px;display:block}
-.key-input{width:100%;padding:13px 16px;border-radius:10px;border:1px solid rgba(57,255,20,.25);background:rgba(4,13,6,.9);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:.9rem;letter-spacing:.04em;transition:border-color .2s,box-shadow .2s;outline:none}
-.key-input:focus{border-color:var(--g);box-shadow:0 0 0 3px rgba(57,255,20,.15),0 0 18px rgba(57,255,20,.1)}
-.btn-main{display:block;width:100%;padding:14px;border-radius:10px;border:none;font:inherit;font-size:.95rem;font-weight:800;cursor:pointer;color:#020604;background:linear-gradient(135deg,#39ff14,#00ff88);text-align:center;letter-spacing:.03em;transition:all .2s;box-shadow:0 4px 20px rgba(57,255,20,.35);margin-top:16px}
-.btn-main:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(57,255,20,.5)}
-.divider{height:1px;background:var(--bdr);margin:22px 0}
-.btn-sec{display:flex;align-items:center;gap:10px;width:100%;padding:11px 16px;border-radius:9px;border:1px solid var(--bdr);background:transparent;color:var(--muted);font:inherit;font-size:.85rem;font-weight:600;cursor:pointer;text-decoration:none;transition:all .2s;margin-bottom:8px}
-.btn-sec:hover{border-color:rgba(57,255,20,.3);color:var(--g);background:rgba(57,255,20,.04)}
-.btn-sec:last-child{margin-bottom:0}
-.lgpd{font-size:.7rem;color:var(--muted);text-align:center;line-height:1.7;margin-top:24px;padding-top:18px;border-top:1px solid var(--bdr)}
-.lgpd a{color:var(--muted);text-decoration:underline}
-.lgpd a:hover{color:var(--g)}
-</style>
-<div class="portal-bg">
-  <div class="glass">
-    <div class="portal-logo">
-      <span class="portal-icon">⚡</span>
-      <span class="portal-brand">WaSpeed</span>
-      <span class="portal-title">Portal do Cliente</span>
-    </div>
-    <div style="margin-bottom:16px">
-      <label class="key-label">Sua chave de ativação</label>
-      <input id="ki" class="key-input" type="text" placeholder="WS-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false" oninput="this.value=this.value.trim().toUpperCase()">
-    </div>
-    <button class="btn-main" onclick="go()">🔍 Consultar Minha Chave</button>
-    <div id="kr"></div>
-    <div class="divider"></div>
-    <a href="/faq" class="btn-sec">❓ FAQ – Dúvidas Frequentes</a>
-    <a href="/planos" class="btn-sec">💳 Ver Planos e Preços</a>
-    <p class="lgpd">Ao acessar, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com o tratamento de dados conforme a <strong>LGPD – Lei nº 13.709/2018</strong>.</p>
-  </div>
-</div>
-<script>
-async function go(){
-  const k=document.getElementById('ki').value.trim();
-  const d=document.getElementById('kr');
-  if(!k){d.innerHTML='<div class="alert alert-w" style="margin-top:12px">Digite sua chave de ativação.</div>';return;}
-  d.innerHTML='<div class="alert" style="margin-top:12px">Consultando...</div>';
-  try{
-    const r=await fetch('/api/auth/validate-portal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k.toLowerCase()})});
-    const j=await r.json();
-    if(j.success){location.href='/${esc(storeId)}/auth-painel?token='+encodeURIComponent(k.toLowerCase());}
-    else{d.innerHTML='<div class="alert alert-d" style="margin-top:12px">Chave não encontrada. Verifique e tente novamente.</div>';}
-  }catch{d.innerHTML='<div class="alert alert-d" style="margin-top:12px">Erro de conexão. Tente novamente.</div>';}
+  const statusLabel = function(st) {
+    if (st==='active')  return '<span style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:.7rem;font-weight:700;letter-spacing:.05em;background:#041f10;color:#39ff14;border:1px solid rgba(57,255,20,.3)">PRO ATIVO</span>';
+    if (st==='blocked') return '<span style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:.7rem;font-weight:700;letter-spacing:.05em;background:#200810;color:#ff8899;border:1px solid rgba(255,68,102,.22)">BLOQUEADA</span>';
+    if (st==='expired') return '<span style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:.7rem;font-weight:700;letter-spacing:.05em;background:#200810;color:#ff8899;border:1px solid rgba(255,68,102,.22)">EXPIRADA</span>';
+    if (st==='pending') return '<span style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:.7rem;font-weight:700;letter-spacing:.05em;background:rgba(100,100,255,.1);color:#a0a0ff;border:1px solid rgba(100,100,255,.25)">PENDENTE</span>';
+    return '<span style="display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:.7rem;font-weight:700;letter-spacing:.05em;background:#1e1800;color:#fde047;border:1px solid rgba(253,224,71,.18)">FREE</span>';
+  };
+  return pubShell('Portal do Cliente', [
+    '<style>',
+    '.portal-bg{min-height:calc(100vh - 52px);display:flex;align-items:center;justify-content:center;padding:32px 16px;background:radial-gradient(ellipse 70% 60% at 50% 40%,rgba(57,255,20,.07),transparent)}',
+    '.glass{background:rgba(8,14,9,.78);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(57,255,20,.2);border-radius:18px;padding:44px 40px;width:100%;max-width:480px;box-shadow:0 8px 48px rgba(0,0,0,.6),0 0 60px rgba(57,255,20,.06)}',
+    '.p-logo{display:flex;flex-direction:column;align-items:center;margin-bottom:28px}',
+    '.p-icon{font-size:2.6rem;margin-bottom:10px}',
+    '.p-brand{font-weight:800;font-size:1.45rem;color:#39ff14;letter-spacing:-.02em;text-shadow:0 0 24px rgba(57,255,20,.45)}',
+    '.p-sub{font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:rgba(57,255,20,.55);margin-top:4px;font-weight:600}',
+    '.key-lbl{font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:#39ff14;font-weight:700;margin-bottom:7px;display:block}',
+    '.key-in{width:100%;padding:13px 16px;border-radius:10px;border:1px solid rgba(57,255,20,.28);background:rgba(4,13,6,.92);color:#e8fff3;font-family:"JetBrains Mono",monospace;font-size:.92rem;letter-spacing:.04em;transition:border-color .2s,box-shadow .2s;outline:none;box-sizing:border-box}',
+    '.key-in:focus{border-color:#39ff14;box-shadow:0 0 0 3px rgba(57,255,20,.15),0 0 18px rgba(57,255,20,.1)}',
+    '.btn-main{display:block;width:100%;padding:14px;border-radius:10px;border:none;font:inherit;font-size:1rem;font-weight:800;cursor:pointer;color:#020604;background:linear-gradient(135deg,#39ff14,#00ff88);text-align:center;letter-spacing:.03em;transition:all .2s;box-shadow:0 4px 20px rgba(57,255,20,.35);margin-top:14px}',
+    '.btn-main:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(57,255,20,.5)}',
+    '.divider{height:1px;background:rgba(57,255,20,.1);margin:22px 0}',
+    '.btn-sec{display:flex;align-items:center;gap:10px;width:100%;padding:11px 16px;border-radius:9px;border:1px solid rgba(57,255,20,.12);background:transparent;color:rgba(57,255,20,.55);font:inherit;font-size:.85rem;font-weight:600;cursor:pointer;text-decoration:none;transition:all .2s;margin-bottom:8px;box-sizing:border-box}',
+    '.btn-sec:hover{border-color:rgba(57,255,20,.35);color:#39ff14;background:rgba(57,255,20,.04)}',
+    '.p-lgpd{font-size:.68rem;color:rgba(57,255,20,.35);text-align:center;line-height:1.7;margin-top:22px;padding-top:18px;border-top:1px solid rgba(57,255,20,.08)}',
+    '.p-lgpd a{color:rgba(57,255,20,.5);text-decoration:underline}',
+    '.result-card{margin-top:18px;border-radius:12px;border:1px solid rgba(57,255,20,.2);background:rgba(4,13,6,.85);overflow:hidden;display:none}',
+    '.rc-header{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0}',
+    '.rc-cell{padding:18px 16px;text-align:center;border-bottom:1px solid rgba(57,255,20,.1)}',
+    '.rc-cell:not(:last-child){border-right:1px solid rgba(57,255,20,.08)}',
+    '.rc-val{font-size:1rem;font-weight:700;margin-bottom:6px;min-height:28px;display:flex;align-items:center;justify-content:center}',
+    '.rc-lbl{font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(57,255,20,.4);font-weight:600}',
+    '.rc-section{padding:16px 20px;border-bottom:1px solid rgba(57,255,20,.08)}',
+    '.rc-section:last-child{border-bottom:none}',
+    '.rc-stitle{font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(57,255,20,.4);font-weight:700;margin-bottom:10px}',
+    '.rc-row{display:flex;gap:8px;align-items:baseline;margin-bottom:6px}',
+    '.rc-row:last-child{margin-bottom:0}',
+    '.rc-key{font-size:.75rem;color:rgba(57,255,20,.45);min-width:80px;flex-shrink:0}',
+    '.rc-val2{font-size:.85rem;color:#c8e8c8}',
+    '.kchip{font-family:"JetBrains Mono",monospace;font-size:.75rem;background:#040d06;border:1px solid rgba(57,255,20,.22);color:#7fff6e;padding:3px 9px;border-radius:6px}',
+    '</style>',
+    '<div class="portal-bg">',
+    '<div class="glass">',
+    '<div class="p-logo"><span class="p-icon">⚡</span><span class="p-brand">WaSpeed</span><span class="p-sub">Portal do Cliente</span></div>',
+    '<div style="margin-bottom:16px"><label class="key-lbl">Sua chave de ativação</label>',
+    '<input id="ki" class="key-in" type="text" placeholder="WS-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false" oninput="this.value=this.value.trim().toUpperCase()">',
+    '</div>',
+    '<button class="btn-main" onclick="consultarChave()">🔍 Consultar Minha Chave</button>',
+    '<div id="status-msg" style="display:none;margin-top:14px;padding:10px 14px;border-radius:8px;font-size:.85rem;border:1px solid rgba(57,255,20,.18);background:rgba(57,255,20,.05);color:#7fff6e"></div>',
+    '<div id="result-box" class="result-card">',
+    '<div class="rc-header">',
+    '<div class="rc-cell"><div class="rc-val" id="rc-status">—</div><div class="rc-lbl">Status</div></div>',
+    '<div class="rc-cell"><div class="rc-val" id="rc-lib" style="font-size:.88rem">—</div><div class="rc-lbl">Liberação</div></div>',
+    '<div class="rc-cell"><div class="rc-val" id="rc-val" style="font-size:.82rem">—</div><div class="rc-lbl">Validade</div></div>',
+    '</div>',
+    '<div class="rc-section">',
+    '<div class="rc-stitle">Conta</div>',
+    '<div class="rc-row"><span class="rc-key">Cliente</span><span class="rc-val2" id="rc-label">—</span></div>',
+    '<div class="rc-row"><span class="rc-key">Chave</span><code class="kchip" id="rc-code">—</code></div>',
+    '<div class="rc-row"><span class="rc-key">Dispositivos</span><span class="rc-val2" id="rc-devices">—</span></div>',
+    '</div>',
+    '<div class="rc-section">',
+    '<div class="rc-stitle">Informações</div>',
+    '<div class="rc-row"><span class="rc-key">WhatsApp</span><span class="rc-val2" id="rc-phone">—</span></div>',
+    '<div class="rc-row"><span class="rc-key">Último uso</span><span class="rc-val2" id="rc-last">—</span></div>',
+    '</div>',
+    '</div>',
+    '<div class="divider"></div>',
+    '<a href="/faq" class="btn-sec">❓ FAQ – Dúvidas Frequentes</a>',
+    '<a href="/planos" class="btn-sec">💳 Ver Planos e Preços</a>',
+    '<p class="p-lgpd">Ao acessar, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com o tratamento de dados conforme a <strong>LGPD – Lei nº 13.709/2018</strong>.</p>',
+    '</div></div>',
+    '<script>',
+    'var _STATUS_LABELS={active:"PRO ATIVO",blocked:"BLOQUEADA",expired:"EXPIRADA",free:"FREE",pending:"PENDENTE"};',
+    'var _STATUS_COLORS={active:"#39ff14",blocked:"#ff8899",expired:"#ff8899",free:"#fde047",pending:"#a0a0ff"};',
+    'function setStatus(msg,ok){var el=document.getElementById("status-msg");el.style.display="block";el.style.color=ok?"#7fff6e":"#ff8899";el.style.borderColor=ok?"rgba(57,255,20,.18)":"rgba(255,68,102,.22)";el.style.background=ok?"rgba(57,255,20,.05)":"rgba(255,68,102,.07)";el.textContent=msg;}',
+    'function fmt(iso){if(!iso)return"—";var d=new Date(iso);return d.toLocaleDateString("pt-BR")+" "+d.toLocaleTimeString("pt-BR");}',
+    'async function consultarChave(){',
+    '  var k=document.getElementById("ki").value.trim();',
+    '  if(!k){setStatus("Digite sua chave de ativação.",false);return;}',
+    '  setStatus("Consultando...",true);',
+    '  document.getElementById("result-box").style.display="none";',
+    '  try{',
+    '    var r=await fetch("/api/auth/validate-portal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k.toLowerCase()})});',
+    '    var j=await r.json();',
+    '    if(!j.success){setStatus(j.msg_id==="not_found"?"Chave não encontrada. Verifique e tente novamente.":"Chave inválida.",false);return;}',
+    '    var sl=_STATUS_LABELS[j.status]||j.status.toUpperCase();',
+    '    var sc=_STATUS_COLORS[j.status]||"#fde047";',
+    '    document.getElementById("rc-status").innerHTML=\'<span style="font-size:.72rem;font-weight:800;color:\'+sc+\';background:\'+sc+\'18;border:1px solid \'+sc+\'28;padding:3px 10px;border-radius:999px;letter-spacing:.06em">\'+sl+"</span>";',
+    '    document.getElementById("rc-lib").textContent=j.liberacao||"—";',
+    '    document.getElementById("rc-val").textContent=j.expiresAt?new Date(j.expiresAt).toLocaleDateString("pt-BR"):"Sem vencimento";',
+    '    document.getElementById("rc-label").textContent=j.label||"—";',
+    '    document.getElementById("rc-code").textContent=j.code||k;',
+    '    document.getElementById("rc-devices").textContent=j.phones+"/"+(j.isUnlimited?"∞":String(j.maxUses));',
+    '    document.getElementById("rc-phone").textContent=j.lastPhone||"—";',
+    '    document.getElementById("rc-last").textContent=fmt(j.lastUsed);',
+    '    document.getElementById("result-box").style.display="block";',
+    '    setStatus("Chave encontrada.",true);',
+    '  }catch(e){setStatus("Erro de conexão. Tente novamente.",false);}',
+    '}',
+    'document.getElementById("ki").addEventListener("keydown",function(e){if(e.key==="Enter")consultarChave();});',
+    '</scr' + 'ipt>',
+  ].join('\n'), '/', storeId);
 }
-document.getElementById('ki').addEventListener('keydown',e=>{if(e.key==='Enter')go();});
-</script>`);
-}
+
 
 function renderFaqPage() {
   const faqs = [
@@ -1777,12 +1806,32 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     const body = await readJson(req);
     const raw  = sanitizeString(String(body.key || '').trim());
     const key  = normKey(raw);
-    if (!key) return sendJson(res, { success: false, msg_id: 'key_required' });
-    if (detectInjection(key)) return sendJson(res, { success: false, msg_id: 'invalid_key' });
+    if (!key) { sendJson(res, { success: false, msg_id: 'key_required' }); return true; }
+    if (detectInjection(key)) { sendJson(res, { success: false, msg_id: 'invalid_key' }); return true; }
     const rec = await findKey(key) || await findKeyByBearer(raw);
-    if (!rec) return sendJson(res, { success: false, msg_id: 'not_found' });
-    const st = keyStatus(rec);
-    return sendJson(res, { success: true, status: st, code: rec.code });
+    if (!rec) { sendJson(res, { success: false, msg_id: 'not_found' }); return true; }
+    const st      = keyStatus(rec);
+    const code    = rec.code || key;
+    const maxU    = (rec.maxUses != null) ? rec.maxUses : -1;
+    const isUnlim = maxU <= 0 || maxU === -1;
+    const premium = buildUserPremium(code, rec);
+    sendJson(res, {
+      success    : true,
+      status     : st,
+      code       : code,
+      label      : rec.label || '',
+      expiresAt  : rec.expiresAt || null,
+      createdAt  : rec.createdAt || null,
+      lastUsed   : rec.lastUsed  || null,
+      lastPhone  : rec.lastPhone || null,
+      lastIp     : rec.lastIp    || null,
+      maxUses    : maxU,
+      isUnlimited: isUnlim,
+      phones     : (rec.phones || []).length,
+      premium    : rec.premium || false,
+      liberacao  : premium ? premium.data_liberacao : null,
+    });
+    return true;
   }
 
   if (!requireAccessToken(req)) {
@@ -1944,7 +1993,37 @@ label{display:block;font-size:.8rem;font-weight:600;color:var(--mt);margin:0 0 6
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(3px)}.modal-bg.open{display:flex}.modal{background:var(--sf2);border:1px solid var(--bdrb);border-radius:14px;padding:24px;max-width:400px;width:90%}.modal h3{margin-bottom:16px;font-size:1.05rem}.modal .field{margin-bottom:12px}.mrow{display:flex;gap:8px;margin-top:16px}
 .login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.login-inn{width:100%;max-width:420px;display:flex;flex-direction:column;align-items:center;gap:22px}.login-brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:1.3rem;color:var(--ac);text-shadow:0 0 22px rgba(57,255,20,.38)}.login-card{width:100%;background:var(--sf2);border:1px solid var(--bdr);border-radius:16px;padding:34px 30px}.login-card h1{font-size:1.45rem;margin-bottom:4px;text-align:center}.login-card .sub{color:var(--mt);font-size:.875rem;margin-bottom:22px;text-align:center}.login-card .btn{width:100%;margin-top:8px;color:#020604}
 .gen-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:14px 18px;background:#020904;border-top:1px solid var(--bdr)}.gen-form input,.gen-form select{padding:9px 13px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font-size:.9rem}.gen-form input[type=text]{min-width:180px;flex:1}.gen-form input[type=number]{width:80px}.gen-form select{min-width:90px}
-.sec{margin-bottom:20px;background:var(--sf2);border:1px solid var(--bdr);border-radius:14px;overflow:hidden}.sh{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px;border-bottom:1px solid var(--bdr)}.sh-t{font-weight:700;font-size:.92rem}.sc-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;padding:16px 0}.sc{background:var(--sf);border:1px solid var(--bdr);border-radius:12px;padding:14px;text-align:center}.sc .n{font-size:1.55rem;font-weight:800}.sc .l{font-size:.65rem;color:var(--mt);text-transform:uppercase;margin-top:4px;letter-spacing:.06em}
+.sec{margin-bottom:20px;background:var(--sf2);border:1px solid var(--bdr);border-radius:14px;overflow:hidden}.sh{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px;border-bottom:1px solid var(--bdr)}.sh-t{font-weight:700;font-size:.92rem}.sc-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;padding:16px 0}.sc{background:var(--sf);border:1px solid var(--bdr);border-radius:12px;padding:14px;text-align:center}.sc .n{font-size:1.55rem;font-weight:800}.sc .l{font-size:.65rem;color:var(--mt);text-transform:uppercase;margin-top:4px;letter-spacing:.06em
+.zvm-row{will-change:transform;transition:background .15s}
+.zvm-row:hover td{background:#0a1610}
+.zvm-td{padding:10px 13px;text-align:left;border-bottom:1px solid #183326;vertical-align:middle}
+.zvm-code{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.72rem;background:#040d06;border:1px solid rgba(57,255,20,.22);color:#7fff6e;padding:3px 8px;border-radius:5px;word-break:break-all;display:inline-block}
+.zvm-badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:.66rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.zvm-muted{color:#5a8a6e}
+.zvm-acts{display:flex;flex-wrap:wrap;gap:3px}
+.zvm-btn{padding:4px 8px;border-radius:5px;border:1px solid #183326;background:#070f0a;color:#8ab89a;font-size:.72rem;font-weight:600;cursor:pointer;transition:all .18s;letter-spacing:.03em;white-space:nowrap}
+.zvm-btn:hover{border-color:rgba(57,255,20,.3);color:#39ff14;background:#0a1610}
+.zvm-btn-ok{border-color:rgba(57,255,20,.25);color:#39ff14}
+.zvm-btn-ok:hover{background:rgba(57,255,20,.08)}
+.zvm-btn-warn{border-color:rgba(255,180,55,.22);color:#fbbf24}
+.zvm-btn-warn:hover{background:rgba(255,180,55,.07)}
+.zvm-btn-del{border-color:rgba(255,68,102,.22);color:#ff8899}
+.zvm-btn-del:hover{background:rgba(255,68,102,.07)}
+.zvm-btn-note{border-color:rgba(100,180,255,.18);color:#90c8ff}
+.zvm-btn-note:hover{background:rgba(100,180,255,.06)}
+.zvm-gen{display:flex;flex-wrap:wrap;gap:7px;align-items:flex-end;padding:14px 18px;background:#020904;border-top:1px solid #183326}
+.zvm-gen input,.zvm-gen select{padding:8px 12px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.88rem;transition:border-color .2s,box-shadow .2s}
+.zvm-gen input:focus,.zvm-gen select:focus{outline:none;border-color:#39ff14;box-shadow:0 0 0 2px rgba(57,255,20,.15)}
+.zvm-gen input[type=text]{min-width:160px;flex:1}
+.zvm-gen input[type=number]{width:68px}
+.zvm-gen select{min-width:80px}
+.zvm-gen .gen-btn{padding:8px 16px;border-radius:7px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.85rem;font-weight:700;cursor:pointer;transition:all .2s;box-shadow:0 2px 12px rgba(57,255,20,.28)}
+.zvm-gen .gen-btn:hover{transform:translateY(-1px);box-shadow:0 4px 18px rgba(57,255,20,.45)}
+.zvm-search{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px;border-bottom:1px solid #183326;align-items:center}
+.zvm-search input,.zvm-search select{padding:7px 11px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.83rem;transition:border-color .2s,box-shadow .2s}
+.zvm-search input:focus,.zvm-search select:focus{outline:none;border-color:#39ff14;box-shadow:0 0 0 2px rgba(57,255,20,.15)}
+.zvm-search input[type=text]{flex:1;min-width:160px}
+}
 @media(max-width:768px){.sidebar{width:0;overflow:hidden;position:fixed}.sidebar:hover{width:240px}.layout.sbo .sidebar{width:240px}.main-a{width:100%}}
 `;
 
@@ -1989,37 +2068,45 @@ function panelStatusKey(rec) {
 }
 
 function buildLicenseRows(licenses) {
-  return licenses.map(k => {
-    const code      = k.code;
-    const st        = panelStatusKey(k);
-    const maxU      = k.maxUses != null ? k.maxUses : -1;
-    const isPending = keyStatus(k) === 'pending';
-    const uses      = (k.phones || []).length;
-    const maxDisp   = maxU === -1 ? '\u221e' : String(maxU);
-    const isExpd    = k.expiresAt && new Date(k.expiresAt).getTime() < Date.now();
-    const valHtml   = !k.expiresAt
-      ? '<span style="color:var(--mt);font-size:.78rem">Sem limite</span>'
-      : '<span style="font-size:.78rem' + (isExpd ? ';color:#ff8899' : '') + '">' + esc(new Date(k.expiresAt).toLocaleString('pt-BR')) + '</span>';
-    const stBadge   = isPending ? '<span class="badge bpd" style="font-size:.62rem">PENDENTE</span>' : statusBadgeHtml(keyStatus(k));
-    const rawNote   = k.note || '';
-    const noteShort = rawNote.length > 22 ? rawNote.slice(0, 22) + '\u2026' : rawNote;
-    return '<tr data-code="' + esc(code) + '" data-label="' + esc((k.label||'').toLowerCase()) + '" data-status="' + (isPending?'pendente':st) + '" data-phone="' + esc(k.lastPhone||'') + '" data-lastused="' + (k.lastUsed||'') + '" data-created="' + (k.createdAt||'') + '">' +
-'<td style="min-width:160px;max-width:190px"><code class="kc" style="font-size:.72rem;padding:3px 7px">' + esc(code) + '</code></td>' +
-'<td style="min-width:90px;max-width:130px;font-size:.84rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(k.label||'—') + '</td>' +
-'<td style="min-width:80px">' + stBadge + '</td>' +
-'<td style="min-width:100px">' + valHtml + '</td>' +
-'<td style="min-width:48px;text-align:center;font-size:.82rem">' + uses + '/' + maxDisp + '</td>' +
-'<td style="min-width:90px;font-size:.78rem;color:var(--mt2)">' + esc(k.lastPhone||'—') + '</td>' +
-'<td style="min-width:90px;font-size:.75rem;color:var(--mt)">' + esc(k.lastIp||'—') + '</td>' +
-'<td style="min-width:100px;font-size:.75rem;color:var(--mt)">' + fmtDate(k.lastUsed) + '</td>' +
-'<td style="min-width:100px;font-size:.75rem;color:var(--mt)">' + fmtDate(k.createdAt) + '</td>' +
-'<td style="min-width:70px;max-width:100px;font-size:.76rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(rawNote) + '">' + esc(noteShort||'—') + '</td>' +
-'<td style="min-width:160px" class="act">' + (isPending ? '<button class="bs bg" onclick="apiActivate(\'' + esc(code) + '\')">✅Ativar</button>' : '') +
-'<button class="bs bg" onclick="apiToggle(\'' + esc(code) + '\')">' + (k.active?'Bloq':'Lib') + '</button>' +
-'<button class="bs" onclick="openRenew(\'' + esc(code) + '\')">+Dias</button>' +
-'<button class="bs" onclick="openUses(\'' + esc(code) + '\',' + maxU + ')">Usos</button>' +
-'<button class="bs" onclick="openNote(\'' + esc(code) + "','" + esc(rawNote.replace(/'/g,"\\'")) + '\')">📝</button>' +
-'<button class="bs bd" onclick="apiDelete(\'' + esc(code) + '\')">Del</button></td></tr>';
+  var ACT_BTN = function(fn, code, cls, lbl) {
+    return '<button class="zvm-btn' + (cls ? ' ' + cls : '') + '" onclick="' + fn + '(\'' + esc(code) + '\')">' + lbl + '</button>';
+  };
+  return licenses.map(function(k) {
+    var code      = k.code;
+    var st        = panelStatusKey(k);
+    var maxU      = (k.maxUses != null) ? k.maxUses : -1;
+    var isUnlim   = maxU <= 0 || maxU === -1;
+    var isPending = keyStatus(k) === 'pending';
+    var uses      = (k.phones || []).length;
+    var maxDisp   = isUnlim ? '\u221e' : String(maxU);
+    var isExpd    = k.expiresAt && new Date(k.expiresAt).getTime() < Date.now();
+    var valHtml   = !k.expiresAt
+      ? '<span class="zvm-muted">Sem limite</span>'
+      : '<span' + (isExpd ? ' style="color:#ff8899"' : '') + '>' + esc(new Date(k.expiresAt).toLocaleString('pt-BR')) + '</span>';
+    var stBadge   = isPending
+      ? '<span class="zvm-badge" style="background:rgba(100,100,255,.12);color:#a0a0ff;border-color:rgba(100,100,255,.28)">PENDENTE</span>'
+      : statusBadgeHtml(keyStatus(k));
+    var rawNote   = k.note || '';
+    var noteShort = rawNote.length > 20 ? rawNote.slice(0, 20) + '\u2026' : rawNote;
+    var actBtns   =
+      (isPending ? '<button class="zvm-btn zvm-btn-ok" onclick="apiActivate(\'' + esc(code) + '\')">✓ Ativar</button>' : '') +
+      '<button class="zvm-btn' + (k.active ? ' zvm-btn-warn' : ' zvm-btn-ok') + '" onclick="apiToggle(\'' + esc(code) + '\')">' + (k.active ? 'Bloq' : 'Liber') + '</button>' +
+      '<button class="zvm-btn" onclick="openRenew(\'' + esc(code) + '\')">+Dias</button>' +
+      '<button class="zvm-btn" onclick="openUses(\'' + esc(code) + '\',' + maxU + ')">Usos</button>' +
+      '<button class="zvm-btn zvm-btn-note" onclick="openNote(\'' + esc(code) + '\',\'' + esc(rawNote.replace(/'/g, "\\'")) + '\')">📝 Nota</button>' +
+      '<button class="zvm-btn zvm-btn-del" onclick="apiDelete(\'' + esc(code) + '\')">✕ Del</button>';
+    return '<tr class="zvm-row" data-code="' + esc(code) + '" data-label="' + esc((k.label||'').toLowerCase()) + '" data-status="' + (isPending?'pendente':st) + '" data-phone="' + esc(k.lastPhone||'') + '" data-lastused="' + (k.lastUsed||'') + '" data-created="' + (k.createdAt||'') + '">' +
+      '<td class="zvm-td" style="min-width:160px"><code class="zvm-code">' + esc(code) + '</code></td>' +
+      '<td class="zvm-td" style="min-width:90px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(k.label||'—') + '</td>' +
+      '<td class="zvm-td" style="min-width:80px">' + stBadge + '</td>' +
+      '<td class="zvm-td" style="min-width:100px;font-size:.78rem">' + valHtml + '</td>' +
+      '<td class="zvm-td" style="min-width:48px;text-align:center;font-size:.82rem">' + uses + '/' + maxDisp + '</td>' +
+      '<td class="zvm-td zvm-muted" style="min-width:90px;font-size:.78rem">' + esc(k.lastPhone||'—') + '</td>' +
+      '<td class="zvm-td zvm-muted" style="min-width:86px;font-size:.75rem">' + esc(k.lastIp||'—') + '</td>' +
+      '<td class="zvm-td zvm-muted" style="min-width:100px;font-size:.75rem">' + fmtDate(k.lastUsed) + '</td>' +
+      '<td class="zvm-td zvm-muted" style="min-width:100px;font-size:.75rem">' + fmtDate(k.createdAt) + '</td>' +
+      '<td class="zvm-td" style="min-width:70px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.74rem" title="' + esc(rawNote) + '">' + esc(noteShort||'—') + '</td>' +
+      '<td class="zvm-td" style="min-width:180px"><div class="zvm-acts">' + actBtns + '</div></td></tr>';
   }).join('');
 }
 
@@ -2035,7 +2122,7 @@ const LOG_LABELS = Object.freeze({
   install              : 'INSTALAÇÃO',
   license_expired      : 'CHAVE EXPIRADA',
   key_expired          : 'CHAVE EXPIRADA',
-  user_blocked         : 'USUÁRIO BLOQUEADO',
+  user_blocked         : 'USU\u00c1RIO BLOQUEADO',
   max_devices_reached  : 'LIMITE DE TELAS',
   nosql_injection      : 'ATAQUE BLOQUEADO',
   rate_limited         : 'RATE LIMIT',
@@ -2049,27 +2136,28 @@ function humanizeLogType(type) {
 }
 
 function buildLogRows(logs) {
-  return logs.map(l => {
-    const d      = new Date(l.at);
-    const dt     = d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR');
-    const lbl    = humanizeLogType(l.type);
-    const isOk   = /ok|create|activated|install|free_register/.test(l.type);
-    const isBad  = /fail|expired|blocked|injection|error|limited/.test(l.type);
-    const color  = isOk ? '#39ff14' : isBad ? '#ff8899' : '#fbbf24';
-    const meta   = l.meta || {};
-    const chave  = esc(meta.code || meta.key || '');
-    const phone  = esc(meta.phone || '');
-    const ip     = esc(meta.ip || '');
-    return `<tr data-log="${esc((lbl + ' ' + l.message + ' ' + chave).toLowerCase())}" data-logtype="${esc(l.type)}">
-<td style="white-space:nowrap;font-size:.78rem;color:var(--mt);min-width:100px">${esc(dt)}</td>
-<td style="min-width:110px"><span style="font-family:var(--mn);font-size:.68rem;font-weight:700;color:${color};background:${color}15;border:1px solid ${color}28;padding:2px 7px;border-radius:4px;letter-spacing:.04em;white-space:nowrap">${esc(lbl)}</span></td>
-<td style="min-width:80px;max-width:160px;font-size:.78rem"><code style="font-family:var(--mn);font-size:.72rem;color:#7fff6e;background:#040d06;border:1px solid rgba(57,255,20,.18);padding:2px 6px;border-radius:4px">${chave || '—'}</code></td>
-<td style="font-size:.8rem;min-width:80px;color:var(--mt2)">${phone || '—'}</td>
-<td style="font-size:.75rem;min-width:80px;color:var(--mt)">${ip || '—'}</td>
-<td style="font-size:.78rem;color:var(--tx);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.message)}</td>
-</tr>`;
+  return logs.map(function(l) {
+    var d     = new Date(l.at);
+    var dt    = d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR');
+    var lbl   = humanizeLogType(l.type);
+    var isOk  = /ok|create|activated|install|free_register/.test(l.type);
+    var isBad = /fail|expired|blocked|injection|error|limited/.test(l.type);
+    var color = isOk ? '#39ff14' : isBad ? '#ff8899' : '#fbbf24';
+    var meta  = l.meta || {};
+    var chave = esc(meta.code || meta.key || '');
+    var phone = esc(meta.phone || '');
+    var ip    = esc(meta.ip    || '');
+    return '<tr class="zvm-row" data-log="' + esc((lbl + ' ' + (l.message||'')).toLowerCase()) + '" data-logtype="' + esc(lbl) + '">' +
+      '<td class="zvm-td zvm-muted" style="white-space:nowrap;min-width:110px;font-size:.78rem">' + esc(dt) + '</td>' +
+      '<td class="zvm-td" style="min-width:110px"><span style="font-family:var(--mn,monospace);font-size:.68rem;font-weight:700;color:' + color + ';background:' + color + '15;border:1px solid ' + color + '28;padding:2px 8px;border-radius:4px;letter-spacing:.05em;white-space:nowrap">' + esc(lbl) + '</span></td>' +
+      '<td class="zvm-td" style="min-width:90px">' + (chave ? '<code class="zvm-code" style="font-size:.72rem">' + chave + '</code>' : '<span class="zvm-muted">—</span>') + '</td>' +
+      '<td class="zvm-td zvm-muted" style="min-width:90px;font-size:.78rem">' + (phone || '—') + '</td>' +
+      '<td class="zvm-td zvm-muted" style="min-width:80px;font-size:.75rem">' + (ip || '—') + '</td>' +
+      '<td class="zvm-td" style="font-size:.8rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(l.message || '') + '</td>' +
+      '</tr>';
   }).join('');
 }
+
 
 const ADMIN_JS_SAFE = (function() {
   const lines = [
@@ -2262,89 +2350,69 @@ async function handleAdminApi(req, res, pathname) {
 
 
 function renderAdminDash(keysHtml, logsHtml, stats) {
-  const sc = function(id, val, lbl, style) {
-    return '<div class="sc"><div class="n" id="' + id + '"' + (style ? ' style="' + style + '"' : '') + '>' + val + '</div><div class="l">' + lbl + '</div></div>';
+  var sc = function(id, val, lbl, style) {
+    return '<div class="sc"><div class="n" id="' + id + '"' + (style ? ' style="' + style + '"' : '') + '>' + String(val) + '</div><div class="l">' + lbl + '</div></div>';
   };
-  const statsRow = '<div class="sc-row" style="margin-bottom:20px">' +
+  var statsRow = '<div class="sc-row" style="margin-bottom:18px">' +
     sc('s-total',   stats.totalKeys,   'Total',     '') +
     sc('s-active',  stats.activeKeys,  'PRO Ativas', 'color:var(--ac)') +
     sc('s-free',    stats.freeKeys,    'Free',      '') +
     sc('s-expired', stats.expiredKeys, 'Expiradas',  stats.expiredKeys ? 'color:var(--dg)' : '') +
     sc('s-logs',    stats.totalLogs,   'Logs',      '') +
     '</div>';
-
-  const keysSection = [
-    '<div class="sec">',
-    '<div class="sh"><span class="sh-t">Licen\u00e7as WaSpeed</span>',
-    '<div class="gen-form">',
-    '<input type="text" id="nlabel" placeholder="Cliente" style="min-width:120px">',
-    '<input type="number" id="ndays" placeholder="Dias" min="0" style="width:70px">',
-    '<input type="number" id="nhours" placeholder="H" min="0" style="width:55px">',
-    '<input type="number" id="nmins" placeholder="Min" min="0" style="width:55px">',
-    '<input type="number" id="nuses" placeholder="Usos" min="-1" style="width:70px">',
-    '<select id="npremium"><option value="1">PRO</option><option value="0">Free</option></select>',
-    '<label style="display:flex;align-items:center;gap:5px;font-size:.8rem;color:var(--mt);margin:0;cursor:pointer"><input type="checkbox" id="nfirstuse" style="width:auto;padding:0"> 1\u00ba uso</label>',
-    '<button class="btn-p" onclick="generateKey()">+ Gerar</button>',
-    '</div></div>',
-    '<div class="sh" style="gap:8px">',
-    '<input type="text" id="search-input" placeholder="Buscar chave, nome, telefone..." oninput="filterKeys()" style="flex:1;min-width:160px;padding:8px 12px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">',
-    '<select id="filter-status" onchange="filterKeys()" style="padding:8px 10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">',
-    '<option value="">Todos</option><option value="ativo">PRO</option><option value="free">Free</option><option value="pendente">Pendentes</option><option value="expirada">Expiradas</option><option value="bloqueado">Bloqueadas</option>',
-    '</select>',
-    '<button class="btn-w" onclick="doRefresh(true)">\u21bb Atualizar</button>',
-    '<button class="btn-w" onclick="exportCsv()">\u2b07 CSV</button>',
-    '<span id="last-r" style="font-size:.72rem;color:var(--mt)">&mdash;</span>',
-    '</div>',
-    '<div class="tbl-w" style="overflow-x:auto">',
-    '<table style="min-width:900px"><thead><tr>',
-    '<th style="min-width:160px">Chave</th>',
-    '<th style="min-width:90px">Cliente</th>',
-    '<th style="min-width:80px">Status</th>',
-    '<th style="min-width:100px">Validade</th>',
-    '<th style="min-width:48px">Usos</th>',
-    '<th style="min-width:90px">Telefone</th>',
-    '<th style="min-width:90px">IP</th>',
-    '<th style="min-width:100px">\u00dalt. acesso</th>',
-    '<th style="min-width:100px">Criada</th>',
-    '<th style="min-width:80px">Nota</th>',
-    '<th style="min-width:160px">A\u00e7\u00f5es</th>',
-    '</tr></thead><tbody id="kb">' + keysHtml + '</tbody></table>',
-    '</div></div>',
-  ].join('\n');
-
-  const logTypeOpts = [
-    '<option value="">Todos os tipos</option>',
-    '<option value="LOGIN OK">LOGIN OK</option>',
-    '<option value="FALHA AO LOGAR">FALHA AO LOGAR</option>',
-    '<option value="CHAVE CRIADA">CHAVE CRIADA</option>',
-    '<option value="CHAVE EXCLU\u00cdDA">CHAVE EXCLU\u00cdDA</option>',
-    '<option value="CHAVE ATIVADA">CHAVE ATIVADA</option>',
-    '<option value="CADASTRO FREE">CADASTRO FREE</option>',
-    '<option value="FALHA ADMIN">FALHA ADMIN</option>',
-  ].join('');
-
-  const logsSection = [
-    '<div class="sec">',
-    '<div class="sh"><span class="sh-t">Logs do Sistema &mdash; WaSpeed</span>',
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">',
-    '<input type="text" id="logSearch" placeholder="Filtrar logs..." oninput="filterLog()" style="padding:7px 11px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">',
-    '<select id="logTypeFilter" onchange="filterLog()" style="padding:7px 10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">' + logTypeOpts + '</select>',
-    '<button class="btn-w" style="border-color:rgba(255,68,102,.3);color:#ff8899" onclick="clearLogs()">&#x1F5D1; Limpar</button>',
-    '</div></div>',
-    '<div class="tbl-w" style="max-height:55vh;overflow-y:auto;overflow-x:auto">',
-    '<table style="min-width:700px"><thead><tr>',
-    '<th style="min-width:100px">Data/Hora</th>',
-    '<th style="min-width:110px">Evento</th>',
-    '<th style="min-width:80px">Chave</th>',
-    '<th style="min-width:80px">Telefone</th>',
-    '<th style="min-width:80px">IP</th>',
-    '<th style="min-width:160px">Mensagem</th>',
-    '</tr></thead><tbody id="logb">' + logsHtml + '</tbody></table>',
-    '</div></div>',
-  ].join('\n');
-
-  const scriptTag = '<scr' + 'ipt>' + ADMIN_JS_SAFE + '</scr' + 'ipt>';
-  const body = statsRow + keysSection + logsSection + scriptTag;
+  var logTypeOpts =
+    '<option value="">Todos os eventos</option>' +
+    '<option value="LOGIN OK">LOGIN OK</option>' +
+    '<option value="FALHA AO LOGAR">FALHA AO LOGAR</option>' +
+    '<option value="CHAVE CRIADA">CHAVE CRIADA</option>' +
+    '<option value="CHAVE EXCLU\u00cdDA">CHAVE EXCLU\u00cdDA</option>' +
+    '<option value="CHAVE ATIVADA">CHAVE ATIVADA</option>' +
+    '<option value="CADASTRO FREE">CADASTRO FREE</option>' +
+    '<option value="FALHA ADMIN">FALHA ADMIN</option>' +
+    '<option value="LIMITE DE TELAS">LIMITE DE TELAS</option>' +
+    '<option value="ATAQUE BLOQUEADO">ATAQUE BLOQUEADO</option>';
+  var keysSection =
+    '<div class="sec">' +
+    '<div class="sh"><span class="sh-t">\uD83D\uDD11 Licen\u00e7as WaSpeed</span></div>' +
+    '<div class="zvm-gen">' +
+    '<input type="text" id="nlabel" placeholder="Nome do cliente" style="min-width:150px">' +
+    '<input type="number" id="ndays" placeholder="Dias" min="0">' +
+    '<input type="number" id="nhours" placeholder="H" min="0">' +
+    '<input type="number" id="nmins" placeholder="Min" min="0">' +
+    '<input type="number" id="nuses" placeholder="Usos (-1=\u221e)" min="-1">' +
+    '<select id="npremium"><option value="1">PRO</option><option value="0">Free</option></select>' +
+    '<label style="display:flex;align-items:center;gap:5px;font-size:.78rem;color:var(--mt);margin:0;cursor:pointer"><input type="checkbox" id="nfirstuse" style="width:auto;padding:0"> 1\u00ba uso</label>' +
+    '<button class="gen-btn" onclick="generateKey()">+ Gerar Chave</button>' +
+    '</div>' +
+    '<div class="zvm-search">' +
+    '<input type="text" id="search-input" placeholder="\uD83D\uDD0D Buscar chave, cliente, telefone..." oninput="filterKeys()">' +
+    '<select id="filter-status" onchange="filterKeys()">' +
+    '<option value="">Todos os status</option><option value="ativo">PRO Ativas</option><option value="free">Free</option><option value="pendente">Pendentes</option><option value="expirada">Expiradas</option><option value="bloqueado">Bloqueadas</option>' +
+    '</select>' +
+    '<button class="zvm-btn zvm-btn-ok" onclick="doRefresh(true)">\u21bb Atualizar</button>' +
+    '<button class="zvm-btn" onclick="exportCsv()">\u2b07 CSV</button>' +
+    '<span id="last-r" style="font-size:.7rem;color:var(--mt)">&mdash;</span>' +
+    '</div>' +
+    '<div class="tbl-w" style="overflow-x:auto">' +
+    '<table style="min-width:920px"><thead><tr style="background:#070f0a">' +
+    '<th style="min-width:160px">Chave</th><th style="min-width:90px">Cliente</th><th style="min-width:80px">Status</th><th style="min-width:100px">Validade</th><th style="min-width:48px">Usos</th><th style="min-width:90px">Telefone</th><th style="min-width:86px">IP</th><th style="min-width:100px">\u00dalt. acesso</th><th style="min-width:100px">Criada</th><th style="min-width:80px">Nota</th><th style="min-width:180px">A\u00e7\u00f5es</th>' +
+    '</tr></thead><tbody id="kb">' + keysHtml + '</tbody></table>' +
+    '</div></div>';
+  var logsSection =
+    '<div class="sec">' +
+    '<div class="sh"><span class="sh-t">\uD83D\uDCCB Logs do Sistema &mdash; WaSpeed</span>' +
+    '<button class="zvm-btn zvm-btn-del" onclick="clearLogs()">\uD83D\uDDD1 Limpar logs</button></div>' +
+    '<div class="zvm-search">' +
+    '<input type="text" id="logSearch" placeholder="Filtrar logs..." oninput="filterLog()">' +
+    '<select id="logTypeFilter" onchange="filterLog()">' + logTypeOpts + '</select>' +
+    '</div>' +
+    '<div class="tbl-w" style="max-height:52vh;overflow-y:auto;overflow-x:auto">' +
+    '<table style="min-width:720px"><thead><tr style="background:#070f0a">' +
+    '<th style="min-width:110px">Data/Hora</th><th style="min-width:110px">Evento</th><th style="min-width:90px">Chave</th><th style="min-width:90px">Telefone</th><th style="min-width:80px">IP</th><th style="min-width:180px">Mensagem</th>' +
+    '</tr></thead><tbody id="logb">' + logsHtml + '</tbody></table>' +
+    '</div></div>';
+  var scriptTag = '<scr' + 'ipt>' + ADMIN_JS_SAFE + '</scr' + 'ipt>';
+  var body = statsRow + keysSection + logsSection + scriptTag;
   return spaShell('Admin WaSpeed', adminSidebar('dash'), 'WaSpeed Admin', body);
 }
 
