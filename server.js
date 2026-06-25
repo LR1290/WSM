@@ -2447,40 +2447,46 @@ function renderAdminDash(keysHtml, logsHtml, stats) {
     '<option value="FALHA ADMIN">FALHA ADMIN</option>' +
     '<option value="LIMITE DE TELAS">LIMITE DE TELAS</option>' +
     '<option value="ATAQUE BLOQUEADO">ATAQUE BLOQUEADO</option>';
+  var genForm =
+    '<div style="padding:12px 18px;background:#020904;border-bottom:1px solid #183326">' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
+    '<input type="text" id="nlabel" placeholder="Cliente" style="width:130px;padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="ndays" placeholder="Dias" min="0" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="nhours" placeholder="H" min="0" style="width:46px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="nmins" placeholder="Min" min="0" style="width:50px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="nuses" placeholder="Usos" title="-1=\u221e" min="-1" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<select id="npremium" style="padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><option value="1">PRO</option><option value="0">Free</option></select>' +
+    '<label style="display:flex;align-items:center;gap:4px;font-size:.76rem;color:var(--mt);cursor:pointer;white-space:nowrap"><input type="checkbox" id="nfirstuse" style="margin:0;width:auto;padding:0"> 1\u00ba uso</label>' +
+    '<button onclick="generateKey()" style="padding:7px 14px;border-radius:5px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap">+ Gerar</button>' +
+    '</div>' +
+    '</div>';
+  var searchBar =
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid #183326;align-items:center">' +
+    '<input type="text" id="search-input" placeholder="\uD83D\uDD0D Buscar chave, cliente, telefone..." oninput="filterKeys()" style="flex:1;min-width:180px;padding:7px 11px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<select id="filter-status" onchange="filterKeys()" style="padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<option value="">Todos</option><option value="ativo">PRO</option><option value="free">Free</option><option value="pendente">Pendentes</option><option value="expirada">Expiradas</option><option value="bloqueado">Bloqueadas</option>' +
+    '</select>' +
+    '<button onclick="doRefresh(true)" style="padding:7px 12px;border-radius:5px;border:1px solid #26543c;background:transparent;color:#39ff14;font-size:.8rem;cursor:pointer">\u21bb Atualizar</button>' +
+    '<button onclick="exportCsv()" style="padding:7px 12px;border-radius:5px;border:1px solid #183326;background:transparent;color:#8ab89a;font-size:.8rem;cursor:pointer">\u2b07 CSV</button>' +
+    '<span id="last-r" style="font-size:.7rem;color:#5a8a6e">&mdash;</span>' +
+    '</div>';
   var keysSection =
     '<div class="sec">' +
     '<div class="sh"><span class="sh-t">\uD83D\uDD11 Licen\u00e7as WaSpeed</span></div>' +
-    '<div class="zvm-gen">' +
-    '<input type="text" id="nlabel" placeholder="Nome do cliente" style="min-width:150px">' +
-    '<input type="number" id="ndays" placeholder="Dias" min="0">' +
-    '<input type="number" id="nhours" placeholder="H" min="0">' +
-    '<input type="number" id="nmins" placeholder="Min" min="0">' +
-    '<input type="number" id="nuses" placeholder="Usos (-1=\u221e)" min="-1">' +
-    '<select id="npremium"><option value="1">PRO</option><option value="0">Free</option></select>' +
-    '<label style="display:flex;align-items:center;gap:5px;font-size:.78rem;color:var(--mt);margin:0;cursor:pointer"><input type="checkbox" id="nfirstuse" style="width:auto;padding:0"> 1\u00ba uso</label>' +
-    '<button class="gen-btn" onclick="generateKey()">+ Gerar Chave</button>' +
-    '</div>' +
-    '<div class="zvm-search">' +
-    '<input type="text" id="search-input" placeholder="\uD83D\uDD0D Buscar chave, cliente, telefone..." oninput="filterKeys()">' +
-    '<select id="filter-status" onchange="filterKeys()">' +
-    '<option value="">Todos os status</option><option value="ativo">PRO Ativas</option><option value="free">Free</option><option value="pendente">Pendentes</option><option value="expirada">Expiradas</option><option value="bloqueado">Bloqueadas</option>' +
-    '</select>' +
-    '<button class="zvm-btn zvm-btn-ok" onclick="doRefresh(true)">\u21bb Atualizar</button>' +
-    '<button class="zvm-btn" onclick="exportCsv()">\u2b07 CSV</button>' +
-    '<span id="last-r" style="font-size:.7rem;color:var(--mt)">&mdash;</span>' +
-    '</div>' +
+    genForm +
+    searchBar +
     '<div class="tbl-w" style="overflow-x:auto">' +
     '<table style="min-width:920px"><thead><tr style="background:#070f0a">' +
-    '<th style="min-width:160px">Chave</th><th style="min-width:90px">Cliente</th><th style="min-width:80px">Status</th><th style="min-width:100px">Validade</th><th style="min-width:48px">Usos</th><th style="min-width:90px">Telefone</th><th style="min-width:86px">IP</th><th style="min-width:100px">\u00dalt. acesso</th><th style="min-width:100px">Criada</th><th style="min-width:80px">Nota</th><th style="min-width:180px">A\u00e7\u00f5es</th>' +
+    '<th style="min-width:160px">Chave</th><th style="min-width:90px">Cliente</th><th style="min-width:80px">Status</th><th style="min-width:100px">Validade</th><th style="min-width:48px">Usos</th><th style="min-width:90px">Telefone</th><th style="min-width:86px">IP</th><th style="min-width:100px">\u00dalt. acesso</th><th style="min-width:100px">Criada</th><th style="min-width:80px">Nota</th><th style="min-width:220px">A\u00e7\u00f5es</th>' +
     '</tr></thead><tbody id="kb">' + keysHtml + '</tbody></table>' +
     '</div></div>';
   var logsSection =
     '<div class="sec">' +
     '<div class="sh"><span class="sh-t">\uD83D\uDCCB Logs do Sistema &mdash; WaSpeed</span>' +
-    '<button class="zvm-btn zvm-btn-del" onclick="clearLogs()">\uD83D\uDDD1 Limpar logs</button></div>' +
-    '<div class="zvm-search">' +
-    '<input type="text" id="logSearch" placeholder="Filtrar logs..." oninput="filterLog()">' +
-    '<select id="logTypeFilter" onchange="filterLog()">' + logTypeOpts + '</select>' +
+    '<button onclick="clearLogs()" style="padding:5px 12px;border-radius:5px;border:1px solid rgba(255,68,102,.3);background:transparent;color:#ff8899;font-size:.78rem;cursor:pointer">\uD83D\uDDD1 Limpar logs</button></div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid #183326;align-items:center">' +
+    '<input type="text" id="logSearch" placeholder="Filtrar logs..." oninput="filterLog()" style="flex:1;min-width:180px;padding:7px 11px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<select id="logTypeFilter" onchange="filterLog()" style="padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' + logTypeOpts + '</select>' +
     '</div>' +
     '<div class="tbl-w" style="max-height:52vh;overflow-y:auto;overflow-x:auto">' +
     '<table style="min-width:720px"><thead><tr style="background:#070f0a">' +
