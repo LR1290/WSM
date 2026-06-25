@@ -14,8 +14,6 @@ const { MongoClient } = require('mongodb');
 
 // --- Constantes globais originais (preservadas) ------------------------------
 
-const WPP_VERSION          = '1.11';
-const REMOTE_CODE_VERSION  = '1.0.41';
 const SESSION_TTL_MS       = 24 * 60 * 60 * 1000;
 const ANTI_SLEEP_MS        = 5  * 60 * 1000;
 
@@ -194,7 +192,7 @@ function buildDomConfig(overrides = {}) {
   merged.update_path_active = String(merged.update_path_active ?? 'true');
   if (merged.version === 1 || merged.selectors) {
     delete merged.selectors;
-    merged.version = base.version || WPP_VERSION;
+    merged.version = base.version || '1.11';
   }
   return merged;
 }
@@ -203,7 +201,7 @@ function buildConfigJson(overrides) {
   if (overrides === undefined) overrides = {};
   return {
     remote_code  : {
-      version  : REMOTE_CODE_VERSION,
+      version  : '1.0.41',
       ambiente : 'production',
       url      : `${config.baseUrl}/api/code`,
     },
@@ -1080,7 +1078,7 @@ function parseBearer(req) {
 }
 
 function wppUpdate() {
-  return { success: true, version: WPP_VERSION, update: false, message: 'ok' };
+  return { success: true, version: '1.11', update: false, message: 'ok' };
 }
 
 // --- UI: CSS Cyberpunk Neon (Pilar 1) ----------------------------------------
@@ -2247,14 +2245,18 @@ async function handleAdminApi(req, res, pathname) {
 }
 
 function renderAdminDash(keysHtml, logsHtml, stats) {
-  const body = [
-    '<div class="sc-row" style="margin-bottom:20px">',
-    '<div class="sc"><div class="n" id="s-total">' + stats.totalKeys + '</div><div class="l">Total</div></div>',
-    '<div class="sc"><div class="n" id="s-active" style="color:var(--ac)">' + stats.activeKeys + '</div><div class="l">PRO Ativas</div></div>',
-    '<div class="sc"><div class="n" id="s-free">' + stats.freeKeys + '</div><div class="l">Free</div></div>',
-    '<div class="sc"><div class="n" id="s-expired" style="' + (stats.expiredKeys ? 'color:var(--dg)' : '') + '">' + stats.expiredKeys + '</div><div class="l">Expiradas</div></div>',
-    '<div class="sc"><div class="n" id="s-logs">' + stats.totalLogs + '</div><div class="l">Logs</div></div>',
-    '</div>',
+  const sc = function(id, val, lbl, style) {
+    return '<div class="sc"><div class="n" id="' + id + '"' + (style ? ' style="' + style + '"' : '') + '>' + val + '</div><div class="l">' + lbl + '</div></div>';
+  };
+  const statsRow = '<div class="sc-row" style="margin-bottom:20px">' +
+    sc('s-total',   stats.totalKeys,   'Total',     '') +
+    sc('s-active',  stats.activeKeys,  'PRO Ativas', 'color:var(--ac)') +
+    sc('s-free',    stats.freeKeys,    'Free',      '') +
+    sc('s-expired', stats.expiredKeys, 'Expiradas',  stats.expiredKeys ? 'color:var(--dg)' : '') +
+    sc('s-logs',    stats.totalLogs,   'Logs',      '') +
+    '</div>';
+
+  const keysSection = [
     '<div class="sec">',
     '<div class="sh"><span class="sh-t">Licen\u00e7as WaSpeed</span>',
     '<div class="gen-form">',
@@ -2278,14 +2280,22 @@ function renderAdminDash(keysHtml, logsHtml, stats) {
     '</div>',
     '<div class="tbl-w" style="overflow-x:auto">',
     '<table style="min-width:900px"><thead><tr>',
-    '<th style="min-width:160px">Chave</th><th style="min-width:90px">Cliente</th><th style="min-width:80px">Status</th><th style="min-width:100px">Validade</th><th style="min-width:48px">Usos</th><th style="min-width:90px">Telefone</th><th style="min-width:90px">IP</th><th style="min-width:100px">\u00dalt. acesso</th><th style="min-width:100px">Criada</th><th style="min-width:80px">Nota</th><th style="min-width:160px">A\u00e7\u00f5es</th>',
+    '<th style="min-width:160px">Chave</th>',
+    '<th style="min-width:90px">Cliente</th>',
+    '<th style="min-width:80px">Status</th>',
+    '<th style="min-width:100px">Validade</th>',
+    '<th style="min-width:48px">Usos</th>',
+    '<th style="min-width:90px">Telefone</th>',
+    '<th style="min-width:90px">IP</th>',
+    '<th style="min-width:100px">\u00dalt. acesso</th>',
+    '<th style="min-width:100px">Criada</th>',
+    '<th style="min-width:80px">Nota</th>',
+    '<th style="min-width:160px">A\u00e7\u00f5es</th>',
     '</tr></thead><tbody id="kb">' + keysHtml + '</tbody></table>',
     '</div></div>',
-    '<div class="sec">',
-    '<div class="sh"><span class="sh-t">Logs do Sistema &mdash; WaSpeed</span>',
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">',
-    '<input type="text" id="logSearch" placeholder="Filtrar logs..." oninput="filterLog()" style="padding:7px 11px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">',
-    '<select id="logTypeFilter" onchange="filterLog()" style="padding:7px 10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">',
+  ].join('\n');
+
+  const logTypeOpts = [
     '<option value="">Todos os tipos</option>',
     '<option value="LOGIN OK">LOGIN OK</option>',
     '<option value="FALHA AO LOGAR">FALHA AO LOGAR</option>',
@@ -2294,7 +2304,14 @@ function renderAdminDash(keysHtml, logsHtml, stats) {
     '<option value="CHAVE ATIVADA">CHAVE ATIVADA</option>',
     '<option value="CADASTRO FREE">CADASTRO FREE</option>',
     '<option value="FALHA ADMIN">FALHA ADMIN</option>',
-    '</select>',
+  ].join('');
+
+  const logsSection = [
+    '<div class="sec">',
+    '<div class="sh"><span class="sh-t">Logs do Sistema &mdash; WaSpeed</span>',
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">',
+    '<input type="text" id="logSearch" placeholder="Filtrar logs..." oninput="filterLog()" style="padding:7px 11px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">',
+    '<select id="logTypeFilter" onchange="filterLog()" style="padding:7px 10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">' + logTypeOpts + '</select>',
     '<button class="btn-w" style="border-color:rgba(255,68,102,.3);color:#ff8899" onclick="clearLogs()">&#x1F5D1; Limpar</button>',
     '</div></div>',
     '<div class="tbl-w" style="max-height:55vh;overflow-y:auto;overflow-x:auto">',
@@ -2307,62 +2324,61 @@ function renderAdminDash(keysHtml, logsHtml, stats) {
     '<th style="min-width:160px">Mensagem</th>',
     '</tr></thead><tbody id="logb">' + logsHtml + '</tbody></table>',
     '</div></div>',
-    '<script>' + ADMIN_JS_SAFE + '<\/script>',
   ].join('\n');
+
+  const scriptTag = '<scr' + 'ipt>' + ADMIN_JS_SAFE + '</scr' + 'ipt>';
+  const body = statsRow + keysSection + logsSection + scriptTag;
   return spaShell('Admin WaSpeed', adminSidebar('dash'), 'WaSpeed Admin', body);
 }
 
 async function handleAdmin(req, res, pathname, ip) {
   if (pathname === R_ADMIN + '/login') {
-    if (req.method === 'GET') return sendHtml(res, renderAdminLogin(R_ADMIN, 'Admin'));
-    if (!checkRate(ip)) return sendHtml(res, renderAdminLogin(R_ADMIN, 'Admin', 'Muitas tentativas. Aguarde.'), 429);
+    if (req.method === 'GET') { sendHtml(res, renderAdminLogin(R_ADMIN, 'Admin')); return; }
+    if (!checkRate(ip)) { sendHtml(res, renderAdminLogin(R_ADMIN, 'Admin', 'Muitas tentativas. Aguarde.'), 429); return; }
     const body   = await readBody(req);
     const params = new URLSearchParams(body);
     const user   = sanitizeString(params.get('user') || '');
     const pass   = params.get('pass') || '';
     if (await verifyAdminCredentials(user, pass)) {
       const session = await createSession('admin', { user: user.trim() });
-      if (!session) return sendHtml(res, renderAdminLogin(R_ADMIN, 'Admin', 'Erro ao criar sessao'), 500);
+      if (!session) { sendHtml(res, renderAdminLogin(R_ADMIN, 'Admin', 'Erro ao criar sessao'), 500); return; }
       setSessionCookie(res, session.token);
       res.writeHead(302, { Location: R_ADMIN });
-      return res.end();
+      res.end();
+      return;
     }
     await addLog('admin_login_fail', 'Tentativa invalida', { ip });
-    return sendHtml(res, renderAdminLogin(R_ADMIN, 'Admin', 'Credenciais invalidas'), 401);
+    sendHtml(res, renderAdminLogin(R_ADMIN, 'Admin', 'Credenciais invalidas'), 401);
+    return;
   }
   if (pathname === R_ADMIN + '/logout') {
     const token = parseCookies(req)[config.cookieName];
     await destroySession(token);
     clearSessionCookie(res);
     res.writeHead(302, { Location: R_ADMIN + '/login' });
-    return res.end();
+    res.end();
+    return;
   }
   const sess = await requireAdminSession(req, res);
   if (!sess) return;
-  if (await handleAdminApi(req, res, pathname)) return;
-  if (pathname === R_ADMIN || pathname === R_ADMIN + '/') {
-    const stats    = await getKeyStats();
-    const licenses = await getKeysCached();
-    const logs     = await getRecentLogs(150);
-    return sendHtml(res, renderAdminDash(buildLicenseRows(licenses), buildLogRows(logs), stats));
-  }
-  if (pathname === R_ADMIN + '/keys') {
+  const apiHandled = await handleAdminApi(req, res, pathname);
+  if (apiHandled) return;
+  if (pathname === R_ADMIN || pathname === R_ADMIN + '/' || pathname === R_ADMIN + '/keys') {
     const stats    = await getKeyStats();
     const licenses = await listLicenses();
     const logs     = await getRecentLogs(150);
-    return sendHtml(res, renderAdminDash(buildLicenseRows(licenses), buildLogRows(logs), stats));
+    sendHtml(res, renderAdminDash(buildLicenseRows(licenses), buildLogRows(logs), stats));
+    return;
   }
   if (pathname === R_ADMIN + '/logs') {
-    const logs = await getRecentLogs(200);
-    return sendHtml(res, spaShell('Logs WaSpeed', adminSidebar('logs'), 'Logs do Sistema WaSpeed', `
-<div class="sh" style="margin-bottom:12px;gap:8px;background:var(--sf2);border:1px solid var(--bdr);border-radius:14px;padding:14px 18px">
-<input type="text" id="logSearch" placeholder="Filtrar..." oninput="filterLog()" style="flex:1;padding:7px 11px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">
-<select id="logTypeFilter" onchange="filterLog()" style="padding:7px 10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)"><option value="">Todos</option><option value="validation_ok">validation_ok</option><option value="auth_ok">auth_ok</option><option value="auth_fail">auth_fail</option><option value="key_create">key_create</option><option value="key_delete">key_delete</option><option value="key_activated">key_activated</option></select>
-</div>
-<div class="sec"><div class="tbl-w" style="max-height:75vh;overflow-y:auto"><table><thead><tr><th>Data</th><th>Tipo</th><th>Mensagem</th><th>Chave</th></tr></thead><tbody id="logb">${buildLogRows(logs)}</tbody></table></div></div>
-<script>function filterLog(){const q=(document.getElementById('logSearch').value||'').toLowerCase();const t=document.getElementById('logTypeFilter').value;document.querySelectorAll('#logb tr').forEach(r=>{r.style.display=(!q||(r.dataset.log||'').includes(q))&&(!t||(r.dataset.logtype||'')===t)?'':'none';});}</script>`));
+    const logs     = await getRecentLogs(300);
+    const stats    = await getKeyStats();
+    const licenses = await getKeysCached();
+    sendHtml(res, renderAdminDash(buildLicenseRows(licenses), buildLogRows(logs), stats));
+    return;
   }
-  res.writeHead(404); res.end('Not found');
+  res.writeHead(404);
+  res.end('Not found');
 }
 
 
