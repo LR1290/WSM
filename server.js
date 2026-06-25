@@ -1407,8 +1407,11 @@ const PUB_CANVAS = `<canvas id="_c" style="position:fixed;inset:0;z-index:0;poin
 function pubShell(title, body, activePath) {
   activePath = activePath || '/';
   const nl = (href, label) => {
-    const isActive = href === activePath || (href !== '/' && activePath.startsWith(href));
-    return `<a href="${href}" style="font-size:.8rem;padding:5px 13px;border:1px solid ${isActive?'var(--g)':'var(--bdr)'};border-radius:6px;transition:all .2s;font-weight:700;color:${isActive?'var(--g)':'var(--muted)'};text-decoration:none;background:${isActive?'rgba(57,255,20,.07)':'transparent'};text-shadow:${isActive?'0 0 10px rgba(57,255,20,.45)':'none'}">${label}${isActive?' ●':''}</a>`;
+    const isActive = href === '/' ? activePath === '/' : activePath === href;
+    const activeStyle = isActive
+      ? 'color:var(--g);border-color:var(--g);background:rgba(57,255,20,.08);text-shadow:0 0 10px rgba(57,255,20,.4)'
+      : 'color:var(--muted);border-color:var(--bdr);background:transparent';
+    return `<a href="${href}" style="font-size:.8rem;padding:5px 13px;border:1px solid;border-radius:6px;transition:all .2s;font-weight:700;text-decoration:none;${activeStyle}">${label}${isActive ? ' <span style="color:var(--g);font-size:.6rem">●</span>' : ''}</a>`;
   };
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1420,10 +1423,11 @@ function pubShell(title, body, activePath) {
 <nav class="pub-nav">
   <div class="pub-logo">⚡ WaSpeed</div>
   <div class="pub-links">
+    ${nl('/','Portal')}
     ${nl('/faq','FAQ')}
-    ${nl('/planos','💳 Planos')}
     ${nl('/privacidade','🔒 Privacidade')}
-    <a href="https://wa.me/5521996771552" target="_blank" style="font-size:.8rem;padding:5px 13px;border:1px solid var(--bdr);border-radius:6px;font-weight:600;color:var(--muted);text-decoration:none;transition:all .2s">💬 Suporte</a>
+    ${nl('/planos','💳 Planos')}
+    <a href="https://wa.me/5521996771552" target="_blank" style="font-size:.8rem;padding:5px 13px;border:1px solid var(--bdr);border-radius:6px;font-weight:600;color:var(--muted);text-decoration:none;transition:all .2s;background:transparent">💬 Suporte</a>
   </div>
 </nav>
 <div style="position:relative;z-index:1;min-height:calc(100vh - 52px - 54px)">${body}</div>
@@ -2048,20 +2052,51 @@ function humanizeLogType(type) {
 
 function buildLogRows(logs) {
   return logs.map(l => {
-    const d  = new Date(l.at);
-    const dt = d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR');
-    const lbl = humanizeLogType(l.type);
-    const isOk   = l.type.includes('ok') || l.type.includes('create') || l.type.includes('activated') || l.type.includes('install') || l.type.includes('free_register');
-    const isBad  = l.type.includes('fail') || l.type.includes('expired') || l.type.includes('blocked') || l.type.includes('injection') || l.type.includes('error') || l.type.includes('limited');
+    const d      = new Date(l.at);
+    const dt     = d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR');
+    const lbl    = humanizeLogType(l.type);
+    const isOk   = /ok|create|activated|install|free_register/.test(l.type);
+    const isBad  = /fail|expired|blocked|injection|error|limited/.test(l.type);
     const color  = isOk ? '#39ff14' : isBad ? '#ff8899' : '#fbbf24';
-    return `<tr data-log="${esc((lbl + ' ' + l.message).toLowerCase())}" data-logtype="${esc(l.type)}">
-<td style="white-space:nowrap;font-size:.82rem;color:var(--mt)">${esc(dt)}</td>
-<td><span style="font-family:var(--mn);font-size:.7rem;font-weight:700;color:${color};background:${color}18;border:1px solid ${color}30;padding:2px 7px;border-radius:4px;letter-spacing:.04em">${esc(lbl)}</span></td>
-<td style="font-size:.83rem">${esc(l.message)}</td>
-<td style="font-size:.8rem;color:var(--mt)">${esc(l.meta&&(l.meta.code||l.meta.key||l.meta.phone)||'')}</td>
+    const meta   = l.meta || {};
+    const chave  = esc(meta.code || meta.key || '');
+    const phone  = esc(meta.phone || '');
+    const ip     = esc(meta.ip || '');
+    return `<tr data-log="${esc((lbl + ' ' + l.message + ' ' + chave).toLowerCase())}" data-logtype="${esc(l.type)}">
+<td style="white-space:nowrap;font-size:.78rem;color:var(--mt);min-width:100px">${esc(dt)}</td>
+<td style="min-width:110px"><span style="font-family:var(--mn);font-size:.68rem;font-weight:700;color:${color};background:${color}15;border:1px solid ${color}28;padding:2px 7px;border-radius:4px;letter-spacing:.04em;white-space:nowrap">${esc(lbl)}</span></td>
+<td style="min-width:80px;max-width:160px;font-size:.78rem"><code style="font-family:var(--mn);font-size:.72rem;color:#7fff6e;background:#040d06;border:1px solid rgba(57,255,20,.18);padding:2px 6px;border-radius:4px">${chave || '—'}</code></td>
+<td style="font-size:.8rem;min-width:80px;color:var(--mt2)">${phone || '—'}</td>
+<td style="font-size:.75rem;min-width:80px;color:var(--mt)">${ip || '—'}</td>
+<td style="font-size:.78rem;color:var(--tx);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(l.message)}</td>
 </tr>`;
   }).join('');
 }
+
+const ADMIN_JS_SAFE = (function() {
+  const lines = [
+    "var _RA='" + R_ADMIN + "';",
+    "function toast(m,ok){var t=document.getElementById('toast');t.textContent=m;t.style.borderColor=(ok===false)?'var(--dg)':'var(--ac)';t.classList.add('show');setTimeout(function(){t.classList.remove('show');},3500);}",
+    "function closeModal(){document.getElementById('modal-bg').classList.remove('open');}",
+    "function filterKeys(){var q=(document.getElementById('search-input').value||'').toLowerCase();var st=document.getElementById('filter-status').value;document.querySelectorAll('#kb tr').forEach(function(r){var row=(r.dataset.code+r.dataset.label+r.dataset.phone).toLowerCase();r.style.display=((!q||row.includes(q))&&(!st||r.dataset.status===st))?'':'none';});}",
+    "function filterLog(){var q=(document.getElementById('logSearch').value||'').toLowerCase();var t=(document.getElementById('logTypeFilter')||{}).value||'';document.querySelectorAll('#logb tr').forEach(function(r){r.style.display=((!q||(r.dataset.log||'').includes(q))&&(!t||(r.dataset.logtype||'')===t))?'':'none';});}",
+    "async function generateKey(){var label=document.getElementById('nlabel').value.trim();if(!label){toast('Informe o cliente',false);return;}var body={label:label,premium:document.getElementById('npremium').value==='1'};var dv=+(document.getElementById('ndays').value)||0,h=+(document.getElementById('nhours').value)||0,m=+(document.getElementById('nmins').value)||0;if(dv)body.expireDays=dv;if(h)body.expireHours=h;if(m)body.expireMinutes=m;var u=document.getElementById('nuses').value.trim();if(u!=='')body.maxUses=parseInt(u);if(document.getElementById('nfirstuse').checked)body.ativarNoPrimeiroUso=true;var r=await fetch(_RA+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(r.status===401){location.href=_RA+'/login';return;}var j=await r.json();if(j.ok){toast('Chave gerada: '+j.key);['nlabel','ndays','nhours','nmins','nuses'].forEach(function(id){document.getElementById(id).value='';});document.getElementById('nfirstuse').checked=false;doRefresh();}else{toast('Erro: '+(j.error||'?'),false);}}",
+    "async function clearLogs(){if(!confirm('Limpar todos os logs?'))return;var r=await fetch(_RA+'/api/logs/clear',{method:'POST'});if(r.ok){toast('Logs limpos');doRefresh();}else{toast('Falha',false);}}",
+    "async function apiActivate(code){var r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/activate',{method:'POST'});if(r.ok){toast('Chave ativada');doRefresh();}else{toast('Falha',false);}}",
+    "async function doRefresh(manual){try{var r=await fetch(_RA+'/api/data');if(r.status===401){if(manual)location.href=_RA+'/login';return;}var d=await r.json();if(!d.ok)return;document.getElementById('s-total').textContent=d.totalKeys;document.getElementById('s-active').textContent=d.activeKeys;document.getElementById('s-free').textContent=d.freeKeys;document.getElementById('s-expired').textContent=d.expiredKeys;document.getElementById('s-logs').textContent=d.totalLogs;document.getElementById('kb').innerHTML=d.keysHtml;document.getElementById('logb').innerHTML=d.logsHtml;var lr=document.getElementById('last-r');if(lr)lr.textContent=new Date().toLocaleTimeString('pt-BR');filterKeys();}catch(e){if(manual)toast('Erro ao atualizar',false);}}",
+    "async function apiToggle(code){var r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});if(r.ok){toast('Status alterado');doRefresh();}else{toast('Falha',false);}}",
+    "async function apiDelete(code){if(!confirm('Excluir chave '+code+'?'))return;var r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});if(r.ok){toast('Chave removida');doRefresh();}else{toast('Falha',false);}}",
+    "function openRenew(code){var box=document.getElementById('modal-box');box.innerHTML='<h3 style=\"margin-bottom:14px\">Renovar '+code+'</h3><div class=\"field\"><label>Dias</label><input id=\"rd\" type=\"number\" min=\"0\" value=\"30\"></div><div class=\"field\"><label>Horas</label><input id=\"rh\" type=\"number\" min=\"0\" value=\"0\"></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitRenew(this.dataset.code)\" data-code=\"'+code+'\">Confirmar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>';document.getElementById('modal-bg').classList.add('open');}",
+    "async function submitRenew(code){var days=+(document.getElementById('rd').value)||0,hours=+(document.getElementById('rh').value)||0;var r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/renew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days:days,hours:hours})});closeModal();if(r.ok){toast('Renovada');doRefresh();}else{toast('Falha',false);}}",
+    "function openUses(code,cur){var box=document.getElementById('modal-box');box.innerHTML='<h3 style=\"margin-bottom:14px\">Limite de usos &mdash; '+code+'</h3><div class=\"field\"><label>Máx (-1 = ilimitado)</label><input id=\"mu\" type=\"number\" value=\"'+cur+'\"></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitUses(this.dataset.code)\" data-code=\"'+code+'\">Confirmar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>';document.getElementById('modal-bg').classList.add('open');}",
+    "async function submitUses(code){var maxUses=parseInt(document.getElementById('mu').value);var r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/max-uses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({maxUses:maxUses})});closeModal();if(r.ok){toast('Atualizado');doRefresh();}else{toast('Falha',false);}}",
+    "function openNote(code,cur){var box=document.getElementById('modal-box');var safe=cur.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');box.innerHTML='<h3 style=\"margin-bottom:14px\">Nota &mdash; '+code+'</h3><div class=\"field\"><textarea id=\"nt\" rows=\"4\" style=\"width:100%;padding:10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font:inherit;resize:vertical\">'+safe+'</textarea></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitNote(this.dataset.code)\" data-code=\"'+code+'\">Salvar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>';document.getElementById('modal-bg').classList.add('open');setTimeout(function(){var t=document.getElementById('nt');if(t)t.focus();},60);}",
+    "async function submitNote(code){var note=document.getElementById('nt').value;var r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note:note})});closeModal();if(r.ok){toast('Nota salva');doRefresh();}else{toast('Falha',false);}}",
+    "function exportCsv(){window.location.href=_RA+'/api/export/csv';}",
+    "setInterval(doRefresh, 60000);",
+  ];
+  return lines.join('\n');
+})();
 
 let _keysCache = null;
 let _keysCacheTs = 0;
@@ -2211,67 +2246,69 @@ async function handleAdminApi(req, res, pathname) {
   return false;
 }
 
-const DASH_JS = `
-const _RA='${R_ADMIN}';
-function filterKeys(){const q=(document.getElementById('search-input').value||'').toLowerCase();const st=document.getElementById('filter-status').value;document.querySelectorAll('#kb tr').forEach(r=>{const row=(r.dataset.code+r.dataset.label+r.dataset.phone).toLowerCase();r.style.display=(!q||row.includes(q))&&(!st||r.dataset.status===st)?'':'none';});}
-function filterLog(){const q=(document.getElementById('logSearch').value||'').toLowerCase();const t=document.getElementById('logTypeFilter').value;document.querySelectorAll('#logb tr').forEach(r=>{r.style.display=(!q||(r.dataset.log||'').includes(q))&&(!t||(r.dataset.logtype||'')===t)?'':'none';});}
-async function generateKey(){const label=document.getElementById('nlabel').value.trim();if(!label){toast('Informe o cliente',false);return;}const body={label,premium:document.getElementById('npremium').value==='1'};const d=+document.getElementById('ndays').value||0,h=+document.getElementById('nhours').value||0,m=+document.getElementById('nmins').value||0;if(d)body.expireDays=d;if(h)body.expireHours=h;if(m)body.expireMinutes=m;const u=document.getElementById('nuses').value.trim();if(u!=='')body.maxUses=parseInt(u);if(document.getElementById('nfirstuse').checked)body.ativarNoPrimeiroUso=true;const r=await fetch(_RA+'/api/keys',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(r.status===401){location.href=_RA+'/login';return;}const j=await r.json();if(j.ok){toast('OK '+j.key);['nlabel','ndays','nhours','nmins','nuses'].forEach(id=>document.getElementById(id).value='');document.getElementById('nfirstuse').checked=false;await doRefresh();}else toast('Erro: '+(j.error||'?'),false);}
-async function clearLogs(){if(!confirm('Limpar todos os logs?'))return;const r=await fetch(_RA+'/api/logs/clear',{method:'POST'});if(r.ok){toast('Logs limpos');doRefresh();}else toast('Falha',false);}
-async function apiActivate(code){const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/activate',{method:'POST'});if(r.ok){toast('Ativada');doRefresh();}else toast('Falha',false);}
-async function doRefresh(manual){const r=await fetch(_RA+'/api/data');if(r.status===401){if(manual)location.href=_RA+'/login';return;}const d=await r.json();if(!d.ok)return;document.getElementById('s-total').textContent=d.totalKeys;document.getElementById('s-active').textContent=d.activeKeys;document.getElementById('s-free').textContent=d.freeKeys;document.getElementById('s-expired').textContent=d.expiredKeys;document.getElementById('s-logs').textContent=d.totalLogs;document.getElementById('kb').innerHTML=d.keysHtml;document.getElementById('logb').innerHTML=d.logsHtml;document.getElementById('last-r').textContent=new Date().toLocaleTimeString('pt-BR');filterKeys();}
-async function apiToggle(code){const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/toggle',{method:'POST'});if(r.ok){toast('Alterado');doRefresh();}else toast('Falha',false);}
-async function apiDelete(code){if(!confirm('Excluir '+code+'?'))return;const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code),{method:'DELETE'});if(r.ok){toast('Removida');doRefresh();}else toast('Falha',false);}
-function openRenew(code){document.getElementById('modal-box').innerHTML='<h3>Renovar '+code+'</h3><div class="field"><label>Dias</label><input id="rd" type="number" min="0" value="30"></div><div class="field"><label>Horas</label><input id="rh" type="number" min="0" value="0"></div><div class="mrow"><button class="btn-p" onclick="submitRenew(\''+code+'\')">Confirmar</button><button onclick="closeModal()">Cancelar</button></div>';document.getElementById('modal-bg').classList.add('open');}
-async function submitRenew(code){const days=+document.getElementById('rd').value||0,hours=+document.getElementById('rh').value||0;const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/renew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days,hours})});closeModal();if(r.ok){toast('Renovada');doRefresh();}else toast('Falha',false);}
-function openUses(code,cur){document.getElementById('modal-box').innerHTML='<h3>Usos '+code+'</h3><div class="field"><label>Max (-1=inf)</label><input id="mu" type="number" value="'+cur+'"></div><div class="mrow"><button class="btn-p" onclick="submitUses(\''+code+'\')">Confirmar</button><button onclick="closeModal()">Cancelar</button></div>';document.getElementById('modal-bg').classList.add('open');}
-async function submitUses(code){const maxUses=parseInt(document.getElementById('mu').value);const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/max-uses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({maxUses})});closeModal();if(r.ok){toast('Atualizado');doRefresh();}else toast('Falha',false);}
-function openNote(code,cur){document.getElementById('modal-box').innerHTML='<h3>Nota '+code+'</h3><div class="field"><textarea id="nt" rows="3" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font:inherit">'+cur.replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</textarea></div><div class="mrow"><button class="btn-p" onclick="submitNote(\''+code+'\')">Salvar</button><button onclick="closeModal()">Cancelar</button></div>';document.getElementById('modal-bg').classList.add('open');}
-async function submitNote(code){const note=document.getElementById('nt').value;const r=await fetch(_RA+'/api/keys/'+encodeURIComponent(code)+'/note',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({note})});closeModal();if(r.ok){toast('Salvo');doRefresh();}else toast('Falha',false);}
-function exportCsv(){window.location.href=_RA+'/api/export/csv';}
-setInterval(()=>doRefresh(),60000);
-`;
-
 function renderAdminDash(keysHtml, logsHtml, stats) {
-  const body = `<div class="sc-row" style="margin-bottom:20px">
-<div class="sc"><div class="n" id="s-total">${stats.totalKeys}</div><div class="l">Total</div></div>
-<div class="sc"><div class="n" id="s-active" style="color:var(--ac)">${stats.activeKeys}</div><div class="l">PRO Ativas</div></div>
-<div class="sc"><div class="n" id="s-free">${stats.freeKeys}</div><div class="l">Free</div></div>
-<div class="sc"><div class="n" id="s-expired" style="${stats.expiredKeys?'color:var(--dg)':''}">${stats.expiredKeys}</div><div class="l">Expiradas</div></div>
-<div class="sc"><div class="n" id="s-logs">${stats.totalLogs}</div><div class="l">Logs</div></div>
-</div>
-<div class="sec"><div class="sh"><span class="sh-t">Licencas WaSpeed</span>
-<div class="gen-form">
-<input type="text" id="nlabel" placeholder="Cliente" style="min-width:120px">
-<input type="number" id="ndays" placeholder="Dias" min="0" style="width:70px">
-<input type="number" id="nhours" placeholder="H" min="0" style="width:55px">
-<input type="number" id="nmins" placeholder="Min" min="0" style="width:55px">
-<input type="number" id="nuses" placeholder="Usos" min="-1" style="width:70px">
-<select id="npremium"><option value="1">PRO</option><option value="0">Free</option></select>
-<label style="display:flex;align-items:center;gap:5px;font-size:.8rem;color:var(--mt);margin:0;cursor:pointer"><input type="checkbox" id="nfirstuse" style="width:auto;padding:0"> 1 uso</label>
-<button class="btn-p" onclick="generateKey()">+ Gerar</button>
-</div></div>
-<div class="sh" style="gap:8px">
-<input type="text" id="search-input" placeholder="Buscar chave, nome..." oninput="filterKeys()" style="flex:1;min-width:160px;padding:8px 12px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">
-<select id="filter-status" onchange="filterKeys()" style="padding:8px 10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">
-<option value="">Todos</option><option value="ativo">PRO</option><option value="free">Free</option><option value="pendente">Pendentes</option><option value="expirada">Expiradas</option><option value="bloqueado">Bloqueadas</option>
-</select>
-<button class="btn-w" onclick="doRefresh(true)">Atualizar</button>
-<button class="btn-w" onclick="exportCsv()">CSV</button>
-<span id="last-r" style="font-size:.72rem;color:var(--mt)">--</span>
-</div>
-<div class="tbl-w"><table><thead><tr>
-<th>Chave</th><th>Cliente</th><th>Status</th><th>Validade</th><th>Usos</th><th>Telefone</th><th>IP</th><th>Ultimo acesso</th><th>Criada</th><th>Nota</th><th>Acoes</th>
-</tr></thead><tbody id="kb">${keysHtml}</tbody></table></div></div>
-<div class="sec"><div class="sh"><span class="sh-t">Logs do Sistema WaSpeed</span>
-<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-<input type="text" id="logSearch" placeholder="Filtrar..." oninput="filterLog()" style="padding:7px 11px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">
-<select id="logTypeFilter" onchange="filterLog()" style="padding:7px 10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">
-<option value="">Todos</option><option value="validation_ok">validation_ok</option><option value="key_activated">key_activated</option><option value="key_create">key_create</option><option value="key_delete">key_delete</option><option value="auth_fail">auth_fail</option><option value="auth_ok">auth_ok</option><option value="free_register">free_register</option>
-</select>
-<button class="btn-w" style="border-color:rgba(255,68,102,.3);color:#ff8899" onclick="clearLogs()">Limpar</button>
-</div></div>
-<div class="tbl-w" style="max-height:55vh;overflow-y:auto"><table><thead><tr><th>Data</th><th>Tipo</th><th>Mensagem</th><th>Chave</th></tr></thead><tbody id="logb">${logsHtml}</tbody></table></div></div>
-<script>${DASH_JS}</script>`;
+  const body = [
+    '<div class="sc-row" style="margin-bottom:20px">',
+    '<div class="sc"><div class="n" id="s-total">' + stats.totalKeys + '</div><div class="l">Total</div></div>',
+    '<div class="sc"><div class="n" id="s-active" style="color:var(--ac)">' + stats.activeKeys + '</div><div class="l">PRO Ativas</div></div>',
+    '<div class="sc"><div class="n" id="s-free">' + stats.freeKeys + '</div><div class="l">Free</div></div>',
+    '<div class="sc"><div class="n" id="s-expired" style="' + (stats.expiredKeys ? 'color:var(--dg)' : '') + '">' + stats.expiredKeys + '</div><div class="l">Expiradas</div></div>',
+    '<div class="sc"><div class="n" id="s-logs">' + stats.totalLogs + '</div><div class="l">Logs</div></div>',
+    '</div>',
+    '<div class="sec">',
+    '<div class="sh"><span class="sh-t">Licen\u00e7as WaSpeed</span>',
+    '<div class="gen-form">',
+    '<input type="text" id="nlabel" placeholder="Cliente" style="min-width:120px">',
+    '<input type="number" id="ndays" placeholder="Dias" min="0" style="width:70px">',
+    '<input type="number" id="nhours" placeholder="H" min="0" style="width:55px">',
+    '<input type="number" id="nmins" placeholder="Min" min="0" style="width:55px">',
+    '<input type="number" id="nuses" placeholder="Usos" min="-1" style="width:70px">',
+    '<select id="npremium"><option value="1">PRO</option><option value="0">Free</option></select>',
+    '<label style="display:flex;align-items:center;gap:5px;font-size:.8rem;color:var(--mt);margin:0;cursor:pointer"><input type="checkbox" id="nfirstuse" style="width:auto;padding:0"> 1\u00ba uso</label>',
+    '<button class="btn-p" onclick="generateKey()">+ Gerar</button>',
+    '</div></div>',
+    '<div class="sh" style="gap:8px">',
+    '<input type="text" id="search-input" placeholder="Buscar chave, nome, telefone..." oninput="filterKeys()" style="flex:1;min-width:160px;padding:8px 12px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">',
+    '<select id="filter-status" onchange="filterKeys()" style="padding:8px 10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">',
+    '<option value="">Todos</option><option value="ativo">PRO</option><option value="free">Free</option><option value="pendente">Pendentes</option><option value="expirada">Expiradas</option><option value="bloqueado">Bloqueadas</option>',
+    '</select>',
+    '<button class="btn-w" onclick="doRefresh(true)">\u21bb Atualizar</button>',
+    '<button class="btn-w" onclick="exportCsv()">\u2b07 CSV</button>',
+    '<span id="last-r" style="font-size:.72rem;color:var(--mt)">&mdash;</span>',
+    '</div>',
+    '<div class="tbl-w" style="overflow-x:auto">',
+    '<table style="min-width:900px"><thead><tr>',
+    '<th style="min-width:160px">Chave</th><th style="min-width:90px">Cliente</th><th style="min-width:80px">Status</th><th style="min-width:100px">Validade</th><th style="min-width:48px">Usos</th><th style="min-width:90px">Telefone</th><th style="min-width:90px">IP</th><th style="min-width:100px">\u00dalt. acesso</th><th style="min-width:100px">Criada</th><th style="min-width:80px">Nota</th><th style="min-width:160px">A\u00e7\u00f5es</th>',
+    '</tr></thead><tbody id="kb">' + keysHtml + '</tbody></table>',
+    '</div></div>',
+    '<div class="sec">',
+    '<div class="sh"><span class="sh-t">Logs do Sistema &mdash; WaSpeed</span>',
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">',
+    '<input type="text" id="logSearch" placeholder="Filtrar logs..." oninput="filterLog()" style="padding:7px 11px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">',
+    '<select id="logTypeFilter" onchange="filterLog()" style="padding:7px 10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx)">',
+    '<option value="">Todos os tipos</option>',
+    '<option value="LOGIN OK">LOGIN OK</option>',
+    '<option value="FALHA AO LOGAR">FALHA AO LOGAR</option>',
+    '<option value="CHAVE CRIADA">CHAVE CRIADA</option>',
+    '<option value="CHAVE EXCLU\u00cdDA">CHAVE EXCLU\u00cdDA</option>',
+    '<option value="CHAVE ATIVADA">CHAVE ATIVADA</option>',
+    '<option value="CADASTRO FREE">CADASTRO FREE</option>',
+    '<option value="FALHA ADMIN">FALHA ADMIN</option>',
+    '</select>',
+    '<button class="btn-w" style="border-color:rgba(255,68,102,.3);color:#ff8899" onclick="clearLogs()">&#x1F5D1; Limpar</button>',
+    '</div></div>',
+    '<div class="tbl-w" style="max-height:55vh;overflow-y:auto;overflow-x:auto">',
+    '<table style="min-width:700px"><thead><tr>',
+    '<th style="min-width:100px">Data/Hora</th>',
+    '<th style="min-width:110px">Evento</th>',
+    '<th style="min-width:80px">Chave</th>',
+    '<th style="min-width:80px">Telefone</th>',
+    '<th style="min-width:80px">IP</th>',
+    '<th style="min-width:160px">Mensagem</th>',
+    '</tr></thead><tbody id="logb">' + logsHtml + '</tbody></table>',
+    '</div></div>',
+    '<script>' + ADMIN_JS_SAFE + '<\/script>',
+  ].join('\n');
   return spaShell('Admin WaSpeed', adminSidebar('dash'), 'WaSpeed Admin', body);
 }
 
@@ -2306,6 +2343,12 @@ async function handleAdmin(req, res, pathname, ip) {
   if (pathname === R_ADMIN || pathname === R_ADMIN + '/') {
     const stats    = await getKeyStats();
     const licenses = await getKeysCached();
+    const logs     = await getRecentLogs(150);
+    return sendHtml(res, renderAdminDash(buildLicenseRows(licenses), buildLogRows(logs), stats));
+  }
+  if (pathname === R_ADMIN + '/keys') {
+    const stats    = await getKeyStats();
+    const licenses = await listLicenses();
     const logs     = await getRecentLogs(150);
     return sendHtml(res, renderAdminDash(buildLicenseRows(licenses), buildLogRows(logs), stats));
   }
