@@ -1404,7 +1404,12 @@ const PUB_CSS = `*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}:
 
 const PUB_CANVAS = `<canvas id="_c" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas><script>(function(){var c=document.getElementById('_c'),x=c.getContext('2d');function r(){c.width=innerWidth;c.height=innerHeight;}r();addEventListener('resize',r);var p=Array.from({length:40},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3,r:Math.random()*1.5+.4};});function d(){x.clearRect(0,0,c.width,c.height);p.forEach(function(a){a.x+=a.vx;a.y+=a.vy;if(a.x<0||a.x>c.width)a.vx*=-1;if(a.y<0||a.y>c.height)a.vy*=-1;x.beginPath();x.arc(a.x,a.y,a.r,0,Math.PI*2);x.fillStyle='rgba(57,255,20,.4)';x.fill();});for(var i=0;i<p.length;i++)for(var j=i+1;j<p.length;j++){var dx=p[i].x-p[j].x,dy=p[i].y-p[j].y,dd=Math.sqrt(dx*dx+dy*dy);if(dd<110){x.beginPath();x.moveTo(p[i].x,p[i].y);x.lineTo(p[j].x,p[j].y);x.strokeStyle='rgba(57,255,20,'+(0.09*(1-dd/110))+')';x.lineWidth=.5;x.stroke();}}requestAnimationFrame(d);}d();})();</script>`;
 
-function pubShell(title, body) {
+function pubShell(title, body, activePath) {
+  activePath = activePath || '/';
+  const nl = (href, label) => {
+    const isActive = href === activePath || (href !== '/' && activePath.startsWith(href));
+    return `<a href="${href}" style="font-size:.8rem;padding:5px 13px;border:1px solid ${isActive?'var(--g)':'var(--bdr)'};border-radius:6px;transition:all .2s;font-weight:700;color:${isActive?'var(--g)':'var(--muted)'};text-decoration:none;background:${isActive?'rgba(57,255,20,.07)':'transparent'};text-shadow:${isActive?'0 0 10px rgba(57,255,20,.45)':'none'}">${label}${isActive?' ●':''}</a>`;
+  };
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${esc(title)} — WaSpeed</title>
@@ -1415,9 +1420,10 @@ function pubShell(title, body) {
 <nav class="pub-nav">
   <div class="pub-logo">⚡ WaSpeed</div>
   <div class="pub-links">
-    <a href="/faq">FAQ</a>
-    <a href="/planos">💳 Planos</a>
-    <a href="https://wa.me/5521996771552" target="_blank">💬 Suporte</a>
+    ${nl('/faq','FAQ')}
+    ${nl('/planos','💳 Planos')}
+    ${nl('/privacidade','🔒 Privacidade')}
+    <a href="https://wa.me/5521996771552" target="_blank" style="font-size:.8rem;padding:5px 13px;border:1px solid var(--bdr);border-radius:6px;font-weight:600;color:var(--muted);text-decoration:none;transition:all .2s">💬 Suporte</a>
   </div>
 </nav>
 <div style="position:relative;z-index:1;min-height:calc(100vh - 52px - 54px)">${body}</div>
@@ -1487,48 +1493,35 @@ document.getElementById('ki').addEventListener('keydown',e=>{if(e.key==='Enter')
 
 function renderFaqPage() {
   const faqs = [
-    ['🔑 Como ativo minha chave WaSpeed?','Após receber sua chave no formato WS-XXXXX-XXXXX-XXXXX, instale a extensão WaSpeed no Chrome. Clique no ícone da extensão no WhatsApp Web, cole sua chave no campo indicado e pressione Ativar. O status passará a Ativo imediatamente.'],
-    ['📱 Quantos números posso usar com uma chave?','Cada plano define o limite de dispositivos simultâneos: Solo (1), Padrão (3), Pro (5) e Empresarial (10). Ao atingir o limite, novos dispositivos são bloqueados até que um número já cadastrado seja removido pelo suporte.'],
-    ['⏱ Como funciona a renovação do plano?','A renovação soma os dias ao tempo restante da chave atual — você nunca perde dias. Exemplo: se restam 10 dias e você renova por 30, sua chave passará a valer 40 dias a partir do momento da confirmação do pagamento.'],
-    ['❌ O que acontece quando minha chave expira?','A extensão para de funcionar e exibe uma mensagem de licença expirada. Seus dados e configurações são preservados. Basta renovar a chave pelo portal para retomar o acesso sem perder nenhuma configuração anterior.'],
-    ['💳 Quais formas de pagamento são aceitas?','No momento os links de pagamento estão sendo configurados. Em breve serão aceitos PIX (aprovação instantânea), cartão de crédito e boleto bancário. Enquanto isso, entre em contato com o suporte para realizar o pagamento manualmente.'],
-    ['🔄 Posso transferir minha chave para outro computador?','Sim. A chave é vinculada ao número do WhatsApp, não ao computador. Basta instalar a extensão em outro navegador, inserir a mesma chave e autenticar com o mesmo número de WhatsApp.'],
-    ['⚡ Quais recursos estão inclusos em todos os planos?','Todos os planos incluem: disparos em massa, funis de atendimento, fluxos automatizados, agendamento de mensagens, CRM básico, respostas rápidas, etiquetas, portal do cliente e suporte via WhatsApp.'],
-    ['🔒 Minha conta do WhatsApp corre risco de banimento?','A WaSpeed opera sobre a API oficial do WhatsApp Web dentro do navegador, sem manipulação de protocolos internos. O risco é similar ao uso manual normal do WhatsApp Web. Recomendamos usar com moderação e respeitar os limites de envio.'],
-    ['📊 Como funciona o disparo em massa?','No painel lateral da extensão, acesse "Disparo em Massa", importe uma planilha CSV ou XLSX com os números e a mensagem personalizada, configure o intervalo entre envios (recomendamos mínimo 10 segundos) e inicie o disparo.'],
-    ['🛠 A extensão para de funcionar após atualização do WhatsApp?','O servidor WaSpeed atualiza automaticamente os seletores do DOM do WhatsApp Web. Em caso de quebra temporária, a extensão se auto-recupera em até 24h após uma atualização do WhatsApp. Nenhuma ação manual é necessária.'],
-    ['📧 Como altero o email associado à minha chave?','O email é um campo de exibição opcional. Para atualizá-lo, entre em contato com o suporte informando sua chave atual e o novo email desejado. A alteração é realizada diretamente no banco de dados em até 1 hora útil.'],
-    ['🚫 Posso usar a chave em mais dispositivos do que o plano permite?','Não. O servidor bloqueia automaticamente autenticações que excedam o limite do plano usando uma cláusula de guarda atômica no banco de dados. Para ampliar o limite, faça upgrade para um plano superior.'],
-    ['💬 Como funciona o suporte técnico?','O suporte é oferecido via WhatsApp em horário comercial (9h-18h, seg-sex). Para dúvidas simples, o tempo de resposta é de até 2 horas. Para problemas técnicos complexos, até 24 horas úteis.'],
-    ['🔑 Esqueci minha chave. Como recupero?','Acesse o Portal WaSpeed (esta página), clique em "Recuperar acesso" e informe o email cadastrado ou entre em contato com o suporte informando seu número de WhatsApp. A chave será reenviada imediatamente.'],
-    ['📅 O plano começa a contar do momento da compra ou da ativação?','O período começa na primeira ativação da chave em um dispositivo. Se você comprar hoje mas ativar em 5 dias, sua chave terá validade plena de 30 dias a partir da ativação — nunca da compra.'],
-    ['🔧 A extensão funciona no Firefox ou Edge?','Atualmente a WaSpeed é exclusiva para Google Chrome e navegadores baseados em Chromium (Brave, Opera, Edge). Suporte para Firefox está no roadmap de desenvolvimento.'],
-    ['📱 Posso usar no celular?','A extensão funciona apenas em navegadores desktop. O WhatsApp Web no celular não suporta extensões de Chrome. Recomendamos usar em computador para aproveitar todos os recursos.'],
-    ['💰 Existe período de teste gratuito?','Sim. Novas instalações da extensão recebem automaticamente uma chave de acesso gratuito com recursos limitados, sem prazo de expiração. Para recursos completos, um dos planos pagos é necessário.'],
-    ['🗂 Meus dados ficam armazenados onde?','Todos os dados são armazenados no MongoDB Atlas (infraestrutura cloud da MongoDB Inc.) com criptografia AES-256 em repouso e TLS 1.3 em trânsito, em data centers certificados ISO 27001.'],
-    ['❓ Como cancelo meu plano?','O cancelamento é imediato: basta não renovar ao final do período vigente. Não há fidelidade nem multa por cancelamento. O acesso permanece ativo até o último dia pago.'],
+    ['🔑 Como ativo minha chave?', 'Instale a extensão WaSpeed no Chrome, abra o WhatsApp Web, clique no ícone da extensão, cole sua chave WS-XXXXX-XXXXX e confirme. O status muda para Ativo imediatamente.'],
+    ['📱 Quantos números posso usar?', 'Depende do seu plano: Solo (1), Padrão (3), Pro (5) e Empresarial (10). Ao atingir o limite, novos dispositivos são automaticamente bloqueados.'],
+    ['⏱ Como funciona a renovação?', 'A renovação soma os dias ao tempo restante — você nunca perde dias. Renove antes ou depois do vencimento sem perder o acesso acumulado.'],
+    ['❌ O que acontece ao vencer?', 'A extensão para de funcionar. Suas configurações são preservadas. Basta renovar o plano para retomar o acesso sem reconfigurar nada.'],
+    ['💳 Como pago?', 'Os links de pagamento estão sendo configurados. Enquanto isso, entre em contato com o suporte no WhatsApp para contratar manualmente via PIX.'],
+    ['🔄 Posso trocar de dispositivo?', 'Sim. A chave é vinculada ao número do WhatsApp, não ao computador. Instale em outro Chrome e autentique com o mesmo número.'],
+    ['⚡ O que está incluso em todos os planos?', 'Disparos em massa, funis, fluxos, agendamentos, CRM, etiquetas, respostas rápidas e suporte via WhatsApp — inclusos em todos os planos.'],
+    ['💬 Como aciono o suporte técnico?', 'Via WhatsApp no número +55 21 99677-1552, de segunda a sexta das 9h às 18h. Resposta em até 2h para dúvidas simples.'],
+    ['💰 Existe versão gratuita?', 'Sim. Novas instalações recebem automaticamente uma chave gratuita com recursos limitados e sem prazo de expiração.'],
+    ['❓ Esqueci minha chave. Como recupero?', 'Digite seu número de WhatsApp vinculado no campo de recuperação do portal, ou entre em contato com o suporte para reenvio imediato.'],
   ];
-  const faqItems = faqs.map(([q,a],i) => `<div style="border-bottom:1px solid rgba(57,255,20,.1);padding:0" id="fi${i}">
-<button onclick="tg(${i})" style="width:100%;text-align:left;padding:16px 0;background:none;border:none;color:var(--text);font:inherit;font-size:.9rem;font-weight:700;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px">
-<span>${q}</span><span id="fa${i}" style="color:var(--g);font-size:1.2rem;transition:transform .2s;flex-shrink:0">+</span></button>
-<div id="fb${i}" style="display:none;padding-bottom:16px;font-size:.85rem;color:#8ab08c;line-height:1.9">${a}</div></div>`).join('');
+  const items = faqs.map(([q,a],i) => `<div style="border-bottom:1px solid rgba(57,255,20,.1)">
+<button onclick="(function(){var b=document.getElementById('b${i}'),a=document.getElementById('a${i}'),o=b.style.display==='none';b.style.display=o?'block':'none';a.textContent=o?'−':'+';a.style.color=o?'var(--g)':'var(--muted)';})()" style="width:100%;text-align:left;padding:15px 0;background:none;border:none;color:var(--text);font:inherit;font-size:.88rem;font-weight:700;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px">
+<span>${q}</span><span id="a${i}" style="color:var(--muted);font-size:1.1rem;flex-shrink:0;transition:color .2s">+</span></button>
+<div id="b${i}" style="display:none;padding:0 0 15px;font-size:.83rem;color:#8ab08c;line-height:1.75">${a}</div>
+</div>`).join('');
   return pubShell('FAQ — Dúvidas Frequentes', `
-<main style="max-width:820px;margin:0 auto;padding:52px 20px 80px">
-<div style="text-align:center;margin-bottom:44px">
+<main style="max-width:720px;margin:0 auto;padding:52px 20px 80px">
+<div style="text-align:center;margin-bottom:40px">
 <p style="font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-weight:700">Central de Ajuda</p>
-<h1 style="font-size:clamp(1.6rem,4vw,2.4rem);font-weight:800;letter-spacing:-.03em">Perguntas <span style="color:var(--g)">Frequentes</span></h1>
-<p style="color:var(--muted);font-size:.88rem;margin-top:12px">Respostas para as principais dúvidas sobre a extensão WaSpeed.</p>
+<h1 style="font-size:clamp(1.5rem,4vw,2.2rem);font-weight:800;letter-spacing:-.03em">Perguntas <span style="color:var(--g)">Frequentes</span></h1>
 </div>
-<div style="background:rgba(8,14,9,.85);backdrop-filter:blur(12px);border:1px solid rgba(57,255,20,.15);border-radius:16px;padding:8px 28px 8px">
-${faqItems}
+<div style="background:rgba(8,14,9,.85);backdrop-filter:blur(12px);border:1px solid rgba(57,255,20,.15);border-radius:16px;padding:6px 28px 6px">${items}</div>
+<div style="margin-top:28px;background:rgba(57,255,20,.04);border:1px solid rgba(57,255,20,.15);border-radius:12px;padding:26px;text-align:center">
+<p style="font-weight:700;margin-bottom:8px">Não encontrou o que procurava?</p>
+<p style="color:var(--muted);font-size:.85rem;margin-bottom:16px">Nossa equipe responde pelo WhatsApp em horário comercial.</p>
+<a class="btn" href="https://wa.me/5521996771552" target="_blank">💬 Falar com Suporte</a>
 </div>
-<div style="margin-top:32px;background:rgba(57,255,20,.04);border:1px solid rgba(57,255,20,.18);border-radius:12px;padding:28px;text-align:center">
-<h3 style="font-weight:800;margin-bottom:8px">Não encontrou o que procurava?</h3>
-<p style="color:var(--muted);font-size:.87rem;margin-bottom:18px">Nossa equipe está disponível no WhatsApp para responder qualquer dúvida.</p>
-<a class="btn" href="https://wa.me/5521996771552" target="_blank">💬 Falar com o Suporte</a>
-</div>
-</main>
-<script>function tg(i){var b=document.getElementById('fb'+i),a=document.getElementById('fa'+i),open=b.style.display==='none';b.style.display=open?'block':'none';a.textContent=open?'−':'+';}</script>`);
+</main>`, '/faq');
 }
 
 function renderPlanosPage() {
@@ -1615,7 +1608,7 @@ ${[row[1],row[2],row[3],row[4]].map((v,ci)=>`<td style="padding:10px 14px;text-a
 <a class="btn" href="https://wa.me/5521996771552" target="_blank">💬 Falar com o Suporte</a>
 </div>
 </main>
-<style>@media(max-width:720px){main>div:nth-child(4){grid-template-columns:1fr 1fr}}@media(max-width:440px){main>div:nth-child(4){grid-template-columns:1fr}}</style>`);
+<style>@media(max-width:720px){main>div:nth-child(4){grid-template-columns:1fr 1fr}}@media(max-width:440px){main>div:nth-child(4){grid-template-columns:1fr}}</style>`, '/planos');
 }
 
 function renderPrivacyPage() {
@@ -1668,7 +1661,7 @@ Você também pode registrar reclamações perante a <strong>Autoridade Nacional
 ${sections.map(([ic,t,c])=>`<div style="background:rgba(8,14,9,.85);backdrop-filter:blur(10px);border:1px solid rgba(57,255,20,.12);border-radius:14px;padding:24px 28px;margin-bottom:14px">
 <h2 style="font-size:.82rem;font-weight:700;color:var(--g);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;display:flex;align-items:center;gap:8px">${ic} ${t}</h2>
 <div style="font-size:.83rem;color:#8ab08c;line-height:1.95">${c}</div></div>`).join('')}
-</main>`);
+</main>`, '/privacidade');
 }
 
 
@@ -1778,6 +1771,18 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
   }
 
   // A partir daqui: requer access-token
+  if (pathname === '/api/auth/validate-portal' && req.method === 'POST') {
+    const body = await readJson(req);
+    const raw  = sanitizeString(String(body.key || '').trim());
+    const key  = normKey(raw);
+    if (!key) return sendJson(res, { success: false, msg_id: 'key_required' });
+    if (detectInjection(key)) return sendJson(res, { success: false, msg_id: 'invalid_key' });
+    const rec = await findKey(key) || await findKeyByBearer(raw);
+    if (!rec) return sendJson(res, { success: false, msg_id: 'not_found' });
+    const st = keyStatus(rec);
+    return sendJson(res, { success: true, status: st, code: rec.code });
+  }
+
   if (!requireAccessToken(req)) {
     return sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403);
   }
@@ -1918,16 +1923,6 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     return sendJson(res, { success: true, msg_id: 'not_implemented_on_this_server' }, 501);
   }
 
-  // Endpoint de consulta de chave pelo portal do cliente
-  if (pathname === '/api/auth/validate-portal' && req.method === 'POST') {
-    const body   = await readJson(req);
-    const key    = sanitizeString(String(body.key || '').trim());
-    if (!key) return sendJson(res, { success: false });
-    const rec = await findKey(key) || await findKeyByBearer(key);
-    if (!rec) return sendJson(res, { success: false });
-    return sendJson(res, { success: true });
-  }
-
   return false;
 }
 
@@ -1993,25 +1988,78 @@ function panelStatusKey(rec) {
 
 function buildLicenseRows(licenses) {
   return licenses.map(k => {
-    const code = k.code;
-    const st   = panelStatusKey(k);
-    const maxU = k.maxUses ?? -1;
+    const code      = k.code;
+    const st        = panelStatusKey(k);
+    const maxU      = k.maxUses != null ? k.maxUses : -1;
     const isPending = keyStatus(k) === 'pending';
-    const uses = (k.phones || []).length;
-    const maxDisp = maxU === -1 ? '\u221e' : String(maxU);
-    const valHtml = !k.expiresAt ? '<span style="color:var(--mt)">Sem limite</span>' : esc(new Date(k.expiresAt).toLocaleString('pt-BR'));
-    const stBadge = isPending ? '<span class="badge bpd">PENDENTE</span>' : statusBadgeHtml(keyStatus(k));
-    return `<tr data-code="${esc(code)}" data-label="${esc((k.label||'').toLowerCase())}" data-status="${isPending?'pendente':st}" data-phone="${esc(k.lastPhone||'')}" data-lastused="${k.lastUsed||''}" data-created="${k.createdAt||''}">
-<td><code class="kc">${esc(code)}</code></td><td>${esc(k.label||'—')}</td><td>${stBadge}</td><td>${valHtml}</td><td>${uses}/${maxDisp}</td><td style="font-size:.82rem">${esc(k.lastPhone||'—')}</td><td style="font-size:.82rem;color:var(--mt)">${esc(k.lastIp||'—')}</td><td style="font-size:.82rem;color:var(--mt)">${fmtDate(k.lastUsed)}</td><td style="font-size:.82rem;color:var(--mt)">${fmtDate(k.createdAt)}</td><td style="font-size:.82rem;max-width:90px;overflow:hidden;text-overflow:ellipsis" title="${esc(k.note||'')}">${esc(k.note||'—')}</td>
-<td class="act">${isPending?`<button class="bs bg" onclick="apiActivate('${esc(code)}')">&#x2705;Ativar</button>`:''}<button class="bs bg" onclick="apiToggle('${esc(code)}')">${k.active?'Bloq':'Lib'}</button><button class="bs" onclick="openRenew('${esc(code)}')">+Tempo</button><button class="bs" onclick="openUses('${esc(code)}',${maxU})">Usos</button><button class="bs" onclick="openNote('${esc(code)}','${esc((k.note||'').replace(/'/g,"\\'"))}')">&#x1F4DD;</button><button class="bs bd" onclick="apiDelete('${esc(code)}')">Del</button></td></tr>`;
+    const uses      = (k.phones || []).length;
+    const maxDisp   = maxU === -1 ? '\u221e' : String(maxU);
+    const isExpd    = k.expiresAt && new Date(k.expiresAt).getTime() < Date.now();
+    const valHtml   = !k.expiresAt
+      ? '<span style="color:var(--mt);font-size:.78rem">Sem limite</span>'
+      : '<span style="font-size:.78rem' + (isExpd ? ';color:#ff8899' : '') + '">' + esc(new Date(k.expiresAt).toLocaleString('pt-BR')) + '</span>';
+    const stBadge   = isPending ? '<span class="badge bpd" style="font-size:.62rem">PENDENTE</span>' : statusBadgeHtml(keyStatus(k));
+    const rawNote   = k.note || '';
+    const noteShort = rawNote.length > 22 ? rawNote.slice(0, 22) + '\u2026' : rawNote;
+    return '<tr data-code="' + esc(code) + '" data-label="' + esc((k.label||'').toLowerCase()) + '" data-status="' + (isPending?'pendente':st) + '" data-phone="' + esc(k.lastPhone||'') + '" data-lastused="' + (k.lastUsed||'') + '" data-created="' + (k.createdAt||'') + '">' +
+'<td style="min-width:160px;max-width:190px"><code class="kc" style="font-size:.72rem;padding:3px 7px">' + esc(code) + '</code></td>' +
+'<td style="min-width:90px;max-width:130px;font-size:.84rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(k.label||'—') + '</td>' +
+'<td style="min-width:80px">' + stBadge + '</td>' +
+'<td style="min-width:100px">' + valHtml + '</td>' +
+'<td style="min-width:48px;text-align:center;font-size:.82rem">' + uses + '/' + maxDisp + '</td>' +
+'<td style="min-width:90px;font-size:.78rem;color:var(--mt2)">' + esc(k.lastPhone||'—') + '</td>' +
+'<td style="min-width:90px;font-size:.75rem;color:var(--mt)">' + esc(k.lastIp||'—') + '</td>' +
+'<td style="min-width:100px;font-size:.75rem;color:var(--mt)">' + fmtDate(k.lastUsed) + '</td>' +
+'<td style="min-width:100px;font-size:.75rem;color:var(--mt)">' + fmtDate(k.createdAt) + '</td>' +
+'<td style="min-width:70px;max-width:100px;font-size:.76rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc(rawNote) + '">' + esc(noteShort||'—') + '</td>' +
+'<td style="min-width:160px" class="act">' + (isPending ? '<button class="bs bg" onclick="apiActivate(\'' + esc(code) + '\')">✅Ativar</button>' : '') +
+'<button class="bs bg" onclick="apiToggle(\'' + esc(code) + '\')">' + (k.active?'Bloq':'Lib') + '</button>' +
+'<button class="bs" onclick="openRenew(\'' + esc(code) + '\')">+Dias</button>' +
+'<button class="bs" onclick="openUses(\'' + esc(code) + '\',' + maxU + ')">Usos</button>' +
+'<button class="bs" onclick="openNote(\'' + esc(code) + "','" + esc(rawNote.replace(/'/g,"\\'")) + '\')">📝</button>' +
+'<button class="bs bd" onclick="apiDelete(\'' + esc(code) + '\')">Del</button></td></tr>';
   }).join('');
+}
+
+const LOG_LABELS = Object.freeze({
+  validation_ok        : 'LOGIN OK',
+  auth_ok              : 'LOGIN OK',
+  auth_fail            : 'FALHA AO LOGAR',
+  admin_login_fail     : 'FALHA ADMIN',
+  key_create           : 'CHAVE CRIADA',
+  key_delete           : 'CHAVE EXCLUÍDA',
+  key_activated        : 'CHAVE ATIVADA',
+  free_register        : 'CADASTRO FREE',
+  install              : 'INSTALAÇÃO',
+  license_expired      : 'CHAVE EXPIRADA',
+  key_expired          : 'CHAVE EXPIRADA',
+  user_blocked         : 'USUÁRIO BLOQUEADO',
+  max_devices_reached  : 'LIMITE DE TELAS',
+  nosql_injection      : 'ATAQUE BLOQUEADO',
+  rate_limited         : 'RATE LIMIT',
+  circuit_breaker_open : 'FALHA NO BANCO',
+  internal_error       : 'ERRO INTERNO',
+  unhandled_rejection  : 'ERRO INTERNO',
+});
+
+function humanizeLogType(type) {
+  return LOG_LABELS[type] || String(type).toUpperCase().replace(/_/g, ' ');
 }
 
 function buildLogRows(logs) {
   return logs.map(l => {
-    const d = new Date(l.at);
+    const d  = new Date(l.at);
     const dt = d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR');
-    return `<tr data-log="${esc((l.type+' '+l.message).toLowerCase())}" data-logtype="${esc(l.type)}"><td style="white-space:nowrap;font-size:.82rem;color:var(--mt)">${esc(dt)}</td><td><code style="font-family:var(--mn);font-size:.72rem;color:var(--ac2)">${esc(l.type)}</code></td><td>${esc(l.message)}</td><td style="font-size:.82rem">${esc(l.meta&&(l.meta.code||l.meta.key)||'')}</td></tr>`;
+    const lbl = humanizeLogType(l.type);
+    const isOk   = l.type.includes('ok') || l.type.includes('create') || l.type.includes('activated') || l.type.includes('install') || l.type.includes('free_register');
+    const isBad  = l.type.includes('fail') || l.type.includes('expired') || l.type.includes('blocked') || l.type.includes('injection') || l.type.includes('error') || l.type.includes('limited');
+    const color  = isOk ? '#39ff14' : isBad ? '#ff8899' : '#fbbf24';
+    return `<tr data-log="${esc((lbl + ' ' + l.message).toLowerCase())}" data-logtype="${esc(l.type)}">
+<td style="white-space:nowrap;font-size:.82rem;color:var(--mt)">${esc(dt)}</td>
+<td><span style="font-family:var(--mn);font-size:.7rem;font-weight:700;color:${color};background:${color}18;border:1px solid ${color}30;padding:2px 7px;border-radius:4px;letter-spacing:.04em">${esc(lbl)}</span></td>
+<td style="font-size:.83rem">${esc(l.message)}</td>
+<td style="font-size:.8rem;color:var(--mt)">${esc(l.meta&&(l.meta.code||l.meta.key||l.meta.phone)||'')}</td>
+</tr>`;
   }).join('');
 }
 
@@ -2129,11 +2177,18 @@ async function handleAdminApi(req, res, pathname) {
   }
   const codeNote = pathname.match(adminApiRe('/note'));
   if (codeNote && req.method === 'POST') {
-    const rec = await findKey(decodeURIComponent(codeNote[1]));
+    const rawCode = decodeURIComponent(codeNote[1]);
+    const rec = await findKey(rawCode);
     if (!rec) return sendJson(res, { error: 'not found' }, 404);
     const body = await readJson(req);
-    const note = sanitizeString(String(body.note || '').slice(0, 500));
-    await updateLicense(rec.code, { note });
+    const note = sanitizeString(String(body.note != null ? body.note : '').slice(0, 500));
+    if (!db) return sendJson(res, { error: 'db_unavailable' }, 503);
+    try {
+      await db.collection(COL.licenses).updateOne(
+        { code: normKey(rawCode) },
+        { $set: { note } }
+      );
+    } catch (e) { slog(LOG_LEVELS.WARN, 'codeNote update', { err: e.message }); return sendJson(res, { error: 'update_failed' }, 500); }
     invalidateKeysCache();
     return sendJson(res, { ok: true, note });
   }
