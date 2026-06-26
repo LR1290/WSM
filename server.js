@@ -2025,7 +2025,7 @@ label{display:block;font-size:.8rem;font-weight:600;color:var(--mt);margin:0 0 6
 .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(3px)}.modal-bg.open{display:flex}.modal{background:var(--sf2);border:1px solid var(--bdrb);border-radius:14px;padding:24px;max-width:400px;width:90%}.modal h3{margin-bottom:16px;font-size:1.05rem}.modal .field{margin-bottom:12px}.mrow{display:flex;gap:8px;margin-top:16px}
 .login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.login-inn{width:100%;max-width:420px;display:flex;flex-direction:column;align-items:center;gap:22px}.login-brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:1.3rem;color:var(--ac);text-shadow:0 0 22px rgba(57,255,20,.38)}.login-card{width:100%;background:var(--sf2);border:1px solid var(--bdr);border-radius:16px;padding:34px 30px}.login-card h1{font-size:1.45rem;margin-bottom:4px;text-align:center}.login-card .sub{color:var(--mt);font-size:.875rem;margin-bottom:22px;text-align:center}.login-card .btn{width:100%;margin-top:8px;color:#020604}
 .gen-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:14px 18px;background:#020904;border-top:1px solid var(--bdr)}.gen-form input,.gen-form select{padding:9px 13px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font-size:.9rem}.gen-form input[type=text]{min-width:180px;flex:1}.gen-form input[type=number]{width:80px}.gen-form select{min-width:90px}
-.sec{margin-bottom:20px;background:var(--sf2);border:1px solid var(--bdr);border-radius:14px;overflow:hidden}.sh{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px;border-bottom:1px solid var(--bdr)}.sh-t{font-weight:700;font-size:.92rem}.sc-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;padding:16px 0}.sc{background:var(--sf);border:1px solid var(--bdr);border-radius:12px;padding:14px;text-align:center}.sc .n{font-size:1.55rem;font-weight:800}.sc .l{font-size:.65rem;color:var(--mt);text-transform:uppercase;margin-top:4px;letter-spacing:.06em
+.sec{margin-bottom:20px;background:var(--sf2);border:1px solid var(--bdr);border-radius:14px;overflow:hidden}.sh{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px;border-bottom:1px solid var(--bdr)}.sh-t{font-weight:700;font-size:.92rem}.sc-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;padding:16px 0}.sc{background:var(--sf);border:1px solid var(--bdr);border-radius:12px;padding:14px;text-align:center}.sc .n{font-size:1.55rem;font-weight:800}.sc .l{font-size:.65rem;color:var(--mt);text-transform:uppercase;margin-top:4px;letter-spacing:.06em}
 .zvm-row{will-change:transform;transition:background .15s}
 .zvm-row:hover td{background:#0a1610}
 .zvm-td{padding:10px 13px;text-align:left;border-bottom:1px solid #183326;vertical-align:middle}
@@ -2205,13 +2205,13 @@ const ADMIN_JS_SAFE = (function() {
   js += 'async function doRefresh(manual){try{var r=await fetch(_RA+"/api/data");if(r.status===401){if(manual)location.href=_RA+"/login";return;}var d=await r.json();if(!d.ok)return;document.getElementById("s-total").textContent=d.totalKeys;document.getElementById("s-active").textContent=d.activeKeys;document.getElementById("s-free").textContent=d.freeKeys;document.getElementById("s-expired").textContent=d.expiredKeys;document.getElementById("s-logs").textContent=d.totalLogs;document.getElementById("kb").innerHTML=d.keysHtml;document.getElementById("logb").innerHTML=d.logsHtml;var lr=document.getElementById("last-r");if(lr)lr.textContent=new Date().toLocaleTimeString("pt-BR");filterKeys();}catch(e){if(manual)toast("Erro ao atualizar",false);}}\n';
   js += 'async function apiToggle(code){var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/toggle",{method:"POST"});if(r.ok){toast("Status alterado");doRefresh();}else{toast("Falha",false);}}\n';
   js += 'async function apiDelete(code){if(!confirm("Excluir chave "+code+"?"))return;var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code),{method:"DELETE"});if(r.ok){toast("Chave removida");doRefresh();}else{toast("Falha",false);}}\n';
-  js += 'function openRenew(code){var b=document.getElementById("modal-box");b.innerHTML="<h3>Renovar "+code+"</h3><div class=\"field\"><label>Dias</label><input id=\"rd\" type=\"number\" min=\"0\" value=\"30\"></div><div class=\"field\"><label>Horas</label><input id=\"rh\" type=\"number\" min=\"0\" value=\"0\"></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitRenew(this.dataset.code)\" data-code=\\"+code+"\\\">Confirmar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");}\n';
+  js += 'function openRenew(code){var b=document.getElementById("modal-box");b.innerHTML="<h3>Renovar "+code+"</h3><div class=\"field\"><label>Dias</label><input id=\"rd\" type=\"number\" min=\"0\" value=\"30\"></div><div class=\"field\"><label>Horas</label><input id=\"rh\" type=\"number\" min=\"0\" value=\"0\"></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitRenew(this.dataset.code)\" data-code=\'"+code+"\'>Confirmar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");}\n';
   js += 'async function submitRenew(code){var days=+(document.getElementById("rd").value)||0,hours=+(document.getElementById("rh").value)||0;var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/renew",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({days:days,hours:hours})});closeModal();if(r.ok){toast("Renovada");doRefresh();}else{toast("Falha",false);}}\n';
-  js += 'function openUses(code,cur){var b=document.getElementById("modal-box");b.innerHTML="<h3>Limite de usos</h3><div class=\"field\"><label>M\u00e1x (-1=∞)</label><input id=\"mu\" type=\"number\" value=\""+cur+"\"></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitUses(this.dataset.code)\" data-code=\\"+code+"\\\">Confirmar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");}\n';
+  js += 'function openUses(code,cur){var b=document.getElementById("modal-box");b.innerHTML="<h3>Limite de usos</h3><div class=\"field\"><label>M\u00e1x (-1=∞)</label><input id=\"mu\" type=\"number\" value=\""+cur+"\"></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitUses(this.dataset.code)\" data-code=\'"+code+"\'>Confirmar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");}\n';
   js += 'async function submitUses(code){var maxUses=parseInt(document.getElementById("mu").value);var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/max-uses",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({maxUses:maxUses})});closeModal();if(r.ok){toast("Atualizado");doRefresh();}else{toast("Falha",false);}}\n';
-  js += 'function openNote(code,cur){var b=document.getElementById("modal-box");var safe=cur.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");b.innerHTML="<h3>Nota</h3><div class=\"field\"><textarea id=\"nt\" rows=\"4\" style=\"width:100%;padding:10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font:inherit;resize:vertical\">"+safe+"</textarea></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitNote(this.dataset.code)\" data-code=\\"+code+"\\\">Salvar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");setTimeout(function(){var t=document.getElementById("nt");if(t)t.focus();},60);}\n';
+  js += 'function openNote(code,cur){var b=document.getElementById("modal-box");var safe=cur.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");b.innerHTML="<h3>Nota</h3><div class=\"field\"><textarea id=\"nt\" rows=\"4\" style=\"width:100%;padding:10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font:inherit;resize:vertical\">"+safe+"</textarea></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitNote(this.dataset.code)\" data-code=\'"+code+"\'>Salvar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");setTimeout(function(){var t=document.getElementById("nt");if(t)t.focus();},60);}\n';
   js += 'async function submitNote(code){var note=document.getElementById("nt").value;var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/note",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({note:note})});closeModal();if(r.ok){toast("Nota salva");doRefresh();}else{toast("Falha",false);}}\n';
-  js += 'function openRename(code,cur){var b=document.getElementById("modal-box");b.innerHTML="<h3>Renomear</h3><div class=\"field\"><label>Novo nome</label><input id=\"rn\" type=\"text\" maxlength=\"60\" value=\""+cur.replace(/"/g,"&quot;")+"\"></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitRename(this.dataset.code)\" data-code=\\"+code+"\\\">Salvar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");setTimeout(function(){var t=document.getElementById("rn");if(t){t.focus();t.select();}},60);}\n';
+  js += 'function openRename(code,cur){var b=document.getElementById("modal-box");b.innerHTML="<h3>Renomear</h3><div class=\"field\"><label>Novo nome</label><input id=\"rn\" type=\"text\" maxlength=\"60\" value=\""+cur.replace(/"/g,"&quot;")+"\"></div><div class=\"mrow\"><button class=\"btn-p\" onclick=\"submitRename(this.dataset.code)\" data-code=\'"+code+"\'>Salvar</button><button class=\"btn-w\" onclick=\"closeModal()\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");setTimeout(function(){var t=document.getElementById("rn");if(t){t.focus();t.select();}},60);}\n';
   js += 'async function submitRename(code){var label=document.getElementById("rn").value.trim();if(!label){alert("Informe um nome.");return;}var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/rename",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:label})});closeModal();if(r.ok){toast("Renomeado");doRefresh();}else{toast("Falha",false);}}\n';
   js += 'function openNumbers(code,phones){var b=document.getElementById("modal-box");var rows=phones&&phones.length?phones.map(function(p){return"<div style=\"display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:6px;border:1px solid rgba(57,255,20,.12);background:#040d06;margin-bottom:5px\"><span style=\"font-family:monospace;font-size:.82rem;color:#c8e8c8\">"+p+"</span><button class=\"zvm-btn zvm-btn-del\" onclick=\"apiRemovePhone(this,\'"+code+"\',\'"+p+"\')\">&times;</button></div>";}).join(""):"<p style=\"color:#5a8a6e;font-size:.85rem;padding:8px 0\">Nenhum n\u00famero.</p>";b.innerHTML="<h3 style=\"margin-bottom:12px\">N\u00fameros &mdash; "+code+"</h3><div style=\"max-height:260px;overflow-y:auto\">"+rows+"</div><div class=\"mrow\"><button class=\"zvm-btn zvm-btn-del\" onclick=\"apiRemoveAllPhones(this,\'"+code+"\')\">&times; Remover Todos</button><button class=\"btn-w\" onclick=\"closeModal()\">Fechar</button></div>";document.getElementById("modal-bg").classList.add("open");}\n';
   js += 'async function apiRemovePhone(btn,code,phone){btn.disabled=true;var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/remove-phone",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:phone})});if(r.ok){var row=btn.parentElement;if(row)row.remove();toast("N\u00famero removido");doRefresh();}else{btn.disabled=false;toast("Falha",false);}}\n';
@@ -2498,6 +2498,251 @@ function renderAdminDash(keysHtml, logsHtml, stats) {
   return spaShell('Admin WaSpeed', adminSidebar('dash'), 'WaSpeed Admin', body);
 }
 
+
+function modSidebar(active) {
+  const item = (href, icon, label, key) =>
+    `<a href="${href}" class="ni${active === key ? ' ac' : ''}"><span class="ic">${icon}</span><span class="nl">${label}</span></a>`;
+  return `<aside class="sidebar"><div class="sb-brand"><span class="bdot"></span><span class="btxt">Moderador</span></div><div class="sbsec">Chaves</div>${item(R_MOD,'🔑','Chaves','keys')}<div class="sbft">${item(R_MOD+'/logout','→','Sair','out')}</div></aside>`;
+}
+
+const MOD_JS_SAFE = (function() {
+  var RM = R_MOD;
+  var js = '';
+  js += 'var _RM="' + RM + '";\n';
+  js += 'function toast(m,ok){var t=document.getElementById("toast");t.textContent=m;t.style.borderColor=(ok===false)?"var(--dg)":"var(--ac)";t.classList.add("show");setTimeout(function(){t.classList.remove("show");},3500);}\n';
+  js += 'function closeModal(){document.getElementById("modal-bg").classList.remove("open");}\n';
+  js += 'function filterKeys(){var q=(document.getElementById("search-input").value||"").toLowerCase();var st=document.getElementById("filter-status").value;document.querySelectorAll("#kb tr").forEach(function(r){var row=(r.dataset.code+r.dataset.label+r.dataset.phone).toLowerCase();r.style.display=((!q||row.includes(q))&&(!st||r.dataset.status===st))?"":"none";});}\n';
+  js += 'async function generateKey(){var label=document.getElementById("nlabel").value.trim();if(!label){toast("Informe o cliente",false);return;}var body={label:label,premium:document.getElementById("npremium").value==="1"};var dv=+(document.getElementById("ndays").value)||0,h=+(document.getElementById("nhours").value)||0,m=+(document.getElementById("nmins").value)||0;if(dv)body.expireDays=dv;if(h)body.expireHours=h;if(m)body.expireMinutes=m;var u=document.getElementById("nuses").value.trim();if(u!=="")body.maxUses=parseInt(u);if(document.getElementById("nfirstuse").checked)body.ativarNoPrimeiroUso=true;var r=await fetch(_RM+"/api/keys",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});if(r.status===401){location.href=_RM+"/login";return;}var j=await r.json();if(j.ok){toast("Chave gerada: "+j.key);["nlabel","ndays","nhours","nmins","nuses"].forEach(function(id){document.getElementById(id).value="";});document.getElementById("nfirstuse").checked=false;doRefresh();}else{toast("Erro: "+(j.error||"?"),false);}}\n';
+  js += 'async function doRefresh(manual){try{var r=await fetch(_RM+"/api/data");if(r.status===401){if(manual)location.href=_RM+"/login";return;}var d=await r.json();if(!d.ok)return;document.getElementById("s-total").textContent=d.totalKeys;document.getElementById("s-active").textContent=d.activeKeys;document.getElementById("s-free").textContent=d.freeKeys;document.getElementById("s-expired").textContent=d.expiredKeys;document.getElementById("kb").innerHTML=d.keysHtml;var lr=document.getElementById("last-r");if(lr)lr.textContent=new Date().toLocaleTimeString("pt-BR");filterKeys();}catch(e){if(manual)toast("Erro ao atualizar",false);}}\n';
+  js += 'async function apiToggle(code){var r=await fetch(_RM+"/api/keys/"+encodeURIComponent(code)+"/toggle",{method:"POST"});if(r.ok){toast("Status alterado");doRefresh();}else{toast("Falha",false);}}\n';
+  js += 'async function apiActivate(code){var r=await fetch(_RM+"/api/keys/"+encodeURIComponent(code)+"/activate",{method:"POST"});if(r.ok){toast("Chave ativada");doRefresh();}else{toast("Falha",false);}}\n';
+  js += 'function openRenew(code){var b=document.getElementById("modal-box");b.innerHTML="<h3>Renovar "+code+"</h3><div class=\\"field\\"><label>Dias</label><input id=\\"rd\\" type=\\"number\\" min=\\"0\\" value=\\"30\\"></div><div class=\\"field\\"><label>Horas</label><input id=\\"rh\\" type=\\"number\\" min=\\"0\\" value=\\"0\\"></div><div class=\\"mrow\\"><button class=\\"btn-p\\" onclick=\\"submitRenew(this.dataset.code)\\" data-code=\'"+code+"\'>" + "Confirmar</button><button class=\\"btn-w\\" onclick=\\"closeModal()\\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");}\n';
+  js += 'async function submitRenew(code){var days=+(document.getElementById("rd").value)||0,hours=+(document.getElementById("rh").value)||0;var r=await fetch(_RM+"/api/keys/"+encodeURIComponent(code)+"/renew",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({days:days,hours:hours})});closeModal();if(r.ok){toast("Renovada");doRefresh();}else{toast("Falha",false);}}\n';
+  js += 'function openUses(code,cur){var b=document.getElementById("modal-box");b.innerHTML="<h3>Limite de usos</h3><div class=\\"field\\"><label>M\\u00e1x (-1=∞)</label><input id=\\"mu\\" type=\\"number\\" value=\\""+cur+"\\"></div><div class=\\"mrow\\"><button class=\\"btn-p\\" onclick=\\"submitUses(this.dataset.code)\\" data-code=\'"+code+"\'>" + "Confirmar</button><button class=\\"btn-w\\" onclick=\\"closeModal()\\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");}\n';
+  js += 'async function submitUses(code){var maxUses=parseInt(document.getElementById("mu").value);var r=await fetch(_RM+"/api/keys/"+encodeURIComponent(code)+"/max-uses",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({maxUses:maxUses})});closeModal();if(r.ok){toast("Atualizado");doRefresh();}else{toast("Falha",false);}}\n';
+  js += 'function openNote(code,cur){var b=document.getElementById("modal-box");var safe=cur.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");b.innerHTML="<h3>Nota</h3><div class=\\"field\\"><textarea id=\\"nt\\" rows=\\"4\\" style=\\"width:100%;padding:10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font:inherit;resize:vertical\\">"+safe+"</textarea></div><div class=\\"mrow\\"><button class=\\"btn-p\\" onclick=\\"submitNote(this.dataset.code)\\" data-code=\'"+code+"\'>" + "Salvar</button><button class=\\"btn-w\\" onclick=\\"closeModal()\\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");setTimeout(function(){var t=document.getElementById("nt");if(t)t.focus();},60);}\n';
+  js += 'async function submitNote(code){var note=document.getElementById("nt").value;var r=await fetch(_RM+"/api/keys/"+encodeURIComponent(code)+"/note",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({note:note})});closeModal();if(r.ok){toast("Nota salva");doRefresh();}else{toast("Falha",false);}}\n';
+  js += 'function openRename(code,cur){var b=document.getElementById("modal-box");b.innerHTML="<h3>Renomear</h3><div class=\\"field\\"><label>Novo nome</label><input id=\\"rn\\" type=\\"text\\" maxlength=\\"60\\" value=\\""+cur.replace(/"/g,"&quot;")+"\\"></div><div class=\\"mrow\\"><button class=\\"btn-p\\" onclick=\\"submitRename(this.dataset.code)\\" data-code=\'"+code+"\'>" + "Salvar</button><button class=\\"btn-w\\" onclick=\\"closeModal()\\">Cancelar</button></div>";document.getElementById("modal-bg").classList.add("open");setTimeout(function(){var t=document.getElementById("rn");if(t){t.focus();t.select();}},60);}\n';
+  js += 'async function submitRename(code){var label=document.getElementById("rn").value.trim();if(!label){alert("Informe um nome.");return;}var r=await fetch(_RM+"/api/keys/"+encodeURIComponent(code)+"/rename",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:label})});closeModal();if(r.ok){toast("Renomeado");doRefresh();}else{toast("Falha",false);}}\n';
+  js += 'function openNumbers(code,phones){var b=document.getElementById("modal-box");var rows=phones&&phones.length?phones.map(function(p){return"<div style=\\"display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:6px;border:1px solid rgba(57,255,20,.12);background:#040d06;margin-bottom:5px\\"><span style=\\"font-family:monospace;font-size:.82rem;color:#c8e8c8\\">"+p+"</span><button class=\\"zvm-btn zvm-btn-del\\" onclick=\\"apiRemovePhone(this,\'"+code+"\',\'"+p+"\')\\">&times;</button></div>";}).join(""):"<p style=\\"color:#5a8a6e;font-size:.85rem;padding:8px 0\\">Nenhum n\\u00famero.</p>";b.innerHTML="<h3 style=\\"margin-bottom:12px\\">N\\u00fameros &mdash; "+code+"</h3><div style=\\"max-height:260px;overflow-y:auto\\">"+rows+"</div><div class=\\"mrow\\"><button class=\\"zvm-btn zvm-btn-del\\" onclick=\\"apiRemoveAllPhones(this,\'"+code+"\')\\">&times; Remover Todos</button><button class=\\"btn-w\\" onclick=\\"closeModal()\\">Fechar</button></div>";document.getElementById("modal-bg").classList.add("open");}\n';
+  js += 'async function apiRemovePhone(btn,code,phone){btn.disabled=true;var r=await fetch(_RM+"/api/keys/"+encodeURIComponent(code)+"/remove-phone",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phone:phone})});if(r.ok){var row=btn.parentElement;if(row)row.remove();toast("N\\u00famero removido");doRefresh();}else{btn.disabled=false;toast("Falha",false);}}\n';
+  js += 'async function apiRemoveAllPhones(btn,code){if(!confirm("Remover todos os n\\u00fameros de "+code+"?"))return;btn.disabled=true;var r=await fetch(_RM+"/api/keys/"+encodeURIComponent(code)+"/remove-all-phones",{method:"POST"});if(r.ok){closeModal();toast("Todos removidos");doRefresh();}else{btn.disabled=false;toast("Falha",false);}}\n';
+  js += 'setInterval(doRefresh,60000);\n';
+  return js;
+})();
+
+function renderModDash(keysHtml, stats, modName) {
+  var sc = function(id, val, lbl, style) {
+    return '<div class="sc"><div class="n" id="' + id + '"' + (style ? ' style="' + style + '"' : '') + '>' + String(val) + '</div><div class="l">' + lbl + '</div></div>';
+  };
+  var statsRow = '<div class="sc-row" style="margin-bottom:18px">' +
+    sc('s-total',   stats.totalKeys,   'Total',     '') +
+    sc('s-active',  stats.activeKeys,  'PRO Ativas', 'color:var(--ac)') +
+    sc('s-free',    stats.freeKeys,    'Free',      '') +
+    sc('s-expired', stats.expiredKeys, 'Expiradas',  stats.expiredKeys ? 'color:var(--dg)' : '') +
+    '</div>';
+  var genForm =
+    '<div style="padding:12px 18px;background:#020904;border-bottom:1px solid #183326">' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:860px">' +
+    '<input type="text" id="nlabel" placeholder="Cliente" style="width:130px;padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="ndays" placeholder="Dias" min="0" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="nhours" placeholder="H" min="0" style="width:46px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="nmins" placeholder="Min" min="0" style="width:50px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="nuses" placeholder="Usos" title="-1=∞" min="-1" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<select id="npremium" style="padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><option value="1">PRO</option><option value="0">Free</option></select>' +
+    '<label style="display:flex;align-items:center;gap:4px;font-size:.76rem;color:var(--mt);cursor:pointer;white-space:nowrap"><input type="checkbox" id="nfirstuse" style="margin:0;width:auto;padding:0"> 1º uso</label>' +
+    '<button onclick="generateKey()" style="padding:7px 14px;border-radius:5px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap">+ Gerar</button>' +
+    '</div></div>';
+  var searchBar =
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid #183326;align-items:center">' +
+    '<input type="text" id="search-input" placeholder="🔍 Buscar chave, cliente, telefone..." oninput="filterKeys()" style="flex:1;min-width:180px;padding:7px 11px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<select id="filter-status" onchange="filterKeys()" style="padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<option value="">Todos</option><option value="ativo">PRO</option><option value="free">Free</option><option value="pendente">Pendentes</option><option value="expirada">Expiradas</option><option value="bloqueado">Bloqueadas</option>' +
+    '</select>' +
+    '<button onclick="doRefresh(true)" style="padding:7px 12px;border-radius:5px;border:1px solid #26543c;background:transparent;color:#39ff14;font-size:.8rem;cursor:pointer">↻ Atualizar</button>' +
+    '<span id="last-r" style="font-size:.7rem;color:#5a8a6e">&mdash;</span>' +
+    '</div>';
+  var keysSection =
+    '<div class="sec">' +
+    '<div class="sh"><span class="sh-t">🔑 Licenças WaSpeed</span>' +
+    (modName ? '<span style="font-size:.75rem;color:var(--mt)">Moderador: ' + esc(modName) + '</span>' : '') +
+    '</div>' +
+    genForm + searchBar +
+    '<div class="tbl-w" style="overflow-x:auto">' +
+    '<table style="min-width:920px"><thead><tr style="background:#070f0a">' +
+    '<th style="min-width:160px">Chave</th><th style="min-width:90px">Cliente</th><th style="min-width:80px">Status</th><th style="min-width:100px">Validade</th><th style="min-width:48px">Usos</th><th style="min-width:90px">Telefone</th><th style="min-width:86px">IP</th><th style="min-width:100px">Últ. acesso</th><th style="min-width:100px">Criada</th><th style="min-width:80px">Nota</th><th style="min-width:220px">Ações</th>' +
+    '</tr></thead><tbody id="kb">' + keysHtml + '</tbody></table>' +
+    '</div></div>';
+  var scriptTag = '<scr' + 'ipt>' + MOD_JS_SAFE + '</scr' + 'ipt>';
+  return spaShell('Mod WaSpeed', modSidebar('keys'), 'WaSpeed Moderador', statsRow + keysSection + scriptTag);
+}
+
+function modApiRe(suffix) {
+  suffix = suffix || '';
+  const base = R_MOD.replace(/[.*+?^${}()|[\]\\]/g, ch => '\\' + ch);
+  return new RegExp('^' + base + '/api/keys/([^/]+)' + suffix + '$');
+}
+
+function requireModSession(req, res) {
+  return validateSession(parseCookies(req)[config.cookieName]).then(sess => {
+    if (!sess || (sess.role !== 'mod' && sess.role !== 'admin')) {
+      res.writeHead(302, { Location: R_MOD + '/login' });
+      res.end();
+      return null;
+    }
+    return sess;
+  });
+}
+
+async function handleModApi(req, res, pathname) {
+  if (pathname === R_MOD + '/api/data' && req.method === 'GET') {
+    const stats    = await getKeyStats();
+    const licenses = await getKeysCached();
+    sendJsonGzip(req, res, { ok: true, ...stats, keysHtml: buildLicenseRows(licenses) });
+    return true;
+  }
+  if (pathname === R_MOD + '/api/keys' && req.method === 'POST') {
+    const body    = await readJson(req);
+    if (!body.label) { sendJson(res, { error: 'label obrigatorio' }, 400); return true; }
+    const { expiresAt, expireDays } = parseLicenseExpiry(body);
+    const maxUses = body.maxUses !== undefined ? parseInt(body.maxUses, 10) : -1;
+    const sess    = await validateSession(parseCookies(req)[config.cookieName]);
+    try {
+      const rec = await createKey({ label: String(body.label).trim().slice(0, 60), premium: body.premium !== false && body.premium !== 0 && body.premium !== '0', expiresAt, expireDays, maxUses: Number.isNaN(maxUses) ? -1 : maxUses, note: String(body.note || '').slice(0, 500), ativarNoPrimeiroUso: body.ativarNoPrimeiroUso === true, modName: sess && sess.modName ? sess.modName : null });
+      invalidateKeysCache();
+      sendJson(res, { ok: true, key: rec.code });
+    } catch (e) {
+      if (!res.headersSent) sendJson(res, { error: e.message }, 500);
+    }
+    return true;
+  }
+  const codeAct = pathname.match(modApiRe('/activate'));
+  if (codeAct && req.method === 'POST') {
+    const rec = await findKey(decodeURIComponent(codeAct[1]));
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    await updateLicense(rec.code, { ativarNoPrimeiroUso: false, primeiroUsoAt: new Date().toISOString(), active: true });
+    await addLog('key_activated', 'Chave ' + rec.code + ' ativada pelo mod', { code: rec.code });
+    invalidateKeysCache(); sendJson(res, { ok: true }); return true;
+  }
+  const codeToggle = pathname.match(modApiRe('/toggle'));
+  if (codeToggle && req.method === 'POST') {
+    const rec = await findKey(decodeURIComponent(codeToggle[1]));
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    await updateLicense(rec.code, { active: !rec.active });
+    invalidateKeysCache(); sendJson(res, { ok: true, active: !rec.active }); return true;
+  }
+  const codeRenew = pathname.match(modApiRe('/renew'));
+  if (codeRenew && req.method === 'POST') {
+    const rec   = await findKey(decodeURIComponent(codeRenew[1]));
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const rb    = await readJson(req);
+    const addMs = ((parseInt(rb.days || 0, 10) * 1440) + (parseInt(rb.hours || 0, 10) * 60)) * 60000;
+    if (!addMs) { sendJson(res, { error: 'informe tempo' }, 400); return true; }
+    const baseTs = (rec.expiresAt && new Date(rec.expiresAt).getTime() > Date.now()) ? new Date(rec.expiresAt).getTime() : Date.now();
+    await updateLicense(rec.code, { expiresAt: new Date(baseTs + addMs).toISOString(), active: true });
+    invalidateKeysCache(); sendJson(res, { ok: true }); return true;
+  }
+  const codeMu = pathname.match(modApiRe('/max-uses'));
+  if (codeMu && req.method === 'POST') {
+    const rec     = await findKey(decodeURIComponent(codeMu[1]));
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const mb      = await readJson(req);
+    const maxUses = parseInt(mb.maxUses, 10);
+    if (Number.isNaN(maxUses) || maxUses < -1) { sendJson(res, { error: 'invalid' }, 400); return true; }
+    await updateLicense(rec.code, { maxUses });
+    invalidateKeysCache(); sendJson(res, { ok: true, maxUses }); return true;
+  }
+  const codeNote = pathname.match(modApiRe('/note'));
+  if (codeNote && req.method === 'POST') {
+    const rawCode = decodeURIComponent(codeNote[1]);
+    const rec     = await findKey(rawCode);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const nb   = await readJson(req);
+    const note = sanitizeString(String(nb.note != null ? nb.note : '').slice(0, 500));
+    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
+    await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $set: { note } });
+    invalidateKeysCache(); sendJson(res, { ok: true, note }); return true;
+  }
+  const codeRename = pathname.match(modApiRe('/rename'));
+  if (codeRename && req.method === 'POST') {
+    const rawCode = decodeURIComponent(codeRename[1]);
+    const rec     = await findKey(rawCode);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const rb  = await readJson(req);
+    const lbl = sanitizeString(String(rb.label || '').trim().slice(0, 60));
+    if (!lbl) { sendJson(res, { error: 'label required' }, 400); return true; }
+    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
+    await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $set: { label: lbl } });
+    invalidateKeysCache(); sendJson(res, { ok: true, label: lbl }); return true;
+  }
+  const codeRemPhone = pathname.match(modApiRe('/remove-phone'));
+  if (codeRemPhone && req.method === 'POST') {
+    const rawCode = decodeURIComponent(codeRemPhone[1]);
+    const rec     = await findKey(rawCode);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const pb = await readJson(req);
+    const ph = sanitizeString(String(pb.phone || '').trim());
+    if (!ph) { sendJson(res, { error: 'phone required' }, 400); return true; }
+    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
+    await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $pull: { phones: ph } });
+    invalidateKeysCache(); sendJson(res, { ok: true }); return true;
+  }
+  const codeRemAll = pathname.match(modApiRe('/remove-all-phones'));
+  if (codeRemAll && req.method === 'POST') {
+    const rawCode = decodeURIComponent(codeRemAll[1]);
+    const rec     = await findKey(rawCode);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
+    await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $set: { phones: [], uses: 0 } });
+    invalidateKeysCache(); sendJson(res, { ok: true }); return true;
+  }
+  return false;
+}
+
+async function handleMod(req, res, pathname, ip) {
+  if (pathname === R_MOD + '/login') {
+    if (req.method === 'GET') { sendHtml(res, renderAdminLogin(R_MOD, 'Moderador')); return; }
+    if (!checkRate(ip)) { sendHtml(res, renderAdminLogin(R_MOD, 'Moderador', 'Muitas tentativas. Aguarde.'), 429); return; }
+    const body   = await readBody(req);
+    const params = new URLSearchParams(body);
+    const user   = sanitizeString(params.get('user') || '');
+    const pass   = params.get('pass') || '';
+    const mod    = await verifyModCredentials(user, pass);
+    if (mod) {
+      const session = await createSession('mod', { user: user.trim(), modName: mod.name, modId: mod.modId });
+      if (!session) { sendHtml(res, renderAdminLogin(R_MOD, 'Moderador', 'Erro ao criar sessao'), 500); return; }
+      setSessionCookie(res, session.token);
+      res.writeHead(302, { Location: R_MOD });
+      res.end();
+      return;
+    }
+    await addLog('admin_login_fail', 'Tentativa mod invalida', { ip });
+    sendHtml(res, renderAdminLogin(R_MOD, 'Moderador', 'Credenciais invalidas'), 401);
+    return;
+  }
+  if (pathname === R_MOD + '/logout') {
+    const token = parseCookies(req)[config.cookieName];
+    await destroySession(token);
+    clearSessionCookie(res);
+    res.writeHead(302, { Location: R_MOD + '/login' });
+    res.end();
+    return;
+  }
+  const sess = await requireModSession(req, res);
+  if (!sess) return;
+  const apiHandled = await handleModApi(req, res, pathname);
+  if (apiHandled) return;
+  if (pathname === R_MOD || pathname === R_MOD + '/' || pathname === R_MOD + '/keys') {
+    const stats    = await getKeyStats();
+    const licenses = await listLicenses();
+    sendHtml(res, renderModDash(buildLicenseRows(licenses), stats, sess.modName || null));
+    return;
+  }
+  res.writeHead(404);
+  res.end('Not found');
+}
+
+
 async function handleAdmin(req, res, pathname, ip) {
   if (pathname === R_ADMIN + '/login') {
     if (req.method === 'GET') { sendHtml(res, renderAdminLogin(R_ADMIN, 'Admin')); return; }
@@ -2665,6 +2910,11 @@ async function handleRequest(req, res) {
     }
 
     if (await handleClientPanel(req, res, pathname, url)) return;
+
+    if (pathname.startsWith(R_MOD)) {
+      await handleMod(req, res, pathname, ip);
+      return;
+    }
 
     if (pathname.startsWith(R_ADMIN)) {
       await handleAdmin(req, res, pathname, ip);
