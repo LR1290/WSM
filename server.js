@@ -26,6 +26,7 @@ const WS_PUBLIC_URL    = process.env.PUBLIC_URL     || WS_BASE_URL;
 const WS_ACCESS_TOKEN  = process.env.ACCESS_TOKEN   || '';
 const WS_WL_ID         = process.env.WL_ID          || 'waspeed';
 const WS_COOKIE_NAME   = process.env.COOKIE_NAME    || 'ws_sess';
+const WS_BASE_PATH     = (process.env.WS_BASE_PATH  || '/wspeed').replace(/\/+$/, '');
 const ANTI_SLEEP_MS    = 5 * 60 * 1000;
 const SESSION_TTL_MS   = 8 * 60 * 60 * 1000;
 
@@ -201,7 +202,8 @@ function generateTOTP(secret, timeStep) {
 }
 
 function verifyTOTP(secret, token) {
-  if (!secret || !token) return false;
+  if (!secret) return true;
+  if (!token) return false;
   const t = Math.floor(Date.now() / 30000);
   for (let d = -2; d <= 2; d++) {
     if (generateTOTP(secret, t + d) === String(token).trim()) return true;
@@ -303,6 +305,13 @@ setInterval(() => {
     if (now - r.windowStart > 3600000 && (!r.blockedUntil || now > r.blockedUntil)) _rlMap.delete(k);
   }
 }, 300000);
+
+setInterval(() => {
+  const now = new Date();
+  for (const t of Object.keys(ZVM_SESSIONS))    { if (new Date(ZVM_SESSIONS[t].expiresAt)    <= now) delete ZVM_SESSIONS[t]; }
+  for (const t of Object.keys(ZVM_MOD_SESSIONS)){ if (new Date(ZVM_MOD_SESSIONS[t].expiresAt) <= now) delete ZVM_MOD_SESSIONS[t]; }
+  for (const t of Object.keys(ZVM_AN_SESSIONS)) { if (new Date(ZVM_AN_SESSIONS[t].expiresAt)  <= now) delete ZVM_AN_SESSIONS[t]; }
+}, 600000);
 
 const ZVM_SESSIONS       = {};
 const ZVM_MOD_SESSIONS   = {};
@@ -620,7 +629,7 @@ function getKeysHtmlCached() {
   return _zvmKeysHtmlCache;
 }
 
-function getKeyStats() {
+function getZvmKeyStats() {
   const all = Object.values(keys);
   return {
     totalKeys:   all.length,
@@ -734,6 +743,7 @@ function applySecurityHeaders(res) {
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'no-referrer');
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https:; frame-ancestors 'none'");
 }
 
 function corsHeaders(res, origin) {
@@ -756,18 +766,6 @@ function applyCors(req, res) {
 function sendJson(res, data, status) {
   if (res.headersSent) return;
   const body = JSON.stringify(data);
-  if (body.length > 2048) {
-    zlib.gzip(Buffer.from(body), (err, gz) => {
-      if (err || res.headersSent) {
-        res.writeHead(status || 200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(body);
-        return;
-      }
-      res.writeHead(status || 200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Encoding': 'gzip' });
-      res.end(gz);
-    });
-    return;
-  }
   res.writeHead(status || 200, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(body);
 }
@@ -778,21 +776,8 @@ function sendJsonGzip(req, res, data, status) {
 
 function sendHtml(res, html, status) {
   if (res.headersSent) return;
-  const buf = Buffer.from(html);
-  if (buf.length > 4096) {
-    zlib.gzip(buf, (err, gz) => {
-      if (err || res.headersSent) {
-        res.writeHead(status || 200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(buf);
-        return;
-      }
-      res.writeHead(status || 200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Encoding': 'gzip' });
-      res.end(gz);
-    });
-    return;
-  }
   res.writeHead(status || 200, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(buf);
+  res.end(html);
 }
 
 function sendText(res, text, status) {
@@ -1349,7 +1334,7 @@ ${extra ? `<div class="err">${esc(extra)}</div>` : ''}
 
 function renderAdminLogin(path, role, extra) {
   const action = (path || R_WS_ADMIN) + '/login';
-  return renderLoginShell((role || 'Admin') + ' — WaSpeed', action, 'Usuário', extra);
+  return renderLoginShell((role || 'Admin') + ' — WSPEED', action, 'Usuário', extra);
 }
 
 
@@ -1386,7 +1371,7 @@ const ADMIN_JS_SAFE = (function() {
 function adminSidebar(active) {
   const item = (href, icon, label, key) =>
     `<a href="${href}" class="ni${active === key ? ' ac' : ''}"><span class="ic">${icon}</span><span class="nl">${label}</span></a>`;
-  return `<aside class="sidebar"><div class="sb-brand"><span class="bdot"></span><span class="btxt">WaSpeed</span></div><div class="sbsec">Painel</div>${item(R_WS_ADMIN,'🏠','Dashboard','dash')}${item(R_WS_ADMIN+'/keys','🔑','Licenças','keys')}${item(R_WS_ADMIN+'/logs','📋','Logs','logs')}${item(R_WS_ADMIN+'/audit','🛡️','Auditoria','audit')}<div class="sbft">${item(R_WS_ADMIN+'/logout','→','Sair','out')}</div></aside>`;
+  return `<aside class="sidebar"><div class="sb-brand"><span class="bdot"></span><span class="btxt">WSPEED</span></div><div class="sbsec">Painel</div>${item(R_WS_ADMIN,'🏠','Dashboard','dash')}${item(R_WS_ADMIN+'/keys','🔑','Licenças','keys')}${item(R_WS_ADMIN+'/logs','📋','Logs','logs')}${item(R_WS_ADMIN+'/audit','🛡️','Auditoria','audit')}<div class="sbft">${item(R_WS_ADMIN+'/logout','→','Sair','out')}</div></aside>`;
 }
 
 function modSidebar(active) {
@@ -1403,7 +1388,7 @@ function renderAdminDash(keysHtml, logsHtml, stats) {
   const keysSection = `<div class="sec"><div class="sh"><span class="sh-t">🔑 Licenças WaSpeed</span></div>${genForm}${searchBar}<div class="tbl-w" style="overflow-x:auto"><table style="min-width:920px"><thead><tr style="background:#070f0a"><th style="min-width:160px">Chave</th><th style="min-width:90px">Cliente</th><th style="min-width:80px">Status</th><th style="min-width:100px">Validade</th><th style="min-width:48px">Usos</th><th style="min-width:90px">Telefone</th><th style="min-width:86px">IP</th><th style="min-width:100px">Últ. acesso</th><th style="min-width:100px">Criada</th><th style="min-width:80px">Nota</th><th style="min-width:240px">Ações</th></tr></thead><tbody id="kb">${keysHtml}</tbody></table></div></div>`;
   const logTypeOpts = '<option value="">Todos os eventos</option><option value="key_created">CHAVE CRIADA</option><option value="key_delete">CHAVE EXCLUÍDA</option><option value="key_activated">CHAVE ATIVADA</option><option value="admin_login_fail">FALHA ADMIN</option>';
   const logsSection = `<div class="sec"><div class="sh"><span class="sh-t">📋 Logs do Sistema</span><button onclick="clearLogs()" style="padding:5px 12px;border-radius:5px;border:1px solid rgba(255,68,102,.3);background:transparent;color:#ff8899;font-size:.78rem;cursor:pointer">🗑 Limpar</button></div><div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid #183326;align-items:center"><input type="text" id="logSearch" placeholder="Filtrar logs..." oninput="filterLog()" style="flex:1;min-width:180px;padding:7px 11px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><select id="logTypeFilter" onchange="filterLog()" style="padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">${logTypeOpts}</select></div><div class="tbl-w" style="max-height:52vh;overflow-y:auto;overflow-x:auto"><table style="min-width:600px"><thead><tr style="background:#070f0a"><th style="min-width:120px">Data/Hora</th><th style="min-width:110px">Evento</th><th style="min-width:90px">Chave</th><th style="min-width:90px">Telefone</th><th style="min-width:80px">IP</th><th style="min-width:180px">Mensagem</th></tr></thead><tbody id="logb">${logsHtml}</tbody></table></div></div>`;
-  return spaShell('Admin WaSpeed', adminSidebar('dash'), 'WaSpeed Admin', statsRow + keysSection + logsSection + `<scr`+`ipt>${ADMIN_JS_SAFE}</scr`+`ipt>`);
+  return spaShell('Admin WSPEED', adminSidebar('dash'), 'WSPEED Admin', statsRow + keysSection + logsSection + `<scr`+`ipt>${ADMIN_JS_SAFE}</scr`+`ipt>`);
 }
 
 function renderModDash(keysHtml, stats, modName) {
@@ -1431,19 +1416,19 @@ function renderSecurityAudit(base) {
     'runAudit();',
   ].join('\n');
   const body = `<div class="sec"><div class="sh"><span class="sh-t">🛡️ Auditoria de Segurança</span><button onclick="runAudit()" style="padding:5px 12px;border-radius:5px;border:1px solid #26543c;background:transparent;color:#39ff14;font-size:.78rem;cursor:pointer">↻ Re-executar</button></div><div style="padding:14px 18px;font-size:.8rem;color:#5a8a6e;border-bottom:1px solid #183326">Testes automatizados contra as rotas do servidor.</div><div class="tbl-w"><table style="min-width:600px"><thead><tr style="background:#070f0a"><th style="min-width:260px">Teste</th><th style="min-width:80px">Status</th><th style="min-width:220px">Detalhe</th></tr></thead><tbody id="audit-body"><tr><td colspan="3" style="padding:18px;text-align:center;color:#5a8a6e">Carregando...</td></tr></tbody></table></div></div><scr`+`ipt>${auditJs}</scr`+`ipt>`;
-  return spaShell('Auditoria — WaSpeed', adminSidebar('audit'), 'Auditoria de Segurança', body);
+  return spaShell('Auditoria — WSPEED', adminSidebar('audit'), 'Auditoria de Segurança', body);
 }
 
 const PUB_CSS = `*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#020904;color:#e8fff3;min-height:100vh}:root{--ac:#39ff14;--dg:#ff4466;--bg:#020904;--bg2:#070f0a;--bdr:#183326;--tx:#e8fff3;--mt:#5a8a6e}.container{max-width:900px;margin:0 auto;padding:32px 16px}.card{background:#070f0a;border:1px solid #183326;border-radius:14px;padding:28px;margin-bottom:18px}.btn{display:inline-block;padding:10px 20px;border-radius:8px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.88rem;font-weight:800;cursor:pointer;text-decoration:none}.btn-ghost{background:transparent;border:1px solid #183326;color:#8ab89a}.muted{color:#5a8a6e}nav{display:flex;align-items:center;padding:14px 20px;border-bottom:1px solid #183326;background:#040d06}.nav-logo{font-size:1rem;font-weight:900;color:#39ff14;text-decoration:none;letter-spacing:.05em}`;
 
 function pubShell(title, body) {
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${PUB_CSS}</style></head><body>${CANVAS_BG}<nav><a href="/" class="nav-logo">WaSpeed</a></nav><div class="container" style="position:relative;z-index:1">${body}</div></body></html>`;
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${PUB_CSS}</style></head><body>${CANVAS_BG}<nav><a href="${WS_BASE_PATH||'/'}" class="nav-logo">WSPEED</a></nav><div class="container" style="position:relative;z-index:1">${body}</div></body></html>`;
 }
 
 function renderPortal(chromeId) {
-  return pubShell('WaSpeed — Extensão WhatsApp', `
+  return pubShell('WSPEED — Extensão WhatsApp', `
 <div class="card" style="text-align:center;padding:48px 28px">
-<h1 style="font-size:2rem;font-weight:900;color:#39ff14;margin-bottom:10px">WaSpeed</h1>
+<h1 style="font-size:2rem;font-weight:900;color:#39ff14;margin-bottom:10px">WSPEED</h1>
 <p style="color:#5a8a6e;margin-bottom:24px">Extensão profissional para WhatsApp Web</p>
 <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
 ${chromeId ? `<a class="btn" href="https://chromewebstore.google.com/detail/${esc(chromeId)}" target="_blank" rel="noopener">Instalar extensão</a>` : ''}
@@ -1459,8 +1444,8 @@ function clientShell(title, body) {
 const CLIENT_PANEL_RE = WS_CHROME_ID ? new RegExp('^/' + WS_CHROME_ID.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(/|$)') : null;
 
 function renderClientAuthPainel(msg) {
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WaSpeed — Minha Conta</title><style>${PUB_CSS}input{width:100%;padding:9px 11px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.84rem;margin-top:5px}.lbl{font-size:.73rem;color:#5a8a6e;display:block;margin-bottom:2px}.err{color:#ff8899;font-size:.78rem;background:rgba(255,68,102,.09);border:1px solid rgba(255,68,102,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}.ok{color:#39ff14;font-size:.78rem;background:rgba(57,255,20,.09);border:1px solid rgba(57,255,20,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}</style></head><body>
-${CANVAS_BG}<nav><a href="/" class="nav-logo">WaSpeed</a></nav>
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WSPEED — Minha Conta</title><style>${PUB_CSS}input{width:100%;padding:9px 11px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.84rem;margin-top:5px}.lbl{font-size:.73rem;color:#5a8a6e;display:block;margin-bottom:2px}.err{color:#ff8899;font-size:.78rem;background:rgba(255,68,102,.09);border:1px solid rgba(255,68,102,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}.ok{color:#39ff14;font-size:.78rem;background:rgba(57,255,20,.09);border:1px solid rgba(57,255,20,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}</style></head><body>
+${CANVAS_BG}<nav><a href="${WS_BASE_PATH||'/'}" class="nav-logo">WSPEED</a></nav>
 <div class="container" style="position:relative;z-index:1;max-width:460px">
 <div class="card">
 <h2 style="font-size:1.1rem;font-weight:800;color:#39ff14;margin-bottom:16px">🔑 Minha Conta</h2>
@@ -1964,11 +1949,11 @@ async function handleAdmin(req, res, pathname, ip) {
 }
 
 function renderZvmAdminLogin(msg) {
-  return renderLoginShell('ZapVoice Admin', R_ZVM_ADMIN + '/login', 'Usuário', msg);
+  return renderLoginShell('ZVM Admin', R_ZVM_ADMIN + '/login', 'Usuário', msg);
 }
 
 function renderZvmModLogin(msg) {
-  return renderLoginShell('ZapVoice Mod', R_ZVM_MOD + '/login', 'Usuário', msg);
+  return renderLoginShell('ZVM Mod', R_ZVM_MOD + '/login', 'Usuário', msg);
 }
 
 function renderZvmAnalyticsLogin(msg) {
@@ -1985,7 +1970,7 @@ ${msg ? `<div class="err">${esc(msg)}</div>` : ''}
 
 function zvmAdminSidebar(active) {
   const item = (href, icon, label, key) => `<a href="${href}" class="ni${active===key?' ac':''}"><span class="ic">${icon}</span><span class="nl">${label}</span></a>`;
-  return `<aside class="sidebar"><div class="sb-brand"><span class="bdot"></span><span class="btxt">ZapVoice</span></div><div class="sbsec">Painel</div>${item(R_ZVM_ADMIN,'🏠','Dashboard','dash')}${item(R_ZVM_ADMIN+'/api/data','📊','Stats','stats')}<div class="sbft">${item(R_ZVM_ADMIN+'/logout','→','Sair','out')}</div></aside>`;
+  return `<aside class="sidebar"><div class="sb-brand"><span class="bdot"></span><span class="btxt">ZVM</span></div><div class="sbsec">Painel</div>${item(R_ZVM_ADMIN,'🏠','Dashboard','dash')}${item(R_ZVM_ADMIN+'/api/data','📊','Stats','stats')}<div class="sbft">${item(R_ZVM_ADMIN+'/logout','→','Sair','out')}</div></aside>`;
 }
 
 function zvmModSidebar(active) {
@@ -2018,7 +2003,7 @@ const ZVM_ADMIN_JS = (function() {
 })();
 
 function renderAdminDashboard() {
-  const stats   = getKeyStats();
+  const stats   = getZvmKeyStats();
   const keysHtml = getKeysHtmlCached();
   const logsHtml = buildLogsHtml();
   const sc = (id, val, lbl, style) => `<div class="sc"><div class="n" id="s-${id}"${style?' style="'+style+'"':''}>${val}</div><div class="l">${lbl}</div></div>`;
@@ -2027,18 +2012,18 @@ function renderAdminDashboard() {
   const searchBar = `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid #183326;align-items:center"><input type="text" id="search-input" placeholder="🔍 Buscar..." oninput="filterKeys()" style="flex:1;min-width:180px;padding:7px 11px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><select id="filter-status" onchange="filterKeys()" style="padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><option value="">Todos</option><option value="ativo">Ativas</option><option value="pendente">Pendentes</option><option value="expirada">Expiradas</option><option value="bloqueado">Bloqueadas</option></select><button onclick="doRefresh(true)" style="padding:7px 12px;border-radius:5px;border:1px solid #26543c;background:transparent;color:#39ff14;font-size:.8rem;cursor:pointer">↻</button><button onclick="exportCsv()" style="padding:7px 12px;border-radius:5px;border:1px solid #183326;background:transparent;color:#8ab89a;font-size:.8rem;cursor:pointer">↓ CSV</button><span id="last-r" style="font-size:.7rem;color:#5a8a6e">—</span></div>`;
   const keysSection = `<div class="sec"><div class="sh"><span class="sh-t">🔑 Chaves ZVM</span></div>${genForm}${searchBar}<div class="tbl-w" style="overflow-x:auto"><table style="min-width:820px"><thead><tr style="background:#070f0a"><th>Chave</th><th>Cliente</th><th>Status</th><th>Validade</th><th>Usos</th><th>Telefone</th><th>IP</th><th>Nota</th><th>Ações</th></tr></thead><tbody id="kb">${keysHtml}</tbody></table></div></div>`;
   const logsSection = `<div class="sec"><div class="sh"><span class="sh-t">📋 Logs ZVM</span></div><div class="tbl-w" style="max-height:40vh;overflow-y:auto;overflow-x:auto"><table style="min-width:600px"><thead><tr style="background:#070f0a"><th>Data/Hora</th><th>Ação</th><th>Chave</th><th>Telefone</th><th>IP</th><th>Detalhe</th></tr></thead><tbody id="logb">${logsHtml}</tbody></table></div></div>`;
-  return spaShell('Admin ZVM', zvmAdminSidebar('dash'), 'ZapVoice Admin', statsRow + keysSection + logsSection + `<scr`+`ipt>${ZVM_ADMIN_JS}</scr`+`ipt>`);
+  return spaShell('Admin ZVM', zvmAdminSidebar('dash'), 'ZVM Admin', statsRow + keysSection + logsSection + `<scr`+`ipt>${ZVM_ADMIN_JS}</scr`+`ipt>`);
 }
 
 function renderModDashboard(modName) {
   const ZVM_MOD_JS = ZVM_ADMIN_JS.replace(JSON.stringify(R_ZVM_ADMIN), JSON.stringify(R_ZVM_MOD));
   const sc = (id, val, lbl, style) => `<div class="sc"><div class="n" id="s-${id}"${style?' style="'+style+'"':''}>${val}</div><div class="l">${lbl}</div></div>`;
-  const stats = getKeyStats();
+  const stats = getZvmKeyStats();
   const statsRow = `<div class="sc-row" style="margin-bottom:18px">${sc('total',stats.totalKeys,'Total','')}${sc('active',stats.activeKeys,'Ativas','color:var(--ac)')}${sc('expired',stats.expiredKeys,'Expiradas','')}</div>`;
   const genForm = `<div style="padding:16px 18px;background:#020904;border-bottom:1px solid #183326"><div style="max-width:450px;background:#070f0a;border:1px solid #183326;border-radius:12px;padding:16px 18px"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#5a8a6e;margin-bottom:12px">Nova Chave ZVM</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><input type="text" id="nlabel" placeholder="Nome do cliente" maxlength="60" style="flex:1;min-width:140px;padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="ndays" placeholder="Dias" min="0" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="nhours" placeholder="H" min="0" max="23" style="width:46px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="nmins" placeholder="Min" min="0" max="59" style="width:50px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="nuses" placeholder="Usos" title="-1=∞" min="-1" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><label style="display:flex;align-items:center;gap:4px;font-size:.76rem;color:var(--mt);cursor:pointer;white-space:nowrap"><input type="checkbox" id="nfirstuse" style="margin:0;width:auto;padding:0"> 1º uso</label><button onclick="generateKey()" style="padding:7px 14px;border-radius:5px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap">+ Gerar</button></div></div></div>`;
   const keysHtml = getKeysHtmlCached();
   const keysSection = `<div class="sec"><div class="sh"><span class="sh-t">🔑 Chaves ZVM${modName?' — '+esc(modName):''}</span></div>${genForm}<div class="tbl-w" style="overflow-x:auto"><table style="min-width:820px"><thead><tr style="background:#070f0a"><th>Chave</th><th>Cliente</th><th>Status</th><th>Validade</th><th>Usos</th><th>Telefone</th><th>IP</th><th>Nota</th><th>Ações</th></tr></thead><tbody id="kb">${keysHtml}</tbody></table></div></div>`;
-  return spaShell('Mod ZVM', zvmModSidebar('keys'), 'ZapVoice Moderador', statsRow + keysSection + `<scr`+`ipt>${ZVM_MOD_JS}</scr`+`ipt>`);
+  return spaShell('Mod ZVM', zvmModSidebar('keys'), 'ZVM Moderador', statsRow + keysSection + `<scr`+`ipt>${ZVM_MOD_JS}</scr`+`ipt>`);
 }
 
 async function renderAnalyticsDashboard() {
@@ -2065,9 +2050,9 @@ async function handleZvmExtension(req, res, pathname, ip) {
   const p = pathname;
 
   if (p === R_EXT + '/auth' && req.method === 'GET') {
-    sendHtml(res, `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>ZapVoice Auth</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#020904;color:#e8fff3;min-height:100vh;display:flex;align-items:center;justify-content:center}:root{--ac:#39ff14}.card{background:#070f0a;border:1px solid #183326;border-radius:14px;padding:32px 28px;width:100%;max-width:360px}.logo{font-size:1.3rem;font-weight:900;color:var(--ac);margin-bottom:18px}.field{margin-bottom:13px}.field label{display:block;font-size:.73rem;color:#5a8a6e;margin-bottom:5px}.field input{width:100%;padding:9px 11px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.84rem}.btn{width:100%;padding:11px;border-radius:8px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.88rem;font-weight:800;cursor:pointer}</style></head><body>
+    sendHtml(res, `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>ZVM Auth</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#020904;color:#e8fff3;min-height:100vh;display:flex;align-items:center;justify-content:center}:root{--ac:#39ff14}.card{background:#070f0a;border:1px solid #183326;border-radius:14px;padding:32px 28px;width:100%;max-width:360px}.logo{font-size:1.3rem;font-weight:900;color:var(--ac);margin-bottom:18px}.field{margin-bottom:13px}.field label{display:block;font-size:.73rem;color:#5a8a6e;margin-bottom:5px}.field input{width:100%;padding:9px 11px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.84rem}.btn{width:100%;padding:11px;border-radius:8px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.88rem;font-weight:800;cursor:pointer}</style></head><body>
 ${CANVAS_BG}
-<div class="card"><div class="logo">ZapVoice</div>
+<div class="card"><div class="logo">ZVM</div>
 <form id="f" method="POST" action="${R_EXT}/auth/verify">
 <div class="field"><label>Chave de acesso</label><input name="key" placeholder="zv-xxxxx-xxxxx-xxxxx" required></div>
 <div class="field"><label>Número WhatsApp</label><input name="phone" placeholder="5511999999999" required></div>
@@ -2263,7 +2248,7 @@ async function handleZvmAdmin(req, res, p, ip, url) {
   if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
 
   if (p === R_ZVM_ADMIN + '/api/data' && req.method === 'GET') {
-    sendJson(res, { ...getKeyStats(), keysHtml: getKeysHtmlCached(), logsHtml: buildLogsHtml() }); return;
+    sendJson(res, { ...getZvmKeyStats(), keysHtml: getKeysHtmlCached(), logsHtml: buildLogsHtml() }); return;
   }
   if (p === R_ZVM_ADMIN + '/api/keys' && req.method === 'POST') {
     const body = await parseBody(req);
@@ -2396,7 +2381,7 @@ async function handleZvmMod(req, res, p, ip) {
     saveKey(code); sendJson(res, { ok: true, key: code }); return;
   }
   if (p === R_ZVM_MOD + '/api/data' && req.method === 'GET') {
-    sendJson(res, { ...getKeyStats(), keysHtml: getKeysHtmlCached(), logsHtml: buildLogsHtml() }); return;
+    sendJson(res, { ...getZvmKeyStats(), keysHtml: getKeysHtmlCached(), logsHtml: buildLogsHtml() }); return;
   }
   sendJson(res, { error: 'not_found' }, 404);
 }
@@ -2553,7 +2538,7 @@ async function handleRequest(req, res) {
     if (wsOk) { try { wsKeys = await dbWS.collection(COL.licenses).countDocuments(); } catch {} }
     sendJson(res, {
       ok:              wsOk,
-      service:         'waspeed-zvm-unified',
+      service:         'wspeed-zvm-unified',
       version:         '1.0.0',
       mongo:           wsOk,
       circuitBreaker:  cbIsOpen() ? 'OPEN' : 'CLOSED',
@@ -2618,20 +2603,21 @@ async function handleRequest(req, res) {
       sendJson(res, { ok:true, phones:keys[keyCode].phones }); return;
     }
 
-    if (pathname === '/' || pathname === '') { sendHtml(res, renderPortal(WS_CHROME_ID)); return; }
-    if (pathname === '/faq' && method==='GET') { sendHtml(res, pubShell('FAQ — WaSpeed','<div class="card"><h2 style="color:#39ff14;margin-bottom:16px">FAQ</h2><p style="color:#5a8a6e">Perguntas frequentes em breve.</p></div>')); return; }
-    if (pathname === '/planos' && method==='GET') { sendHtml(res, pubShell('Planos — WaSpeed','<div class="card"><h2 style="color:#39ff14;margin-bottom:16px">Planos</h2><p style="color:#5a8a6e">Consulte nossos planos.</p></div>')); return; }
-    if (pathname === '/privacidade' && method==='GET') { sendHtml(res, pubShell('Privacidade — WaSpeed','<div class="card"><h2 style="color:#39ff14;margin-bottom:16px">Política de Privacidade</h2><p style="color:#5a8a6e">Seus dados são protegidos.</p></div>')); return; }
-    if (pathname === '/obrigado') { sendHtml(res, clientShell('Até logo!','<div class="card" style="text-align:center;padding:48px 28px"><div style="font-size:3rem;margin-bottom:16px">👋</div><h2 style="font-size:1.5rem;font-weight:800;margin-bottom:10px">Até logo!</h2><p style="color:#5a8a6e">O WaSpeed foi desinstalado.</p></div>')); return; }
-
-    if (pathname.startsWith(R_WS_MOD)) { await handleMod(req, res, pathname, ip); return; }
+    if (pathname.startsWith(R_WS_MOD))   { await handleMod(req, res, pathname, ip); return; }
     if (pathname.startsWith(R_WS_ADMIN)) { await handleAdmin(req, res, pathname, ip); return; }
 
-    if (await handleClientPanel(req, res, pathname)) return;
+    const _wsSubPath = WS_BASE_PATH && pathname.startsWith(WS_BASE_PATH)
+      ? (pathname.slice(WS_BASE_PATH.length) || '/')
+      : (WS_BASE_PATH ? null : pathname);
 
-    if (pathname.startsWith('/api/')) {
-      await handleWaSpeedApi(req, res, pathname, ip);
-      return;
+    if (_wsSubPath !== null) {
+      if (_wsSubPath === '/' || _wsSubPath === '') { sendHtml(res, renderPortal(WS_CHROME_ID)); return; }
+      if (_wsSubPath === '/faq' && method==='GET') { sendHtml(res, pubShell('FAQ — WSPEED','<div class="card"><h2 style="color:#39ff14;margin-bottom:16px">FAQ</h2><p style="color:#5a8a6e">Perguntas frequentes em breve.</p></div>')); return; }
+      if (_wsSubPath === '/planos' && method==='GET') { sendHtml(res, pubShell('Planos — WSPEED','<div class="card"><h2 style="color:#39ff14;margin-bottom:16px">Planos</h2><p style="color:#5a8a6e">Consulte nossos planos.</p></div>')); return; }
+      if (_wsSubPath === '/privacidade' && method==='GET') { sendHtml(res, pubShell('Privacidade — WSPEED','<div class="card"><h2 style="color:#39ff14;margin-bottom:16px">Política de Privacidade</h2><p style="color:#5a8a6e">Seus dados são protegidos.</p></div>')); return; }
+      if (_wsSubPath === '/obrigado') { sendHtml(res, clientShell('Até logo!','<div class="card" style="text-align:center;padding:48px 28px"><div style="font-size:3rem;margin-bottom:16px">👋</div><h2 style="font-size:1.5rem;font-weight:800;margin-bottom:10px">Até logo!</h2><p style="color:#5a8a6e">O WSPEED foi desinstalado.</p></div>')); return; }
+      if (await handleClientPanel(req, res, _wsSubPath)) return;
+      if (_wsSubPath.startsWith('/api/')) { await handleWaSpeedApi(req, res, _wsSubPath, ip); return; }
     }
 
     if (!res.headersSent) sendJson(res, { success:false, error:'not_found' }, 404);
@@ -2641,7 +2627,9 @@ async function handleRequest(req, res) {
 }
 
 function startAntiSleepCron() {
-  const pingUrl = (WS_PUBLIC_URL || WS_BASE_URL).replace(/\/$/, '') + '/ping';
+  const _rawBase = WS_PUBLIC_URL || WS_BASE_URL || `http://localhost:${PORT}`;
+  const _origin  = (() => { try { return new URL(_rawBase).origin; } catch { return _rawBase.replace(/\/+$/, ''); } })();
+  const pingUrl  = _origin + '/ping';
   slog(LOG_LEVELS.INFO, `Anti-sleep: GET ${pingUrl} a cada 5min`);
   setInterval(() => {
     try {
@@ -2671,7 +2659,7 @@ process.on('uncaughtException',  err => { slog(LOG_LEVELS.CRITICAL, 'uncaughtExc
 process.on('unhandledRejection', err => { slog(LOG_LEVELS.CRITICAL, 'unhandledRejection', { err: String(err) }); dispatchWebhookAlert('unhandled_rejection', { err: String(err) }); });
 
 async function bootstrap() {
-  slog(LOG_LEVELS.INFO, 'Servidor Unificado WaSpeed+ZVM v1.0 — iniciando');
+  slog(LOG_LEVELS.INFO, `Servidor Unificado WSPEED+ZVM v1.1 — iniciando | WSPEED em ${WS_BASE_PATH || '/'} | ZVM em /extension`);
   if (!MONGODB_URI) { slog(LOG_LEVELS.CRITICAL, 'MONGODB_URI não definida'); process.exit(1); }
 
   try {
