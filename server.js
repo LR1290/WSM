@@ -1006,9 +1006,13 @@ async function findKey(code) {
 }
 
 async function findKeyByBearer(token) {
-  if (!dbWS) return null;
+  if (!dbWS || !token) return null;
   try {
-    return await dbWS.collection(COL.licenses).findOne({ bearer_token: token });
+    const b = String(token).trim();
+    if (!b) return null;
+    return await dbWS.collection(COL.licenses).findOne({
+      $or: [{ bearer_token: b }, { code: normKey(b) }, { access_token_plugin: b }],
+    });
   } catch { return null; }
 }
 
@@ -1062,8 +1066,8 @@ async function createKey(opts) {
     note:              sanitizeString(opts.note || '').slice(0, 500),
     ativarNoPrimeiroUso: opts.ativarNoPrimeiroUso === true,
     primeiroUsoAt:     null,
-    bearer_token:      crypto.randomBytes(24).toString('hex'),
-    access_token_plugin: crypto.randomBytes(24).toString('hex'),
+    bearer_token:        code,
+    access_token_plugin: code,
     user_id:           crypto.randomBytes(8).toString('hex'),
     createdAt:         new Date().toISOString(),
     modName:           opts.modName || null,
@@ -1140,7 +1144,7 @@ const EMPTY_AUTH_GOOGLE = {
 
 function buildUserPremium(code, rec) {
   const st = keyStatus(rec);
-  if (!rec.premium || (st !== 'active' && st !== 'expiring_soon')) return null;
+  if (!rec.premium || st !== 'active') return null;
   return {
     id_assinatura: String(rec.user_id || code),
     data_liberacao: (rec.createdAt ? new Date(rec.createdAt) : new Date()).toISOString().slice(0, 10),
@@ -1802,8 +1806,9 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     catch { sendJson(res, { success: false, msg_id: 'server_error' }, 500); return; }
     if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }, 401); return; }
     try { await addLog('login_ok', 'Login: ' + code, { code, ip, phone }); } catch {}
-    const _stLogin = keyStatus(rec);
-    sendJson(res, { success: true, user_status: _stLogin, user: keyToUser(code, rec), auth_google: null });
+    const recFreshLogin = await findKey(code) || rec;
+    const _stLogin = keyStatus(recFreshLogin);
+    sendJson(res, { success: true, user_status: _stLogin, user: keyToUser(code, recFreshLogin), auth_google: null });
     return;
   }
 
@@ -1853,8 +1858,9 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     catch { sendJson(res, { success: false, msg_id: 'server_error' }, 500); return; }
     if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }, 401); return; }
     try { await addLog('login_ok', 'Login via chave patcher: ' + code, { code, ip }); } catch {}
-    const st = keyStatus(rec);
-    sendJson(res, { success: true, user_status: st, user: keyToUser(code, rec), auth_google: null });
+    const recFresh = await findKey(code) || rec;
+    const st = keyStatus(recFresh);
+    sendJson(res, { success: true, user_status: st, user: keyToUser(code, recFresh), auth_google: null });
     return;
   }
 
@@ -2867,6 +2873,11 @@ async function handleRequest(req, res) {
       if (_wsSubPath === '/obrigado') { sendHtml(res, clientShell('Até logo!','<div class="card" style="text-align:center;padding:48px 28px"><div style="font-size:3rem;margin-bottom:16px">👋</div><h2 style="font-size:1.5rem;font-weight:800;margin-bottom:10px">Até logo!</h2><p style="color:#5a8a6e">O WSPEED foi desinstalado.</p></div>')); return; }
       if (await handleClientPanel(req, res, _wsSubPath)) return;
       if (_wsSubPath.startsWith('/api/')) { await handleWaSpeedApi(req, res, _wsSubPath, ip); return; }
+    }
+
+    if (WS_BASE_PATH && pathname.startsWith('/api/')) {
+      await handleWaSpeedApi(req, res, pathname, ip);
+      return;
     }
 
     if (!res.headersSent) sendJson(res, { success:false, error:'not_found' }, 404);
