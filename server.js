@@ -1445,37 +1445,75 @@ function clientShell(title, body) {
 const CLIENT_PANEL_RE = /^\/painel(\/|$)/;
 
 function renderClientAuthPainel(msg) {
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WSPEED — Minha Conta</title><style>${PUB_CSS}input{width:100%;padding:9px 11px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.84rem;margin-top:5px}.lbl{font-size:.73rem;color:#5a8a6e;display:block;margin-bottom:2px}.err{color:#ff8899;font-size:.78rem;background:rgba(255,68,102,.09);border:1px solid rgba(255,68,102,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}.ok{color:#39ff14;font-size:.78rem;background:rgba(57,255,20,.09);border:1px solid rgba(57,255,20,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}</style></head><body>
-${CANVAS_BG}<nav><a href="${WS_BASE_PATH||'/'}" class="nav-logo">WSPEED</a></nav>
-<div class="container" style="position:relative;z-index:1;max-width:460px">
+  const bp = WS_BASE_PATH || '';
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WSPEED — Minha Conta</title><style>${PUB_CSS}
+input{width:100%;padding:9px 11px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.84rem;margin-top:5px}
+.lbl{font-size:.73rem;color:#5a8a6e;display:block;margin-bottom:2px}
+.err{color:#ff8899;font-size:.78rem;background:rgba(255,68,102,.09);border:1px solid rgba(255,68,102,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}
+.ok{color:#39ff14;font-size:.78rem;background:rgba(57,255,20,.09);border:1px solid rgba(57,255,20,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}
+.info-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #0e1f14;font-size:.83rem}
+.info-row:last-child{border-bottom:none}
+.info-label{color:#5a8a6e}
+.info-val{color:#e8fff3;font-weight:600}
+.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:.72rem;font-weight:700;letter-spacing:.5px}
+.badge-active{background:rgba(57,255,20,.15);color:#39ff14;border:1px solid rgba(57,255,20,.3)}
+.badge-expired{background:rgba(255,68,102,.15);color:#ff8899;border:1px solid rgba(255,68,102,.3)}
+.badge-blocked{background:rgba(255,150,0,.12);color:#ffaa33;border:1px solid rgba(255,150,0,.3)}
+.badge-free{background:rgba(90,138,110,.12);color:#5a8a6e;border:1px solid rgba(90,138,110,.3)}
+.feature-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.68rem;background:rgba(57,255,20,.08);color:#39ff14;border:1px solid rgba(57,255,20,.2);margin:2px 3px 2px 0}
+.phone-item{font-size:.72rem;color:#5a8a6e;padding:2px 0}
+</style></head><body>
+${CANVAS_BG}<nav><a href="${bp||'/'}" class="nav-logo">WSPEED</a></nav>
+<div class="container" style="position:relative;z-index:1;max-width:500px">
 <div class="card">
-<h2 style="font-size:1.1rem;font-weight:800;color:#39ff14;margin-bottom:16px">🔑 Minha Conta</h2>
+<h2 style="font-size:1.1rem;font-weight:800;color:#39ff14;margin-bottom:16px">Minha Conta — WSPEED</h2>
 ${msg ? `<div class="${msg.startsWith('✅')?'ok':'err'}">${esc(msg)}</div>` : ''}
 <div id="portal-content">
 <form id="login-form">
-<div class="lbl">Chave de acesso</div><input id="key-input" placeholder="ws-xxxxxxxx-xxxxxxxx-xxxxxxxx"><br><br>
-<button class="btn" type="submit" id="login-btn" style="width:100%">Entrar</button>
+<div class="lbl">Chave de acesso</div>
+<input id="key-input" placeholder="ws-xxxxxxxx-xxxxxxxx-xxxxxxxx" autocomplete="off" spellcheck="false"><br><br>
+<button class="btn" type="submit" id="login-btn" style="width:100%">Consultar Licença</button>
 </form>
 </div>
 </div></div>
 <scr`+`ipt>
 var _pc=document.getElementById('portal-content');
+var _BP='${bp}';
 document.getElementById('login-form').addEventListener('submit',async function(e){
   e.preventDefault();
   var btn=document.getElementById('login-btn');
   btn.disabled=true;btn.textContent='Verificando...';
   var key=(document.getElementById('key-input').value||'').trim();
-  if(!key){btn.disabled=false;btn.textContent='Entrar';return;}
+  if(!key){btn.disabled=false;btn.textContent='Consultar Licença';return;}
   try{
-    var r=await fetch('/api/auth/validate-portal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key})});
+    var r=await fetch(_BP+'/api/auth/validate-portal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key})});
     var j=await r.json();
     if(j.ok){
-      _pc.innerHTML='<div class="ok">✅ Chave válida!</div><p style="color:#5a8a6e;font-size:.85rem;margin-top:8px">Chave: <code style="color:#39ff14">'+key+'</code></p><p style="margin-top:12px;font-size:.85rem">Expira: '+( j.expiresAt?new Date(j.expiresAt).toLocaleDateString('pt-BR'):'Sem expiração')+'</p><p style="margin-top:8px;font-size:.85rem">Dispositivos: '+j.phones+'/'+j.maxUses+'</p>';
+      var exp=j.expiresAt?new Date(j.expiresAt).toLocaleDateString('pt-BR'):'Sem expiração';
+      var devMax=j.maxUses>0?j.maxUses:'Ilimitados';
+      var devUsed=j.phones;
+      var statusBadge=j.status==='active'?'<span class="badge badge-active">ATIVO</span>':j.status==='expired'?'<span class="badge badge-expired">EXPIRADO</span>':'<span class="badge badge-blocked">BLOQUEADO</span>';
+      var planBadge=j.plan==='paid'?'<span class="badge badge-active">PRO</span>':'<span class="badge badge-free">FREE</span>';
+      var featHtml=(j.features||[]).map(function(f){return'<span class="feature-tag">'+f+'</span>';}).join('');
+      var phonesHtml=(j.phoneList||[]).map(function(p){return'<div class="phone-item">📱 '+p+'</div>';}).join('')||'<div class="phone-item" style="color:#2a4a36">Nenhum dispositivo vinculado</div>';
+      _pc.innerHTML='<div class="ok">✅ Licença encontrada</div>'
+        +'<div style="margin-top:16px">'
+        +'<div class="info-row"><span class="info-label">Identificação</span><span class="info-val">'+esc(j.label||key.slice(0,16)+'...')+'</span></div>'
+        +'<div class="info-row"><span class="info-label">Status</span>'+statusBadge+'</div>'
+        +'<div class="info-row"><span class="info-label">Plano</span>'+planBadge+'</div>'
+        +'<div class="info-row"><span class="info-label">Validade</span><span class="info-val">'+exp+'</span></div>'
+        +'<div class="info-row"><span class="info-label">Consumo hoje</span><span class="info-val">'+(j.dailyUses||0)+' usos</span></div>'
+        +'<div class="info-row"><span class="info-label">Dispositivos</span><span class="info-val">'+devUsed+' / '+devMax+'</span></div>'
+        +(featHtml?'<div class="info-row" style="flex-direction:column;align-items:flex-start;gap:6px"><span class="info-label">Recursos ativos</span><div>'+featHtml+'</div></div>':'')
+        +'<div class="info-row" style="flex-direction:column;align-items:flex-start;gap:6px"><span class="info-label">Celulares vinculados</span><div>'+phonesHtml+'</div></div>'
+        +'</div>'
+        +'<button class="btn btn-ghost" onclick="location.reload()" style="margin-top:18px;width:100%">Consultar outra chave</button>';
     }else{
-      _pc.innerHTML='<div class="err">❌ '+(j.msg||'Chave inválida')+'</div><button class="btn btn-ghost" onclick="location.reload()" style="margin-top:12px">Tentar novamente</button>';
+      _pc.innerHTML='<div class="err">❌ '+(j.msg||'Chave inválida ou não encontrada')+'</div><button class="btn btn-ghost" onclick="location.reload()" style="margin-top:12px">Tentar novamente</button>';
     }
-  }catch(e){btn.disabled=false;btn.textContent='Entrar';}
+  }catch(err){btn.disabled=false;btn.textContent='Consultar Licença';}
 });
+function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 </scr`+`ipt></body></html>`;
 }
 
@@ -1547,17 +1585,25 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
   }
 
   if (pathname === '/api/auth/validate-portal' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { ok: false, msg: 'Muitas tentativas' }, 429); return; }
     const body = await readJson(req);
-    const code = normKey(String(body.key || ''));
+    const code = normKey(sanitizeInput(String(body.key || ''), 60));
     if (!code) { sendJson(res, { ok: false, msg: 'Chave inválida' }); return; }
     const rec  = await findKey(code);
-    if (!rec || !rec.active) { sendJson(res, { ok: false, msg: 'Chave não encontrada ou bloqueada' }); return; }
-    if (isKeyExpiredWs(rec)) { sendJson(res, { ok: false, msg: 'Chave expirada' }); return; }
+    if (!rec) { sendJson(res, { ok: false, msg: 'Chave não encontrada' }); return; }
+    const st   = keyStatus(rec);
+    const up   = buildUserPremium(code, rec);
     sendJson(res, {
-      ok: true,
+      ok:        true,
+      status:    st,
+      label:     rec.label || '',
+      plan:      (up && up.plan) || (rec.expiresAt ? 'paid' : 'free'),
       expiresAt: rec.expiresAt || null,
       phones:    (rec.phones || []).length,
+      phoneList: (rec.phones || []),
       maxUses:   rec.maxUses != null ? rec.maxUses : -1,
+      dailyUses: rec.uses || 0,
+      features:  (up && up.features) || [],
     });
     return;
   }
@@ -1575,7 +1621,8 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     const result = await authSuccess(code, rec, { phone, ip });
     if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }, 401); return; }
     await addLog('login_ok', 'Login: ' + code, { code, ip, phone });
-    sendJson(res, { success: true, ...keyToUser(code, rec) });
+    const _stLogin = keyStatus(rec);
+    sendJson(res, { success: true, user_status: _stLogin, user: keyToUser(code, rec), auth_google: null });
     return;
   }
 
@@ -1586,24 +1633,48 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     if (!rec)  { sendJson(res, { success: false, msg_id: 'invalid_bearer' }, 401); return; }
     const result = await authSuccess(rec.code, rec, { ip });
     if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }, 401); return; }
-    sendJson(res, { success: true, ...keyToUser(rec.code, rec) });
+    const _stBearer = keyStatus(rec);
+    sendJson(res, { success: true, user_status: _stBearer, user: keyToUser(rec.code, rec), auth_google: null });
     return;
   }
 
-  if (pathname === '/api/auth/register-free' && req.method === 'POST') {
+  if (pathname.startsWith('/api/auth/register-free') && req.method === 'POST') {
     const body = await readJson(req);
     const phone = sanitizeInput(String(body.phone || ''), 20);
     sendJson(res, { success: true, user_id: 'free_' + (phone || ip), plan: 'free' });
     return;
   }
 
-  if (pathname === '/api/auth/validation' && req.method === 'POST') {
+  // Dual-mode: Bearer (renewal/update flow) OR key-in-body (patcher login flow)
+  // Patcher sends: POST /api/auth/validation/{chromeStoreID} { email: key, access_token_plugin: key }
+  if (pathname.startsWith('/api/auth/validation') && req.method === 'POST') {
+    // Path 1: Bearer token (e.g. license_update, renewal — extension already logged in)
     const bearer = parseBearer(req);
-    if (!bearer) { sendJson(res, { success: false, msg_id: 'missing_bearer' }, 401); return; }
-    const rec = await findKeyByBearer(bearer);
-    if (!rec)  { sendJson(res, { success: false, msg_id: 'invalid_bearer' }, 401); return; }
+    if (bearer) {
+      const rec = await findKeyByBearer(bearer);
+      if (rec) {
+        const st = keyStatus(rec);
+        sendJson(res, { success: st === 'active', user_status: st, user: keyToUser(rec.code, rec), auth_google: null });
+        return;
+      }
+      // Bearer provided but unknown — fall through to key-in-body below only if body also has key
+    }
+    // Path 2: key in request body (patcher initial login)
+    if (!checkRateLimit(ip, 'login')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
+    const body    = await readJson(req);
+    const rawCode = String(body.email || body.access_token_plugin || body.key || '');
+    const code    = normKey(sanitizeInput(rawCode, 60));
+    if (!code) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
+    const rec = await findKey(code);
+    if (!rec)            { sendJson(res, { success: false, msg_id: 'invalid_key' }, 401); return; }
+    if (!rec.active)     { sendJson(res, { success: false, msg_id: 'user_blocked' }, 401); return; }
+    if (isKeyExpiredWs(rec)) { sendJson(res, { success: false, msg_id: 'license_expired' }, 401); return; }
+    const phone  = sanitizeInput(String(body.whatsapp_plugin || body.phone || ''), 20);
+    const result = await authSuccess(code, rec, { ip, phone });
+    if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }, 401); return; }
+    await addLog('login_ok', 'Login via chave patcher: ' + code, { code, ip });
     const st = keyStatus(rec);
-    sendJson(res, { success: st === 'active', user_premium: buildUserPremium(rec.code, rec) });
+    sendJson(res, { success: true, user_status: st, user: keyToUser(code, rec), auth_google: null });
     return;
   }
 
