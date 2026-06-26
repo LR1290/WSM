@@ -2075,7 +2075,7 @@ function renderAdminLogin(base, role, err) {
 function adminSidebar(active, stats) {
   stats = stats || {};
   const item = (href, icon, label, key) => `<a href="${href}" class="ni${active === key ? ' ac' : ''}"><span class="ic">${icon}</span><span class="nl">${label}</span></a>`;
-  return `<aside class="sidebar"><div class="sb-brand"><span class="bdot"></span><span class="btxt">WaSpeed</span></div><div class="sbsec">Principal</div>${item(R_ADMIN,'⚡','Dashboard','dash')}<div class="sbsec">Licenças</div>${item(R_ADMIN+'/keys','🔑','Chaves de Acesso','keys')}<div class="sbsec">Sistema</div>${item(R_ADMIN+'/logs','📋','Logs do Sistema','logs')}<div class="sbft">${item(R_ADMIN+'/logout','→','Sair','out')}</div></aside>`;
+  return `<aside class="sidebar"><div class="sb-brand"><span class="bdot"></span><span class="btxt">WaSpeed</span></div><div class="sbsec">Principal</div>${item(R_ADMIN,'⚡','Dashboard','dash')}<div class="sbsec">Licenças</div>${item(R_ADMIN+'/keys','🔑','Chaves de Acesso','keys')}<div class="sbsec">Sistema</div>${item(R_ADMIN+'/logs','📋','Logs do Sistema','logs')}${item(R_ADMIN+'/audit','🛡️','Auditoria de Segurança','audit')}<div class="sbft">${item(R_ADMIN+'/logout','→','Sair','out')}</div></aside>`;
 }
 
 function spaShell(title, sidebar, topTitle, body) {
@@ -2199,7 +2199,7 @@ const ADMIN_JS_SAFE = (function() {
     'function closeModal(){document.getElementById(\'modal-bg\').classList.remove(\'open\');}',
     'function filterKeys(){var q=(document.getElementById(\'search-input\').value||\'\').toLowerCase();var st=document.getElementById(\'filter-status\').value;document.querySelectorAll(\'#kb tr\').forEach(function(r){var row=(r.dataset.code+r.dataset.label+r.dataset.phone).toLowerCase();r.style.display=((!q||row.includes(q))&&(!st||r.dataset.status===st))?\'\':\'none\';});}',
     'function filterLog(){var q=(document.getElementById(\'logSearch\').value||\'\').toLowerCase();var t=(document.getElementById(\'logTypeFilter\')||{}).value||\'\';document.querySelectorAll(\'#logb tr\').forEach(function(r){r.style.display=((!q||(r.dataset.log||\'\').includes(q))&&(!t||(r.dataset.logtype||\'\')===t))?\'\':\'none\';});}',
-    'async function generateKey(){var btn=document.querySelector(\'button[onclick="generateKey()"]\');if(btn){btn.disabled=true;btn.textContent=\'Gerando...\';}var label=document.getElementById(\'nlabel\').value.trim();if(!label){toast(\'Informe o cliente\',false);if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}return;}var body={label:label,premium:document.getElementById(\'npremium\').value===\'1\'};var dv=+(document.getElementById(\'ndays\').value)||0,h=+(document.getElementById(\'nhours\').value)||0,m=+(document.getElementById(\'nmins\').value)||0;if(dv)body.expireDays=dv;if(h)body.expireHours=h;if(m)body.expireMinutes=m;var u=document.getElementById(\'nuses\').value.trim();if(u!==\'\')body.maxUses=parseInt(u);if(document.getElementById(\'nfirstuse\').checked)body.ativarNoPrimeiroUso=true;try{var r=await fetch(_RA+\'/api/keys\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify(body)});if(r.status===401){location.href=_RA+\'/login\';return;}var j=await r.json();if(j.ok){toast(\'Chave gerada: \'+j.key);[\'nlabel\',\'ndays\',\'nhours\',\'nmins\',\'nuses\'].forEach(function(id){document.getElementById(id).value=\'\';});document.getElementById(\'nfirstuse\').checked=false;doRefresh();}else{toast(\'Erro: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}finally{if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}}}'  ,
+    'async function generateKey(){var btn=document.querySelector(\'button[onclick="generateKey()"]\');if(btn){btn.disabled=true;btn.textContent=\'Gerando...\';}var label=document.getElementById(\'nlabel\').value.trim();if(!label){toast(\'Informe o nome do cliente\',false);if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}return;}if(label.length>60){toast(\'M\\u00e1x 60 caracteres\',false);if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}return;}var body={label:label};var dv=+(document.getElementById(\'ndays\').value)||0,h=+(document.getElementById(\'nhours\').value)||0,m=+(document.getElementById(\'nmins\').value)||0;if(dv)body.expireDays=dv;if(h)body.expireHours=h;if(m)body.expireMinutes=m;var u=document.getElementById(\'nuses\').value.trim();if(u!==\'\')body.maxUses=parseInt(u);if(document.getElementById(\'nfirstuse\').checked)body.ativarNoPrimeiroUso=true;try{var r=await fetch(_RA+\'/api/keys\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify(body)});if(r.status===401){location.href=_RA+\'/login\';return;}var j=await r.json();if(j.ok){toast(\'Chave gerada: \'+j.key);[\'nlabel\',\'ndays\',\'nhours\',\'nmins\',\'nuses\'].forEach(function(id){document.getElementById(id).value=\'\';});document.getElementById(\'nfirstuse\').checked=false;doRefresh();}else{toast(\'Erro: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}finally{if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}}}'  ,
     'async function clearLogs(){if(!confirm(\'Limpar todos os logs?\'))return;try{var r=await fetch(_RA+\'/api/logs/clear\',{method:\'POST\'});var j=await r.json();if(j.ok){toast(\'Logs limpos\');doRefresh();}else{toast(\'Falha ao limpar\',false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}}',
     'async function apiActivate(code){var btns=document.querySelectorAll(\'[onclick*="apiActivate"]\');btns.forEach(function(b){b.disabled=true;});try{var r=await fetch(_RA+\'/api/keys/\'+encodeURIComponent(code)+\'/activate\',{method:\'POST\'});var j=await r.json();if(j.ok){toast(\'Chave ativada\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}finally{btns.forEach(function(b){b.disabled=false;});}}',
     'async function doRefresh(manual){var lr=document.getElementById(\'last-r\');if(lr)lr.textContent=\'Atualizando...\';try{var r=await fetch(_RA+\'/api/data\');if(r.status===401){if(manual)location.href=_RA+\'/login\';return;}if(!r.ok){var et=await r.text();if(manual)toast(\'Erro \'+ r.status,false);return;}var d=await r.json();if(!d.ok)return;document.getElementById(\'s-total\').textContent=d.totalKeys;document.getElementById(\'s-active\').textContent=d.activeKeys;document.getElementById(\'s-free\').textContent=d.freeKeys;document.getElementById(\'s-expired\').textContent=d.expiredKeys;document.getElementById(\'s-logs\').textContent=d.totalLogs;document.getElementById(\'kb\').innerHTML=d.keysHtml;document.getElementById(\'logb\').innerHTML=d.logsHtml;if(lr)lr.textContent=new Date().toLocaleTimeString(\'pt-BR\');filterKeys();}catch(e){if(lr)lr.textContent=\'Erro\';if(manual)toast(\'Erro ao atualizar\',false);}}',
@@ -2282,11 +2282,15 @@ async function handleAdminApi(req, res, pathname) {
   }
   if (pathname === R_ADMIN + '/api/keys' && req.method === 'POST') {
     const body    = await readJson(req);
-    if (!body.label) { sendJson(res, { error: 'label obrigatorio' }, 400); return true; }
+    const rawLabel = String(body.label || '').trim();
+    if (!rawLabel) { sendJson(res, { error: 'label_required' }, 400); return true; }
+    if (rawLabel.length > 60) { sendJson(res, { error: 'label_too_long' }, 400); return true; }
+    if (detectInjection(rawLabel)) { sendJson(res, { error: 'invalid_input' }, 400); return true; }
     const { expiresAt, expireDays } = parseLicenseExpiry(body);
     const maxUses = body.maxUses !== undefined ? parseInt(body.maxUses, 10) : -1;
+    if (!Number.isNaN(maxUses) && (maxUses < -1 || maxUses > 9999)) { sendJson(res, { error: 'maxUses_out_of_range' }, 400); return true; }
     try {
-      const rec = await createKey({ label: String(body.label).trim().slice(0, 60), premium: body.premium !== false && body.premium !== 0 && body.premium !== '0', expiresAt, expireDays, maxUses: Number.isNaN(maxUses) ? -1 : maxUses, note: String(body.note || '').slice(0, 500), ativarNoPrimeiroUso: body.ativarNoPrimeiroUso === true });
+      const rec = await createKey({ label: sanitizeString(rawLabel), premium: true, expiresAt, expireDays, maxUses: Number.isNaN(maxUses) ? -1 : maxUses, note: sanitizeString(String(body.note || '').slice(0, 500)), ativarNoPrimeiroUso: body.ativarNoPrimeiroUso === true });
       invalidateKeysCache();
       sendJson(res, { ok: true, key: rec.code });
     } catch (e) {
@@ -2449,17 +2453,18 @@ function renderAdminDash(keysHtml, logsHtml, stats) {
     '<option value="LIMITE DE TELAS">LIMITE DE TELAS</option>' +
     '<option value="ATAQUE BLOQUEADO">ATAQUE BLOQUEADO</option>';
   var genForm =
-    '<div style="padding:12px 18px;background:#020904;border-bottom:1px solid #183326">' +
-    '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:860px">' +
-    '<input type="text" id="nlabel" placeholder="Cliente" style="width:130px;padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="ndays" placeholder="Dias" min="0" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="nhours" placeholder="H" min="0" style="width:46px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="nmins" placeholder="Min" min="0" style="width:50px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="nuses" placeholder="Usos" title="-1=\u221e" min="-1" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<select id="npremium" style="padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><option value="1">PRO</option><option value="0">Free</option></select>' +
+    '<div style="padding:16px 18px;background:#020904;border-bottom:1px solid #183326">' +
+    '<div style="max-width:450px;background:#070f0a;border:1px solid #183326;border-radius:12px;padding:16px 18px">' +
+    '<div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#5a8a6e;margin-bottom:12px">Nova Chave PRO</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
+    '<input type="text" id="nlabel" placeholder="Nome do cliente" maxlength="60" style="flex:1;min-width:140px;padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="ndays" placeholder="Dias" min="0" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="nhours" placeholder="H" min="0" max="23" style="width:46px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="nmins" placeholder="Min" min="0" max="59" style="width:50px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="nuses" placeholder="Usos" title="-1=\u221e" min="-1" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
     '<label style="display:flex;align-items:center;gap:4px;font-size:.76rem;color:var(--mt);cursor:pointer;white-space:nowrap"><input type="checkbox" id="nfirstuse" style="margin:0;width:auto;padding:0"> 1\u00ba uso</label>' +
     '<button onclick="generateKey()" style="padding:7px 14px;border-radius:5px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap">+ Gerar</button>' +
-    '</div>' +
+    '</div></div>' +
     '</div>';
   var searchBar =
     '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid #183326;align-items:center">' +
@@ -2513,7 +2518,7 @@ const MOD_JS_SAFE = (function() {
     'function toast(m,ok){var t=document.getElementById(\'toast\');t.textContent=m;t.style.borderColor=(ok===false)?\'var(--dg)\':\'var(--ac)\';t.classList.add(\'show\');setTimeout(function(){t.classList.remove(\'show\');},3500);}',
     'function closeModal(){document.getElementById(\'modal-bg\').classList.remove(\'open\');}',
     'function filterKeys(){var q=(document.getElementById(\'search-input\').value||\'\').toLowerCase();var st=document.getElementById(\'filter-status\').value;document.querySelectorAll(\'#kb tr\').forEach(function(r){var row=(r.dataset.code+r.dataset.label+r.dataset.phone).toLowerCase();r.style.display=((!q||row.includes(q))&&(!st||r.dataset.status===st))?\'\':\'none\';});}',
-    'async function generateKey(){var btn=document.querySelector(\'button[onclick="generateKey()"]\');if(btn){btn.disabled=true;btn.textContent=\'Gerando...\';}var label=document.getElementById(\'nlabel\').value.trim();if(!label){toast(\'Informe o cliente\',false);if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}return;}var body={label:label,premium:document.getElementById(\'npremium\').value===\'1\'};var dv=+(document.getElementById(\'ndays\').value)||0,h=+(document.getElementById(\'nhours\').value)||0,m=+(document.getElementById(\'nmins\').value)||0;if(dv)body.expireDays=dv;if(h)body.expireHours=h;if(m)body.expireMinutes=m;var u=document.getElementById(\'nuses\').value.trim();if(u!==\'\')body.maxUses=parseInt(u);if(document.getElementById(\'nfirstuse\').checked)body.ativarNoPrimeiroUso=true;try{var r=await fetch(_RM+\'/api/keys\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify(body)});if(r.status===401){location.href=_RM+\'/login\';return;}var j=await r.json();if(j.ok){toast(\'Chave gerada: \'+j.key);[\'nlabel\',\'ndays\',\'nhours\',\'nmins\',\'nuses\'].forEach(function(id){document.getElementById(id).value=\'\';});document.getElementById(\'nfirstuse\').checked=false;doRefresh();}else{toast(\'Erro: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}finally{if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}}}',
+    'async function generateKey(){var btn=document.querySelector(\'button[onclick="generateKey()"]\');if(btn){btn.disabled=true;btn.textContent=\'Gerando...\';}var label=document.getElementById(\'nlabel\').value.trim();if(!label){toast(\'Informe o nome do cliente\',false);if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}return;}if(label.length>60){toast(\'M\\u00e1x 60 caracteres\',false);if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}return;}var body={label:label};var dv=+(document.getElementById(\'ndays\').value)||0,h=+(document.getElementById(\'nhours\').value)||0,m=+(document.getElementById(\'nmins\').value)||0;if(dv)body.expireDays=dv;if(h)body.expireHours=h;if(m)body.expireMinutes=m;var u=document.getElementById(\'nuses\').value.trim();if(u!==\'\')body.maxUses=parseInt(u);if(document.getElementById(\'nfirstuse\').checked)body.ativarNoPrimeiroUso=true;try{var r=await fetch(_RM+\'/api/keys\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify(body)});if(r.status===401){location.href=_RM+\'/login\';return;}var j=await r.json();if(j.ok){toast(\'Chave gerada: \'+j.key);[\'nlabel\',\'ndays\',\'nhours\',\'nmins\',\'nuses\'].forEach(function(id){document.getElementById(id).value=\'\';});document.getElementById(\'nfirstuse\').checked=false;doRefresh();}else{toast(\'Erro: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}finally{if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}}}'  ,
     'async function apiActivate(code){try{var r=await fetch(_RM+\'/api/keys/\'+encodeURIComponent(code)+\'/activate\',{method:\'POST\'});var j=await r.json();if(j.ok){toast(\'Chave ativada\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}}',
     'async function doRefresh(manual){var lr=document.getElementById(\'last-r\');if(lr)lr.textContent=\'Atualizando...\';try{var r=await fetch(_RM+\'/api/data\');if(r.status===401){if(manual)location.href=_RM+\'/login\';return;}if(!r.ok){if(manual)toast(\'Erro \'+ r.status,false);return;}var d=await r.json();if(!d.ok)return;document.getElementById(\'s-total\').textContent=d.totalKeys;document.getElementById(\'s-active\').textContent=d.activeKeys;document.getElementById(\'s-free\').textContent=d.freeKeys;document.getElementById(\'s-expired\').textContent=d.expiredKeys;document.getElementById(\'kb\').innerHTML=d.keysHtml;if(lr)lr.textContent=new Date().toLocaleTimeString(\'pt-BR\');filterKeys();}catch(e){if(lr)lr.textContent=\'Erro\';if(manual)toast(\'Erro ao atualizar\',false);}}',
     'async function apiToggle(code){try{var r=await fetch(_RM+\'/api/keys/\'+encodeURIComponent(code)+\'/toggle\',{method:\'POST\'});var j=await r.json();if(j.ok){toast(\'Status alterado\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}}',
@@ -2544,17 +2549,19 @@ function renderModDash(keysHtml, stats, modName) {
     sc('s-expired', stats.expiredKeys, 'Expiradas',  stats.expiredKeys ? 'color:var(--dg)' : '') +
     '</div>';
   var genForm =
-    '<div style="padding:12px 18px;background:#020904;border-bottom:1px solid #183326">' +
-    '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:860px">' +
-    '<input type="text" id="nlabel" placeholder="Cliente" style="width:130px;padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="ndays" placeholder="Dias" min="0" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="nhours" placeholder="H" min="0" style="width:46px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="nmins" placeholder="Min" min="0" style="width:50px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="nuses" placeholder="Usos" title="-1=∞" min="-1" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<select id="npremium" style="padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><option value="1">PRO</option><option value="0">Free</option></select>' +
+    '<div style="padding:16px 18px;background:#020904;border-bottom:1px solid #183326">' +
+    '<div style="max-width:450px;background:#070f0a;border:1px solid #183326;border-radius:12px;padding:16px 18px">' +
+    '<div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#5a8a6e;margin-bottom:12px">Nova Chave PRO</div>' +
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
+    '<input type="text" id="nlabel" placeholder="Nome do cliente" maxlength="60" style="flex:1;min-width:140px;padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="ndays" placeholder="Dias" min="0" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="nhours" placeholder="H" min="0" max="23" style="width:46px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="nmins" placeholder="Min" min="0" max="59" style="width:50px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
+    '<input type="number" id="nuses" placeholder="Usos" title="-1=∞" min="-1" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
     '<label style="display:flex;align-items:center;gap:4px;font-size:.76rem;color:var(--mt);cursor:pointer;white-space:nowrap"><input type="checkbox" id="nfirstuse" style="margin:0;width:auto;padding:0"> 1º uso</label>' +
     '<button onclick="generateKey()" style="padding:7px 14px;border-radius:5px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap">+ Gerar</button>' +
-    '</div></div>';
+    '</div></div>' +
+    '</div>';
   var searchBar =
     '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid #183326;align-items:center">' +
     '<input type="text" id="search-input" placeholder="🔍 Buscar chave, cliente, telefone..." oninput="filterKeys()" style="flex:1;min-width:180px;padding:7px 11px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
@@ -2605,12 +2612,16 @@ async function handleModApi(req, res, pathname) {
   }
   if (pathname === R_MOD + '/api/keys' && req.method === 'POST') {
     const body    = await readJson(req);
-    if (!body.label) { sendJson(res, { error: 'label obrigatorio' }, 400); return true; }
+    const rawLabel = String(body.label || '').trim();
+    if (!rawLabel) { sendJson(res, { error: 'label_required' }, 400); return true; }
+    if (rawLabel.length > 60) { sendJson(res, { error: 'label_too_long' }, 400); return true; }
+    if (detectInjection(rawLabel)) { sendJson(res, { error: 'invalid_input' }, 400); return true; }
     const { expiresAt, expireDays } = parseLicenseExpiry(body);
     const maxUses = body.maxUses !== undefined ? parseInt(body.maxUses, 10) : -1;
+    if (!Number.isNaN(maxUses) && (maxUses < -1 || maxUses > 9999)) { sendJson(res, { error: 'maxUses_out_of_range' }, 400); return true; }
     const sess    = await validateSession(parseCookies(req)[config.cookieName]);
     try {
-      const rec = await createKey({ label: String(body.label).trim().slice(0, 60), premium: body.premium !== false && body.premium !== 0 && body.premium !== '0', expiresAt, expireDays, maxUses: Number.isNaN(maxUses) ? -1 : maxUses, note: String(body.note || '').slice(0, 500), ativarNoPrimeiroUso: body.ativarNoPrimeiroUso === true, modName: sess && sess.modName ? sess.modName : null });
+      const rec = await createKey({ label: sanitizeString(rawLabel), premium: true, expiresAt, expireDays, maxUses: Number.isNaN(maxUses) ? -1 : maxUses, note: sanitizeString(String(body.note || '').slice(0, 500)), ativarNoPrimeiroUso: body.ativarNoPrimeiroUso === true, modName: sess && sess.modName ? sess.modName : null });
       invalidateKeysCache();
       sendJson(res, { ok: true, key: rec.code });
     } catch (e) {
@@ -2744,6 +2755,43 @@ async function handleMod(req, res, pathname, ip) {
 }
 
 
+function renderSecurityAudit(base) {
+  const auditJs = [
+    'var _BASE=' + JSON.stringify(base) + ';',
+    'var _TESTS=[',
+    '  {id:"json404",label:"API /unknown retorna JSON",run:async function(){var r=await fetch(_BASE+"/api/__nonexistent_route__");var ct=r.headers.get("content-type")||"";if(!ct.includes("json")){return{pass:false,detail:"Content-Type: "+ct};}try{var j=await r.json();return{pass:true,detail:"status "+r.status+", ok="+j.ok+", error="+j.error};}catch(e){return{pass:false,detail:"SyntaxError: "+e.message};}}},',
+    '  {id:"injectLabel",label:"Injeção NoSQL em label rejeitada (400)",run:async function(){var r=await fetch(_BASE+"/api/keys",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:"{$gt:null}"})});var j=await r.json();return{pass:r.status===400&&(j.error==="label_required"||j.error==="invalid_input"),detail:"status "+r.status+" error="+j.error};}},',
+    '  {id:"labelLen",label:"Label > 60 chars rejeitada (400)",run:async function(){var r=await fetch(_BASE+"/api/keys",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:"A".repeat(61)})});var j=await r.json();return{pass:r.status===400,detail:"status "+r.status+" error="+j.error};}},',
+    '  {id:"noToken",label:"POST /api/auth/login sem access-token retorna 403",run:async function(){var r=await fetch(_BASE+"/api/auth/login/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({senha:"hack"})});var j=await r.json();return{pass:r.status===403||j.msg_id==="invalid_access_token",detail:"status "+r.status+" msg_id="+j.msg_id};}},',
+    '  {id:"healthJson",label:"/health retorna JSON",run:async function(){var r=await fetch(_BASE+"/health");var ct=r.headers.get("content-type")||"";return{pass:ct.includes("json"),detail:"Content-Type: "+ct};}},',
+    '  {id:"jsonOnly",label:"Nenhuma rota retorna text/plain",run:async function(){var urls=[_BASE+"/api/noop",_BASE+"/api/keys/__fake__"];var fails=[];for(var u of urls){var r=await fetch(u,{method:"GET"});var ct=r.headers.get("content-type")||"";if(ct.includes("text/plain"))fails.push(u);}return{pass:fails.length===0,detail:fails.length===0?"OK":"text/plain em: "+fails.join(", ")};}}',
+    '];',
+    'async function runAudit(){',
+    '  var tbody=document.getElementById("audit-body");',
+    '  tbody.innerHTML="<tr><td colspan=3 style=\\"padding:18px;text-align:center;color:#5a8a6e\\">Executando testes...</td></tr>";',
+    '  var rows=[];',
+    '  for(var t of _TESTS){',
+    '    var res;try{res=await t.run();}catch(e){res={pass:false,detail:e.message};}',
+    '    var col=res.pass?"#39ff14":"#ff8899";',
+    '    var lbl=res.pass?"PASS":"FAIL";',
+    '    rows.push("<tr><td class=\\"zvm-td\\" style=\\"font-size:.82rem\\">"+t.label+"</td><td class=\\"zvm-td\\"><span style=\\"font-family:monospace;font-size:.72rem;font-weight:700;color:"+col+";background:"+col+"15;border:1px solid "+col+"28;padding:2px 9px;border-radius:4px\\">"+lbl+"</span></td><td class=\\"zvm-td zvm-muted\\" style=\\"font-size:.75rem\\">"+res.detail+"</td></tr>");',
+    '  }',
+    '  tbody.innerHTML=rows.join("");',
+    '}',
+    'runAudit();',
+  ].join('\n');
+  const body =
+    '<div class="sec">' +
+    '<div class="sh"><span class="sh-t">🛡️ Auditoria de Segurança — WaSpeed</span>' +
+    '<button onclick="runAudit()" style="padding:5px 12px;border-radius:5px;border:1px solid #26543c;background:transparent;color:#39ff14;font-size:.78rem;cursor:pointer">↻ Re-executar</button></div>' +
+    '<div style="padding:14px 18px;font-size:.8rem;color:#5a8a6e;border-bottom:1px solid #183326">Testes automatizados contra as rotas do servidor. PASS = seguro. FAIL = vulnerabilidade detectada.</div>' +
+    '<div class="tbl-w"><table style="min-width:600px"><thead><tr style="background:#070f0a">' +
+    '<th style="min-width:260px">Teste</th><th style="min-width:80px">Status</th><th style="min-width:220px">Detalhe</th>' +
+    '</tr></thead><tbody id="audit-body"><tr><td colspan="3" style="padding:18px;text-align:center;color:#5a8a6e">Carregando...</td></tr></tbody></table></div></div>' +
+    '<scr' + 'ipt>' + auditJs + '</scr' + 'ipt>';
+  return spaShell('Auditoria — WaSpeed', adminSidebar('audit'), 'Auditoria de Segurança', body);
+}
+
 async function handleAdmin(req, res, pathname, ip) {
   if (pathname === R_ADMIN + '/login') {
     if (req.method === 'GET') { sendHtml(res, renderAdminLogin(R_ADMIN, 'Admin')); return; }
@@ -2788,6 +2836,10 @@ async function handleAdmin(req, res, pathname, ip) {
     const stats    = await getKeyStats();
     const licenses = await getKeysCached();
     sendHtml(res, renderAdminDash(buildLicenseRows(licenses), buildLogRows(logs), stats));
+    return;
+  }
+  if (pathname === R_ADMIN + '/audit') {
+    sendHtml(res, renderSecurityAudit(config.baseUrl));
     return;
   }
   sendJson(res, { success: false, error: 'not_found' }, 404);
