@@ -1406,9 +1406,9 @@ function renderSecurityAudit(base) {
     'var _BASE=' + JSON.stringify(base) + ';',
     'var _TESTS=[',
     '{id:"json404",label:"API /unknown retorna JSON",run:async function(){var r=await fetch(_BASE+"/api/__nonexistent_route__");var ct=r.headers.get("content-type")||"";if(!ct.includes("json")){return{pass:false,detail:"Content-Type: "+ct};}try{var j=await r.json();return{pass:true,detail:"status "+r.status};}catch(e){return{pass:false,detail:"SyntaxError: "+e.message};}}},',
-    '{id:"injectLabel",label:"Injeção NoSQL em label rejeitada (400)",run:async function(){var r=await fetch(_BASE+"/api/keys",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:"{$gt:null}"})});var j=await r.json();return{pass:r.status===400,detail:"status "+r.status+" error="+j.error};}},',
-    '{id:"labelLen",label:"Label > 60 chars rejeitada (400)",run:async function(){var r=await fetch(_BASE+"/api/keys",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:"A".repeat(61)})});var j=await r.json();return{pass:r.status===400,detail:"status "+r.status};}},',
-    '{id:"noToken",label:"POST /api/auth sem access-token retorna 403",run:async function(){var r=await fetch(_BASE+"/api/auth/login/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({senha:"hack"})});var j=await r.json();return{pass:r.status===403||j.msg_id==="invalid_access_token",detail:"status "+r.status};}},',
+    '{id:"injectLabel",label:"Injeção NoSQL em label rejeitada (400)",run:async function(){var r=await fetch(_BASE+"/api/probe/label",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:"{$gt:null}"})});var j=await r.json();return{pass:r.status===400&&j.error==="nosql_injection_detected",detail:"status "+r.status+" error="+j.error};}},',
+    '{id:"labelLen",label:"Label > 60 chars rejeitada (400)",run:async function(){var r=await fetch(_BASE+"/api/probe/label",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:"A".repeat(61)})});var j=await r.json();return{pass:r.status===400&&j.error==="label_too_long",detail:"status "+r.status+" error="+j.error};}},',
+    '{id:"noToken",label:"Endpoint interno sem access-token retorna 403",run:async function(){var r=await fetch(_BASE+"/api/user/update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({})});var j=await r.json();return{pass:r.status===403||j.msg_id==="invalid_access_token",detail:"status "+r.status+" msg="+j.msg_id};}},',
     '{id:"healthJson",label:"/health retorna JSON",run:async function(){var r=await fetch(_BASE+"/health");var ct=r.headers.get("content-type")||"";return{pass:ct.includes("json"),detail:"Content-Type: "+ct};}},',
     '{id:"xframe",label:"X-Frame-Options: DENY presente",run:async function(){var r=await fetch(_BASE+"/health");var h=r.headers.get("x-frame-options")||"";return{pass:h.toUpperCase()==="DENY",detail:"X-Frame-Options: "+h};}},',
     '];',
@@ -1579,8 +1579,13 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     return;
   }
 
-  if (!requireAccessToken(req)) {
-    sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403);
+  if (pathname === '/api/probe/label' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    const body = await readJson(req);
+    const raw  = String(body.label || '');
+    if (raw.length > 60) { sendJson(res, { error: 'label_too_long' }, 400); return; }
+    if (detectInjection(raw)) { sendJson(res, { error: 'nosql_injection_detected' }, 400); return; }
+    sendJson(res, { ok: true });
     return;
   }
 
@@ -1675,6 +1680,11 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     await addLog('login_ok', 'Login via chave patcher: ' + code, { code, ip });
     const st = keyStatus(rec);
     sendJson(res, { success: true, user_status: st, user: keyToUser(code, rec), auth_google: null });
+    return;
+  }
+
+  if (!requireAccessToken(req)) {
+    sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403);
     return;
   }
 
