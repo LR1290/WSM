@@ -1,18 +1,10 @@
 'use strict';
-
-// =============================================================================
-// WaSpeed Server v4.0 — Refatoração Total (Pilares 1-6)
-// Node.js nativo + MongoDB + Segurança OWASP + UI Cyberpunk
-// =============================================================================
-
 const http    = require('http');
 const https   = require('https');
 const crypto  = require('crypto');
 const zlib    = require('zlib');
 const { URL } = require('url');
 const { MongoClient } = require('mongodb');
-
-// --- Constantes globais originais (preservadas) ------------------------------
 
 const SESSION_TTL_MS       = 24 * 60 * 60 * 1000;
 const ANTI_SLEEP_MS        = 5  * 60 * 1000;
@@ -23,8 +15,6 @@ const COL = {
   logs     : 'logs',
   sessions : 'sessions',
 };
-
-// --- Logger estruturado ------------------------------------------------------
 
 const LOG_LEVELS = { INFO: 'INFO', WARN: 'WARN', SECURITY: 'SECURITY', CRITICAL: 'CRITICAL' };
 const _logBuffer = [];
@@ -49,8 +39,6 @@ function slog(level, msg, meta = {}) {
   if (_logBuffer.length > LOG_BUFFER_MAX) _logBuffer.shift();
 }
 
-// --- Helpers de ambiente -----------------------------------------------------
-
 function envStr(key, fallback = '') {
   return String(process.env[key] ?? fallback).trim().replace(/^["']|["']$/g, '');
 }
@@ -59,8 +47,6 @@ function dbNameFromMongoUri(uri) {
   const m = String(uri || '').match(/mongodb(?:\+srv)?:\/\/[^/]+\/([^/?]+)/);
   return m?.[1] || 'waspeed';
 }
-
-// --- Validação Fail-Fast de variáveis de ambiente (Pilar 5) -----------------
 
 (function validateEnv() {
   const missing = [];
@@ -84,8 +70,6 @@ function dbNameFromMongoUri(uri) {
   }
 })();
 
-// --- Configuração ------------------------------------------------------------
-
 const config = {
   port             : Number(process.env.PORT) || 3000,
   baseUrl          : (envStr('BASE_URL') || envStr('PUBLIC_URL') || envStr('RENDER_EXTERNAL_URL')).replace(/\/$/, ''),
@@ -104,7 +88,6 @@ const config = {
   logMax           : Math.min(Number(process.env.LOG_MAX) || 500, 2000),
   expiryWarnHours  : Math.max(1, Math.min(720, Number(process.env.EXPIRY_WARN_HOURS) || 48)),
   webhookUrl       : envStr('SECURITY_WEBHOOK_URL'),
-  // Cookie name aleatório por instância (Anti-OSINT fingerprinting)
   cookieName       : 'ws_' + crypto.createHash('sha256')
                        .update(envStr('ACCESS_TOKEN', 'waspeed-static'))
                        .digest('hex').slice(0, 8),
@@ -124,16 +107,12 @@ slog(LOG_LEVELS.INFO, 'WaSpeed config carregado', {
 const R_ADMIN = `/${config.adminPath}`;
 const R_MOD   = `/${config.modPath}`;
 
-// --- Estado global -----------------------------------------------------------
-
 let mongoClient     = null;
 let db              = null;
 let mongoReady      = false;
 let cachedSettings  = null;
 let configJsonBody  = null;
 let server          = null;
-
-// Circuit breaker (Pilar 5)
 let cbFailCount     = 0;
 const CB_THRESHOLD  = 5;
 const CB_RESET_MS   = 60000;
@@ -158,15 +137,11 @@ function cbRecordSuccess() {
   cbOpenUntil = 0;
 }
 
-// --- DOM defaults ------------------------------------------------------------
-
 const DOM_DEFAULTS = {"version":"1.11","update_path_active":"true","disabled_wait_sync":false,"wpp_mensagens":{"timer":"60000","enable_two_send":false},"newModel":{"model":"taghtml","parm":"body.color-refresh"},"app":{"model":"querySelector","selector":["#app"]},"afiliadoMain":{"model":"querySelector","selector":["body > div"]},"paneSide":{"model":"Element","selector":"#pane-side"},"waPage":{"model":"querySelector","selector":["div.two"]},"two":{"model":"Element","selector":"two"},"menuLateral":{"model":"querySelector","selector":["div.two > div:nth-child(5)"]},"closeChat":{"model":"Element","selector":"x10l6tqk"},"chatListInput":{"model":"querySelector","selector":[".lexical-rich-text-input > div"]},"searchInput":{"model":"querySelector","selector":["[data-icon='search']"]},"downAba":{"model":"querySelector","selector":["header > div > div > div > div > span > div > div:nth-child(1)","header > div._ak0w"]},"chatListHeader":{"model":"querySelector","selector":["header > header > div > span > div"]},"searchCamp":{"model":"querySelector","selector":["#side div[data-testid='chat-list-search-container']"]},"chatName":{"model":"querySelector","selector":["#main header span[title]","#main header div[role=\"button\"] span","#main header h1","#main > header div.x78zum5 > div > div > div > div","#main header [data-testid=\"conversation-info-header-chat-title\"]","#main header"]},"menuVertical":{"model":"querySelector","selector":["#main ._amm9","#main .x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh"]},"menuHorizontal":{"model":"querySelector","selector":["#main > header > div.x1c4vz4f > div"]},"menuFooter":{"model":"querySelector","selector":["footer ._ak1m"]},"respostaRapida":{"model":"querySelector","selector":["footer > div"]},"footerTextArea":{"model":"querySelector","selector":["footer div[contenteditable=true]"]},"mainAudio":{"model":"querySelector","selector":["footer > div.copyable-area > div"]},"assChat":{"model":"querySelector","selector":["#main > div.x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh"]},"assInput":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div > div"]},"assBtn":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div > div > div:nth-child(6)"]},"assEmoji":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div._ak1m > div > button[tabindex='-1']"]},"assCitacao":{"model":"querySelector","selector":["footer div.x9f619.x1okw0bk > button > div > div > div:nth-child(1)"]},"listMensages":{"model":"querySelector","selector":["div[data-scrolltracepolicy='wa.web.conversation.messages']"]},"allMensages":{"model":"querySelectorAll","selector":["#main div > div[data-id]"]},"assistenteChat":{"model":"querySelector","selector":["#main > footer"]},"trasferidos":{"model":"querySelector","selector":["#side div[tabindex='-1']"]},"notification":{"model":"querySelector","selector":["#side > div:nth-child(2)"]},"quotedMsg":{"model":"querySelector","selector":["#main > footer > div.x10l6tqk.x13vifvy.x1o0tod.xh8yej3 > div > div > div > span > div"]},"listChats":{"model":"querySelector","selector":["#pane-side > div > div > div"]},"listChatsUsers":{"model":"querySelectorAll","selector":["#pane-side > div > div > div > div  div[aria-selected]","#pane-side > div > div > div div[role='button'] > div"]},"listChatAtendimento":{"model":"Element","selector":"div div[data-testid='cell-frame-secondary'] div[role='gridcell']"},"insertAtendente":{"model":"Element","selector":"x10l6tqk xh8yej3 x1g42fcv"},"reactFiberContainer":{"model":"listElement","list":{"reactFiber":"__reactFiber","reactFiberIndex":0,"path_user_id":".child.memoizedProps[1].props.id._serialized","path_key_message":".child.memoizedProps.children[0].key"}},"updateChatList":{"model":"querySelector","selector":["#side div._ai04 > button"]},"useTradutor":{"model":"listElement","list":{"main_audio_1":"div.x121pien.x9f619","main_audio_2":"div.x121pien.x9f619","camp_text_1":"row-translate","camp_text_2":"div > span","add_btn_tradutor":"div.x1c4vz4f.x1q0g3np.x6s0dn4","camp_audio_1":"div[role=\"slider\"] > canvas","camp_audio_2":"div.x1e4oeot.x1ui04y5[role=\"slider\"] > div"}},"chatList":{"model":"querySelector","selector":["#pane-side","#side","div.two > div:first-child","div.two > div._aigw"]},"observerFooter":{"model":"querySelector","selector":["#main > span:nth-child(8)","#main > :last-child"]},"observerFooterNewModel":{"model":"querySelector","selector":["#main > span:nth-child(7)","#main > span:nth-child(8)","#main > span:nth-child(9)"]},"whatsModal":{"model":"querySelector","selector":["#app > div > div > span:nth-child(3)"]},"menu_whats":{"model":"querySelector","selector":["#app > div > div.x78zum5.xdt5ytf.x5yr21d > div > header > div > div:nth-child(2) > div","header > div > div:nth-child(2) > div"]},"actionMonitor":{"model":"querySelector","selector":["#main header"]},"footerIconsLeft":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div > div"]},"side":{"model":"querySelector","selector":["#side"]},"chatFiltersContainer":{"model":"listElement","list":{"div_filters":"_akap _akan _arj9"}},"chatFilters":{"model":"querySelectorAll","selector":["#side > div:nth-of-type(3) button"]},"selector_theme":{"model":"querySelector","selector":[".os-win"]}};
 
 function loadDomDefaults() {
   return structuredClone(DOM_DEFAULTS);
 }
-
-// Proteção contra Prototype Pollution (Pilar 2)
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 function safeMerge(base, overrides) {
@@ -208,8 +183,6 @@ function buildConfigJson(overrides) {
     dom_selector : buildDomConfig(overrides),
   };
 }
-
-// Cache em RAM para /config.json (Pilar 3)
 async function refreshSettingsCache() {
   if (!db) return;
   try {
@@ -234,8 +207,6 @@ function sendCachedConfigJson(res) {
   });
   res.end(body);
 }
-
-// --- MongoDB + Circuit Breaker (Pilares 4 e 5) --------------------------------
 
 async function connectMongo() {
   if (db && mongoReady) return db;
@@ -374,8 +345,6 @@ async function syncCredentialsFromEnv() {
   }
 }
 
-// --- Segurança: senhas + sessões (Pilar 2) ------------------------------------
-
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
   const hash = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
@@ -396,29 +365,19 @@ function verifyPassword(password, stored) {
     return false;
   }
 }
-
-// Constant-time para evitar timing attacks (Pilar 2)
 async function verifyAdminCredentials(user, pass) {
   const u = String(user || '').trim();
-  const p = String(pass || '');
-  // Executa busca independente de u/p para uniformizar latência
-  const admin = await getSettingsAdmin().catch(() => null);
+  const p = String(pass || '');  const admin = await getSettingsAdmin().catch(() => null);
   const _dummy = crypto.pbkdf2Sync('dummy', 'salt', 120000, 64, 'sha512');
 
   if (!u || !p) return false;
-
-  // Comparação plaintext com .env (fallback rápido)
   if (u.toLowerCase() === config.adminUser.toLowerCase() && p === config.adminPass) {
     await syncCredentialsFromEnv();
     await refreshSettingsCache();
     return true;
-  }
-  // Comparação pbkdf2 do banco
-  if (admin && u.toLowerCase() === String(admin.username || '').toLowerCase()) {
+  }  if (admin && u.toLowerCase() === String(admin.username || '').toLowerCase()) {
     return verifyPassword(p, admin.password);
-  }
-  // Consumir tempo equivalente mesmo quando user não existe
-  void _dummy;
+  }  void _dummy;
   return false;
 }
 
@@ -496,8 +455,6 @@ async function destroySession(token) {
   try { await db.collection(COL.sessions).deleteOne({ token }); }
   catch (err) { slog(LOG_LEVELS.WARN, 'destroySession', { err: err.message }); }
 }
-
-// Cookie com nome customizado/aleatório (Anti-OSINT, Pilar 2)
 function setSessionCookie(res, token, maxAgeSec = 86400) {
   const secure = config.baseUrl.startsWith('https');
   const parts  = [
@@ -524,8 +481,6 @@ function parseCookies(req) {
   }
   return out;
 }
-// --- Sanitização NoSQL Injection (Pilar 2) ------------------------------------
-
 const NOSQL_OP_RE = /\$(?:gt|gte|lt|lte|ne|eq|in|nin|or|and|not|nor|exists|type|regex|where|expr|elemMatch|size|all|rename|set|unset|push|pull|addToSet|pop)\b/gi;
 
 function sanitizeString(s) {
@@ -560,8 +515,6 @@ function detectInjection(input) {
   return NOSQL_OP_RE.test(s);
 }
 
-// --- Licenças ----------------------------------------------------------------
-
 function normKey(raw) {
   return sanitizeString(String(raw || '')).trim().toLowerCase().slice(0, 48);
 }
@@ -577,9 +530,7 @@ function isKeyExpired(rec) {
 }
 
 function keyStatus(rec) {
-  if (!rec?.active) return 'blocked';
-  // Ativar no primeiro uso: pending até ser utilizada
-  if (rec.ativarNoPrimeiroUso && !rec.primeiroUsoAt) return 'pending';
+  if (!rec?.active) return 'blocked';  if (rec.ativarNoPrimeiroUso && !rec.primeiroUsoAt) return 'pending';
   if (isKeyExpired(rec)) return 'expired';
   return rec.premium ? 'active' : 'free';
 }
@@ -849,8 +800,6 @@ async function getRecentLogs(limit = 200) {
   }
 }
 
-// --- Webhook de alertas (Pilar 5) --------------------------------------------
-
 function dispatchWebhookAlert(event, data = {}) {
   const url = config.webhookUrl;
   if (!url) return;
@@ -880,11 +829,9 @@ function dispatchWebhookAlert(event, data = {}) {
   } catch {}
 }
 
-// --- Rate limiter (O(1) com Map, Pilar 4) ------------------------------------
-
 const RL         = { login: { max: 10, windowMs: 60000, blockMs: 300000 } };
 const rateMap    = new Map();
-const bruteCount = new Map(); // contador de brute force por IP
+const bruteCount = new Map();
 
 function checkRate(ip, action = 'login') {
   const cfg = RL[action] || RL.login;
@@ -906,16 +853,12 @@ function checkRate(ip, action = 'login') {
   rateMap.set(key, e);
   return e.count <= cfg.max;
 }
-
-// Limpeza periódica do rateMap
 setInterval(() => {
   const now = Date.now();
   for (const [k, e] of rateMap) {
     if (now > e.reset && now > (e.blockedUntil || 0)) rateMap.delete(k);
   }
 }, 300000).unref();
-
-// --- HTTP helpers + Security Headers (Pilar 2) --------------------------------
 
 function esc(s) {
   return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
@@ -926,16 +869,14 @@ function applySecurityHeaders(res) {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=()');
-  // Remover X-Powered-By (Anti-OSINT, Pilar 2)
-  res.removeHeader('X-Powered-By');
+  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=()');  res.removeHeader('X-Powered-By');
   const secure = config.baseUrl.startsWith('https');
   if (secure) {
     res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   }
   res.setHeader(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'",
+    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'"
   );
 }
 
@@ -986,8 +927,6 @@ function sendError(res, status, msgId) {
   if (res.headersSent) return;
   sendJson(res, { success: false, msg_id: msgId }, status);
 }
-
-// Erro 500 com hash de auditoria — nunca expõe stack trace (Pilar 4)
 function sendInternalError(res, err, context = '') {
   const errorId = crypto.randomBytes(8).toString('hex');
   slog(LOG_LEVELS.CRITICAL, `Internal error [${errorId}] ${context}`, { err: err?.message, stack: err?.stack });
@@ -1014,8 +953,6 @@ function corsHeaders(req, pathname) {
 function applyCors(req, res, pathname) {
   for (const [k, v] of Object.entries(corsHeaders(req, pathname))) res.setHeader(k, v);
 }
-
-// readBody com proteção contra Promises órfãs e payloads truncados (Pilar 4)
 async function readBody(req, max = 2 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -1039,14 +976,10 @@ async function readBody(req, max = 2 * 1024 * 1024) {
       chunks.push(c);
     });
     req.on('end', () => {
-      const raw = Buffer.concat(chunks).toString('utf8');
-      // Sanitizar nulos
-      done(null, raw.replace(/\u0000/g, ''));
+      const raw = Buffer.concat(chunks).toString('utf8');      done(null, raw.replace(/\u0000/g, ''));
     });
     req.on('error', (e) => done(e));
-    req.on('aborted', () => done(new Error('request_aborted')));
-    // Timeout de segurança
-    setTimeout(() => done(new Error('body_read_timeout')), 30000);
+    req.on('aborted', () => done(new Error('request_aborted')));    setTimeout(() => done(new Error('body_read_timeout')), 30000);
   });
 }
 
@@ -1066,8 +999,6 @@ async function readJson(req) {
 function requireAccessToken(req) {
   return req.headers['access-token'] === config.criptKey;
 }
-
-// Validação do X-Extension-ID (Pilar 3)
 function requireExtensionId(req) {
   const id = req.headers['x-extension-id'] || '';
   return id === config.chromeStoreId;
@@ -1081,8 +1012,6 @@ function parseBearer(req) {
 function wppUpdate() {
   return { success: true, version: '1.11', update: false, message: 'ok' };
 }
-
-// --- UI: CSS Cyberpunk Neon (Pilar 1) ----------------------------------------
 
 const PANEL_CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
@@ -1345,8 +1274,6 @@ textarea{resize:vertical;min-height:80px}
 const CANVAS_BG = `<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas>
 <script>(function(){var c=document.getElementById('_cvs'),ctx=c.getContext('2d');function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}resize();window.addEventListener('resize',resize);var pts=Array.from({length:55},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.35,vy:(Math.random()-.5)*.35,r:Math.random()*1.8+.4};});function draw(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(57,255,20,0.45)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<120){ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(57,255,20,'+(0.1*(1-d/120))+')';ctx.lineWidth=.6;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script>`;
 
-// --- Funções de renderização de UI (Pilar 1) ----------------------------------
-
 
 function statusBadgeHtml(st) {
   if (st === 'active')   return '<span class="badge badge-ok">PRO Ativo</span>';
@@ -1360,20 +1287,6 @@ function statusBadgeHtml(st) {
 
 
 
-// Renderiza o SPA principal do admin (Pilar 1)
-
-// Painel Mod SPA
-
-
-
-// --- Helpers de status de licença --------------------------------------------
-
-
-
-
-
-
-// --- Cache de chaves do painel ------------------------------------------------
 
 
 
@@ -1381,9 +1294,11 @@ function statusBadgeHtml(st) {
 
 
 
-// Regex do admin / mod (cached, O(1) por path — Pilar 4)
 
-// --- Painel cliente ----------------------------------------------------------
+
+
+
+
 
 const CLIENT_PANEL_RE = /^\/([a-z0-9]{16,32})\/(auth-painel|login|recovery|auth-plugin|redirect-plugin-register|register)\/?$/i;
 
@@ -1780,13 +1695,9 @@ async function handleClientPanel(req, res, pathname, url) {
   return false;
 }
 
-// --- Router de API WaSpeed (Pilar 3) -----------------------------------------
-
 async function handleWaSpeedApi(req, res, pathname, ip) {
   const chromeId = config.chromeStoreId;
   const settings = cachedSettings || {};
-
-  // Rotas públicas (sem access-token)
   if (pathname === `/api/urls/install/${chromeId}` || pathname.match(/^\/api\/urls\/install\//)) {
     await addLog('install', 'Redirect install', { ip });
     return sendJson(res, { success: true, url: settings.installUrl || config.installUrl });
@@ -1816,8 +1727,6 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     try { keyCount = await db.collection(COL.licenses).countDocuments(); } catch {}
     return sendJson(res, { success: true, server: 'waspeed', version: '4.0.0', keys: keyCount, storage: 'mongodb' });
   }
-
-  // A partir daqui: requer access-token
   if (pathname === '/api/portal/remove-phone' && req.method === 'POST') {
     const body = await readJson(req);
     const raw  = sanitizeString(String(body.key || '').trim());
@@ -1973,8 +1882,6 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
       newModel        : { model: 'taghtml', parm: 'body.color-refresh' },
     });
   }
-
-  // Endpoints de exportação com bloqueio premium server-side (Pilar 3)
   if ((pathname === '/api/XLSX/exporttab' || pathname === '/api/XLSX/exportFunil') && req.method === 'POST') {
     const body   = await readJson(req);
     const bearer = parseBearer(req) || body.bearer_token;
@@ -1982,9 +1889,7 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     if (!rec) return sendJson(res, { success: false, msg_id: 'invalid_token' }, 401);
     const st     = keyStatus(rec);
     if (st === 'blocked') return sendJson(res, { success: false, msg_id: 'user_blocked' });
-    if (st === 'expired') return sendJson(res, { success: false, msg_id: 'license_expired' });
-    // Truncamento server-side para usuários free (Pilar 3)
-    if (st !== 'active' && Array.isArray(body.contacts) && body.contacts.length > 5) {
+    if (st === 'expired') return sendJson(res, { success: false, msg_id: 'license_expired' });    if (st !== 'active' && Array.isArray(body.contacts) && body.contacts.length > 5) {
       slog(LOG_LEVELS.INFO, 'Truncamento free-tier aplicado', { code: rec.code, original: body.contacts.length });
       body.contacts = body.contacts.slice(0, 5);
     }
@@ -1994,8 +1899,6 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
   if (pathname === '/api/image/url-to-base64' && req.method === 'POST') {
     return sendJson(res, { success: false, msg_id: 'not_implemented' });
   }
-
-  // Endpoints de disparo em massa (validação de licença)
   if ((pathname === '/api/XLSX/envioEmMassa' || pathname === '/api/XLSX/gabarito') && req.method === 'POST') {
     const body   = await readJson(req);
     const bearer = parseBearer(req) || body.bearer_token;
@@ -2846,8 +2749,6 @@ async function handleAdmin(req, res, pathname, ip) {
 }
 
 
-// --- Router principal --------------------------------------------------------
-
 const _REQ_SHAPE = { pathname: '', ip: '', method: '' };
 
 async function handleRequest(req, res) {
@@ -2879,7 +2780,7 @@ async function handleRequest(req, res) {
     await new Promise((r) => setImmediate(r));
     const loopMs   = Date.now() - t0;
     if (mongoOk) {
-      try { keyCount = await db.collection(COL.licenses).countDocuments(); } catch { /**/ }
+      try { keyCount = await db.collection(COL.licenses).countDocuments(); } catch {  }
     }
     sendJson(res, {
       ok                : mongoOk,
@@ -2989,8 +2890,6 @@ async function handleRequest(req, res) {
   }
 }
 
-// --- Anti-sleep (Render Free Tier) -------------------------------------------
-
 function startAntiSleepCron() {
   const base = config.publicUrl || config.baseUrl;
   if (!base) { slog(LOG_LEVELS.WARN, 'PUBLIC_URL não definida — anti-sleep desativado'); return; }
@@ -3009,8 +2908,6 @@ function startAntiSleepCron() {
   }, ANTI_SLEEP_MS).unref();
 }
 
-// --- Shutdown gracioso -------------------------------------------------------
-
 async function shutdown(sig) {
   slog(LOG_LEVELS.INFO, `${sig} — encerrando WaSpeed`);
   mongoReady = false;
@@ -3023,8 +2920,6 @@ async function shutdown(sig) {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT',  () => shutdown('SIGINT'));
-
-// Proteção contra Unhandled Rejections (Pilar 4)
 process.on('unhandledRejection', (reason, promise) => {
   slog(LOG_LEVELS.CRITICAL, 'Unhandled Promise Rejection', { reason: String(reason) });
   dispatchWebhookAlert('unhandled_rejection', { reason: String(reason) });
@@ -3034,8 +2929,6 @@ process.on('uncaughtException', (err) => {
   dispatchWebhookAlert('uncaught_exception', { err: err.message });
   process.exit(1);
 });
-
-// --- Bootstrap ---------------------------------------------------------------
 
 async function bootstrap() {
   slog(LOG_LEVELS.INFO, 'WaSpeed Server v4.0 — iniciando bootstrap');
