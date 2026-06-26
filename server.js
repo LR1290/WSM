@@ -898,6 +898,7 @@ async function connectMongo() {
 async function ensureIndexes() {
   try {
     try { await dbWS.collection(COL.licenses).dropIndex('bearer_1'); } catch {}
+    try { await dbWS.collection(COL.licenses).dropIndex('bearer_token_1'); } catch {}
     await dbWS.collection(COL.licenses).createIndex({ code: 1 }, { unique: true });
     await dbWS.collection(COL.licenses).createIndex({ bearer_token: 1 }, { sparse: true });
     await dbWS.collection(COL.sessions).createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
@@ -1458,74 +1459,220 @@ const CLIENT_PANEL_RE = /^\/painel(\/|$)/;
 
 function renderClientAuthPainel(msg) {
   const bp = WS_BASE_PATH || '';
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WSPEED — Minha Conta</title><style>${PUB_CSS}
-input{width:100%;padding:9px 11px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.84rem;margin-top:5px}
-.lbl{font-size:.73rem;color:#5a8a6e;display:block;margin-bottom:2px}
-.err{color:#ff8899;font-size:.78rem;background:rgba(255,68,102,.09);border:1px solid rgba(255,68,102,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}
-.ok{color:#39ff14;font-size:.78rem;background:rgba(57,255,20,.09);border:1px solid rgba(57,255,20,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}
-.info-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #0e1f14;font-size:.83rem}
-.info-row:last-child{border-bottom:none}
-.info-label{color:#5a8a6e}
-.info-val{color:#e8fff3;font-weight:600}
-.badge{display:inline-block;padding:2px 10px;border-radius:20px;font-size:.72rem;font-weight:700;letter-spacing:.5px}
+  const yr = new Date().getFullYear();
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WSPEED — Minha Conta</title>
+<style>
+${PUB_CSS}
+.hero-nav{display:flex;align-items:center;justify-content:space-between;padding:13px 24px;background:#040d06;border-bottom:1px solid #183326;position:sticky;top:0;z-index:50}
+.nav-links{display:flex;gap:6px;flex-wrap:wrap}
+.nav-link{padding:5px 13px;border-radius:6px;border:1px solid #183326;background:transparent;color:#8ab89a;font-size:.77rem;cursor:pointer;text-decoration:none;transition:all .15s;display:inline-block}
+.nav-link:hover{border-color:#39ff14;color:#39ff14}
+.hero{text-align:center;padding:52px 16px 32px;max-width:540px;margin:0 auto}
+.hero h1{font-size:2.1rem;font-weight:900;color:#39ff14;margin-bottom:10px}
+.hero p{color:#5a8a6e;font-size:.92rem;line-height:1.6}
+.lookup-card{max-width:480px;margin:0 auto 36px;background:#070f0a;border:1px solid #183326;border-radius:14px;padding:26px}
+.lbl{font-size:.72rem;color:#5a8a6e;display:block;margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+.inp{width:100%;padding:10px 13px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.86rem;transition:border-color .15s;box-sizing:border-box}
+.inp:focus{outline:none;border-color:#39ff14}
+.msg-ok{color:#39ff14;font-size:.78rem;background:rgba(57,255,20,.09);border:1px solid rgba(57,255,20,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}
+.msg-err{color:#ff8899;font-size:.78rem;background:rgba(255,68,102,.09);border:1px solid rgba(255,68,102,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}
+.badge{display:inline-block;padding:3px 11px;border-radius:20px;font-size:.72rem;font-weight:700;letter-spacing:.5px}
 .badge-active{background:rgba(57,255,20,.15);color:#39ff14;border:1px solid rgba(57,255,20,.3)}
 .badge-expired{background:rgba(255,68,102,.15);color:#ff8899;border:1px solid rgba(255,68,102,.3)}
 .badge-blocked{background:rgba(255,150,0,.12);color:#ffaa33;border:1px solid rgba(255,150,0,.3)}
-.badge-free{background:rgba(90,138,110,.12);color:#5a8a6e;border:1px solid rgba(90,138,110,.3)}
-.feature-tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.68rem;background:rgba(57,255,20,.08);color:#39ff14;border:1px solid rgba(57,255,20,.2);margin:2px 3px 2px 0}
-.phone-item{font-size:.72rem;color:#5a8a6e;padding:2px 0}
+.badge-pending{background:rgba(255,204,0,.1);color:#ffcc00;border:1px solid rgba(255,204,0,.3)}
+.info-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid #0e1f14;font-size:.84rem}
+.info-row:last-child{border-bottom:none}
+.info-label{color:#5a8a6e}
+.info-val{color:#e8fff3;font-weight:600}
+.progress-bar{height:5px;border-radius:3px;background:#0d1f12;overflow:hidden;margin-top:5px}
+.progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#39ff14,#00ff88)}
+.device-table{width:100%;border-collapse:collapse;margin-top:6px}
+.device-table td{padding:7px 8px;border-bottom:1px solid #0a1a0e;font-size:.81rem;vertical-align:middle}
+.device-table td:first-child{color:#c8e8c8;font-family:monospace}
+.device-table td:last-child{text-align:right}
+.btn-remove{padding:3px 10px;border-radius:4px;border:1px solid rgba(255,68,102,.3);background:rgba(255,68,102,.07);color:#ff8899;font-size:.71rem;cursor:pointer;transition:all .12s}
+.btn-remove:hover{background:rgba(255,68,102,.18)}
+.section-wrap{max-width:640px;margin:0 auto 40px;padding:0 16px}
+.section-wrap h2{font-size:1.05rem;font-weight:800;color:#e8fff3;margin-bottom:16px;text-align:center}
+.faq-item{border:1px solid #183326;border-radius:8px;margin-bottom:7px;overflow:hidden}
+.faq-q{padding:13px 16px;cursor:pointer;font-size:.84rem;font-weight:600;color:#e8fff3;display:flex;justify-content:space-between;align-items:center;background:#070f0a;user-select:none}
+.faq-q:hover{background:#0a1a0e}
+.faq-a{display:none;padding:11px 16px;font-size:.81rem;color:#8ab89a;line-height:1.65;background:#040d06}
+.faq-arrow{transition:transform .18s;color:#5a8a6e;flex-shrink:0}
+.faq-item.faq-open .faq-arrow{transform:rotate(180deg)}
+.faq-item.faq-open .faq-a{display:block}
+.plans-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.plan-card{background:#070f0a;border:1px solid #183326;border-radius:12px;padding:20px 16px;text-align:center}
+.plan-card.hl{border-color:rgba(57,255,20,.35);background:#030d06}
+.plan-name{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#5a8a6e;margin-bottom:7px}
+.plan-price{font-size:1.45rem;font-weight:900;color:#39ff14;margin-bottom:3px}
+.plan-sub{font-size:.69rem;color:#5a8a6e;margin-bottom:12px}
+.plan-feat{font-size:.77rem;color:#8ab89a;line-height:1.85;list-style:none;padding:0;text-align:left}
+.plan-feat li::before{content:"✓  ";color:#39ff14}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:200;align-items:flex-start;justify-content:center;overflow-y:auto;padding:40px 16px}
+.modal-overlay.open{display:flex}
+.modal-box{background:#070f0a;border:1px solid #183326;border-radius:12px;padding:26px;max-width:520px;width:100%;position:relative;margin:auto}
+.modal-close{position:absolute;top:12px;right:14px;background:transparent;border:none;color:#5a8a6e;font-size:1.15rem;cursor:pointer;padding:4px 8px;border-radius:4px;line-height:1}
+.modal-close:hover{color:#e8fff3}
+.site-footer{text-align:center;padding:24px 16px;border-top:1px solid #0d1f12;font-size:.71rem;color:#2d5c3e;margin-top:auto}
+.site-footer a{color:#2d5c3e;text-decoration:underline}
+.site-footer a:hover{color:#5a8a6e}
 </style></head><body>
-${CANVAS_BG}<nav><a href="${bp||'/'}" class="nav-logo">WSPEED</a></nav>
-<div class="container" style="position:relative;z-index:1;max-width:500px">
-<div class="card">
-<h2 style="font-size:1.1rem;font-weight:800;color:#39ff14;margin-bottom:16px">Minha Conta — WSPEED</h2>
-${msg ? `<div class="${msg.startsWith('✅')?'ok':'err'}">${esc(msg)}</div>` : ''}
-<div id="portal-content">
-<form id="login-form">
-<div class="lbl">Chave de acesso</div>
-<input id="key-input" placeholder="ws-xxxxxxxx-xxxxxxxx-xxxxxxxx" autocomplete="off" spellcheck="false"><br><br>
-<button class="btn" type="submit" id="login-btn" style="width:100%">Consultar Licença</button>
-</form>
+${CANVAS_BG}
+<div style="position:relative;z-index:1;min-height:100vh;display:flex;flex-direction:column">
+
+<nav class="hero-nav">
+  <a href="${bp||'/'}" style="font-size:.92rem;font-weight:900;color:#39ff14;text-decoration:none;letter-spacing:.05em">⚡ WSPEED</a>
+  <div class="nav-links">
+    <a class="nav-link" href="#faq" onclick="event.preventDefault();scrollToId('ws-faq')">FAQ</a>
+    <a class="nav-link" href="#planos" onclick="event.preventDefault();scrollToId('ws-plans')">Planos</a>
+    <a class="nav-link" href="#" onclick="event.preventDefault();openWsModal('ws-privacy')">Privacidade</a>
+    <a class="nav-link" href="mailto:suporte@wspeed.com.br">Suporte</a>
+  </div>
+</nav>
+
+<div class="hero">
+  <h1>⚡ WSPEED</h1>
+  <p>Extensão profissional para WhatsApp Web.<br>Consulte e gerencie sua licença abaixo.</p>
 </div>
-</div></div>
+
+<div class="lookup-card">
+  ${msg ? `<div class="${msg.startsWith('✅') ? 'msg-ok' : 'msg-err'}">${esc(msg)}</div>` : ''}
+  <div id="portal-content">
+    <form id="ws-login-form">
+      <label class="lbl">Chave de acesso</label>
+      <input class="inp" id="ws-key-input" placeholder="ws-xxxxxxxx-xxxxxxxx-xxxxxxxx" autocomplete="off" spellcheck="false" style="margin-bottom:14px">
+      <button class="btn" type="submit" id="ws-login-btn" style="width:100%">Consultar Licença</button>
+    </form>
+  </div>
+</div>
+
+<div id="ws-faq" class="section-wrap">
+  <h2>Perguntas Frequentes</h2>
+  <div class="faq-item" onclick="toggleWsFaq(this)"><div class="faq-q">Como funciona a licença WSPEED? <span class="faq-arrow">▼</span></div><div class="faq-a">A licença é vinculada a uma chave única usada para autenticar a extensão no WhatsApp Web. Cada chave pode ser usada em até N dispositivos, conforme o plano contratado.</div></div>
+  <div class="faq-item" onclick="toggleWsFaq(this)"><div class="faq-q">Quantos dispositivos posso usar? <span class="faq-arrow">▼</span></div><div class="faq-a">Depende do plano: Individual (1 dispositivo), Padrão (3) e Team (5). Você pode visualizar e gerenciar seus dispositivos nesta página.</div></div>
+  <div class="faq-item" onclick="toggleWsFaq(this)"><div class="faq-q">Como remover um dispositivo vinculado? <span class="faq-arrow">▼</span></div><div class="faq-a">Consulte sua chave abaixo e clique em "Remover" ao lado do número desejado. O slot é liberado imediatamente para uso em outro dispositivo.</div></div>
+  <div class="faq-item" onclick="toggleWsFaq(this)"><div class="faq-q">Minha licença expirou, o que fazer? <span class="faq-arrow">▼</span></div><div class="faq-a">Entre em contato com o suporte para renovar. Após a renovação a chave volta a funcionar sem necessidade de reinstalar a extensão.</div></div>
+  <div class="faq-item" onclick="toggleWsFaq(this)"><div class="faq-q">Como instalar a extensão? <span class="faq-arrow">▼</span></div><div class="faq-a">Acesse a Chrome Web Store e pesquise por WSPEED, ou use o link de instalação fornecido após a compra. Após instalar, abra o WhatsApp Web e insira sua chave quando solicitado.</div></div>
+</div>
+
+<div id="ws-plans" class="section-wrap">
+  <h2>Planos</h2>
+  <div class="plans-grid">
+    <div class="plan-card"><div class="plan-name">Individual</div><div class="plan-price">R$ 29<span style="font-size:.82rem">/mês</span></div><div class="plan-sub">1 dispositivo</div><ul class="plan-feat"><li>1 slot de dispositivo</li><li>Todos os recursos</li><li>Suporte por e-mail</li></ul></div>
+    <div class="plan-card hl"><div class="plan-name" style="color:#39ff14">Padrão ★</div><div class="plan-price">R$ 59<span style="font-size:.82rem">/mês</span></div><div class="plan-sub">3 dispositivos</div><ul class="plan-feat"><li>3 slots de dispositivo</li><li>Todos os recursos</li><li>Suporte prioritário</li></ul></div>
+    <div class="plan-card"><div class="plan-name">Team</div><div class="plan-price">R$ 99<span style="font-size:.82rem">/mês</span></div><div class="plan-sub">5 dispositivos</div><ul class="plan-feat"><li>5 slots de dispositivo</li><li>Todos os recursos</li><li>Suporte premium</li></ul></div>
+  </div>
+</div>
+
+<footer class="site-footer">
+  © ${yr} WSPEED — Todos os direitos reservados &nbsp;·&nbsp;
+  <a href="#" onclick="event.preventDefault();openWsModal('ws-privacy')">Política de Privacidade</a> &nbsp;·&nbsp;
+  <a href="mailto:suporte@wspeed.com.br">suporte@wspeed.com.br</a>
+</footer>
+</div>
+
+<div id="ws-privacy" class="modal-overlay" onclick="if(event.target===this)closeWsModal('ws-privacy')">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeWsModal('ws-privacy')">✕</button>
+    <h2 style="font-size:.98rem;font-weight:800;color:#39ff14;margin-bottom:14px">Política de Privacidade — LGPD</h2>
+    <p style="font-size:.81rem;color:#8ab89a;line-height:1.7;margin-bottom:11px">A WSPEED coleta apenas os dados estritamente necessários para o funcionamento do serviço, incluindo o número de WhatsApp vinculado à licença e o endereço IP para fins de segurança e controle de dispositivos.</p>
+    <p style="font-size:.81rem;color:#8ab89a;line-height:1.7;margin-bottom:11px">Seus dados não são compartilhados com terceiros. Você pode solicitar a remoção dos seus dados a qualquer momento entrando em contato com nosso suporte.</p>
+    <p style="font-size:.81rem;color:#8ab89a;line-height:1.7;margin-bottom:11px">Em conformidade com a Lei Geral de Proteção de Dados (LGPD — Lei nº 13.709/2018), garantimos transparência, segurança e o direito de acesso e exclusão dos seus dados pessoais.</p>
+    <p style="font-size:.71rem;color:#5a8a6e">Contato: <a href="mailto:suporte@wspeed.com.br" style="color:#39ff14">suporte@wspeed.com.br</a></p>
+  </div>
+</div>
+
 <scr`+`ipt>
-var _pc=document.getElementById('portal-content');
+(function(){
 var _BP='${bp}';
-document.getElementById('login-form').addEventListener('submit',async function(e){
+var _wsKey='';
+
+function scrollToId(id){var el=document.getElementById(id);if(el)el.scrollIntoView({behavior:'smooth'});}
+function openWsModal(id){document.getElementById(id).classList.add('open');}
+function closeWsModal(id){document.getElementById(id).classList.remove('open');}
+window.scrollToId=scrollToId;window.openWsModal=openWsModal;window.closeWsModal=closeWsModal;
+
+function toggleWsFaq(item){var isOpen=item.classList.contains('faq-open');document.querySelectorAll('.faq-item.faq-open').forEach(function(i){i.classList.remove('faq-open');});if(!isOpen)item.classList.add('faq-open');}
+window.toggleWsFaq=toggleWsFaq;
+
+function wsEsc(s){var d=document.createElement('div');d.textContent=String(s||'');return d.innerHTML;}
+function maskPhone(p){var s=String(p||'');return s.length>4?s.slice(0,s.length-4).replace(/\d/g,'•')+s.slice(-4):s;}
+function fmtExpiry(iso){if(!iso)return'Sem expiração';var d=new Date(iso);var ms=d-Date.now();if(ms<0)return'Expirado';var days=Math.floor(ms/86400000);if(days>0)return days+' dia'+(days>1?'s':'')+' restante'+(days>1?'s':'');var hrs=Math.floor(ms/3600000);return hrs+' hora'+(hrs!==1?'s':'')+' restante'+(hrs!==1?'s':'');}
+
+function updateDevCount(delta){
+  var el=document.getElementById('ws-dev-used');
+  var fill=document.getElementById('ws-dev-fill');
+  if(!el)return;
+  var cur=Math.max(0,(parseInt(el.dataset.used)||0)+delta);
+  var max=parseInt(el.dataset.max)||0;
+  el.dataset.used=cur;el.textContent=cur;
+  if(fill&&max>0)fill.style.width=Math.min(100,(cur/max)*100)+'%';
+}
+
+window.wsRemoveDevice=function(phone,btn){
+  var row=btn.closest('tr');
+  btn.disabled=true;btn.textContent='...';
+  fetch(_BP+'/api/remove-device',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:_wsKey,phone:phone})})
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(j.ok){if(row)row.remove();updateDevCount(-1);}
+      else{btn.disabled=false;btn.textContent='Remover';alert(j.msg||'Erro ao remover');}
+    })
+    .catch(function(){btn.disabled=false;btn.textContent='Remover';});
+};
+
+function buildDashboard(j){
+  var statusBadge=j.status==='active'?'<span class="badge badge-active">ATIVO</span>':j.status==='expired'?'<span class="badge badge-expired">EXPIRADO</span>':j.status==='pending'?'<span class="badge badge-pending">PENDENTE</span>':'<span class="badge badge-blocked">BLOQUEADO</span>';
+  var maxU=j.maxUses>0?j.maxUses:(j.maxUses===-1?0:3);
+  var devUsed=j.phones||0;
+  var maxLabel=maxU?maxU:'∞';
+  var pct=maxU?Math.min(100,(devUsed/maxU)*100):0;
+  var phoneRows=(j.phoneList||[]).map(function(p){
+    var masked=maskPhone(p);
+    var sp=wsEsc(p).replace(/'/g,'&#39;');
+    return'<tr><td>📱 '+masked+'</td><td><button class="btn-remove" onclick="wsRemoveDevice(\''+sp+'\',this)">Remover</button></td></tr>';
+  }).join('');
+  if(!phoneRows)phoneRows='<tr><td colspan="2" style="color:#2a4a36;font-size:.79rem;padding:10px 0">Nenhum dispositivo vinculado</td></tr>';
+  var html='<div class="msg-ok">✅ Licença encontrada</div>';
+  html+='<div style="margin-top:4px">';
+  html+='<div class="info-row"><span class="info-label">Identificação</span><span class="info-val">'+wsEsc(j.label||_wsKey.slice(0,16)+'...')+'</span></div>';
+  html+='<div class="info-row"><span class="info-label">Status</span>'+statusBadge+'</div>';
+  html+='<div class="info-row"><span class="info-label">Validade</span><span class="info-val">'+wsEsc(fmtExpiry(j.expiresAt))+'</span></div>';
+  html+='<div class="info-row"><span class="info-label">Dispositivos</span><div style="text-align:right"><span class="info-val"><span id="ws-dev-used" data-used="'+devUsed+'" data-max="'+maxU+'">'+devUsed+'</span> / '+maxLabel+'</span>';
+  if(maxU)html+='<div class="progress-bar"><div class="progress-fill" id="ws-dev-fill" style="width:'+pct+'%"></div></div>';
+  html+='</div></div>';
+  html+='<div style="padding:10px 0"><span class="info-label">Celulares vinculados</span><table class="device-table"><tbody>'+phoneRows+'</tbody></table></div>';
+  html+='</div>';
+  html+='<button class="btn" onclick="wsReset()" style="width:100%;margin-top:16px;background:transparent;border:1px solid #183326;color:#8ab89a">Consultar outra chave</button>';
+  return html;
+}
+
+window.wsReset=function(){
+  _wsKey='';
+  document.getElementById('portal-content').innerHTML='<form id="ws-login-form"><label class="lbl">Chave de acesso</label><input class="inp" id="ws-key-input" placeholder="ws-xxxxxxxx-xxxxxxxx-xxxxxxxx" autocomplete="off" spellcheck="false" style="margin-bottom:14px"><button class="btn" type="submit" id="ws-login-btn" style="width:100%">Consultar Licença</button></form>';
+  document.getElementById('ws-login-form').addEventListener('submit',handleWsSubmit);
+};
+
+function handleWsSubmit(e){
   e.preventDefault();
-  var btn=document.getElementById('login-btn');
+  var btn=document.getElementById('ws-login-btn');
   btn.disabled=true;btn.textContent='Verificando...';
-  var key=(document.getElementById('key-input').value||'').trim();
+  var key=(document.getElementById('ws-key-input').value||'').trim();
   if(!key){btn.disabled=false;btn.textContent='Consultar Licença';return;}
-  try{
-    var r=await fetch(_BP+'/api/auth/validate-portal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key})});
-    var j=await r.json();
-    if(j.ok){
-      var exp=j.expiresAt?new Date(j.expiresAt).toLocaleDateString('pt-BR'):'Sem expiração';
-      var devMax=j.maxUses>0?j.maxUses:'Ilimitados';
-      var devUsed=j.phones;
-      var statusBadge=j.status==='active'?'<span class="badge badge-active">ATIVO</span>':j.status==='expired'?'<span class="badge badge-expired">EXPIRADO</span>':'<span class="badge badge-blocked">BLOQUEADO</span>';
-      var planBadge=j.plan==='paid'?'<span class="badge badge-active">PRO</span>':'<span class="badge badge-free">FREE</span>';
-      var featHtml=(j.features||[]).map(function(f){return'<span class="feature-tag">'+f+'</span>';}).join('');
-      var phonesHtml=(j.phoneList||[]).map(function(p){return'<div class="phone-item">📱 '+p+'</div>';}).join('')||'<div class="phone-item" style="color:#2a4a36">Nenhum dispositivo vinculado</div>';
-      _pc.innerHTML='<div class="ok">✅ Licença encontrada</div>'
-        +'<div style="margin-top:16px">'
-        +'<div class="info-row"><span class="info-label">Identificação</span><span class="info-val">'+esc(j.label||key.slice(0,16)+'...')+'</span></div>'
-        +'<div class="info-row"><span class="info-label">Status</span>'+statusBadge+'</div>'
-        +'<div class="info-row"><span class="info-label">Plano</span>'+planBadge+'</div>'
-        +'<div class="info-row"><span class="info-label">Validade</span><span class="info-val">'+exp+'</span></div>'
-        +'<div class="info-row"><span class="info-label">Consumo hoje</span><span class="info-val">'+(j.dailyUses||0)+' usos</span></div>'
-        +'<div class="info-row"><span class="info-label">Dispositivos</span><span class="info-val">'+devUsed+' / '+devMax+'</span></div>'
-        +(featHtml?'<div class="info-row" style="flex-direction:column;align-items:flex-start;gap:6px"><span class="info-label">Recursos ativos</span><div>'+featHtml+'</div></div>':'')
-        +'<div class="info-row" style="flex-direction:column;align-items:flex-start;gap:6px"><span class="info-label">Celulares vinculados</span><div>'+phonesHtml+'</div></div>'
-        +'</div>'
-        +'<button class="btn btn-ghost" onclick="location.reload()" style="margin-top:18px;width:100%">Consultar outra chave</button>';
-    }else{
-      _pc.innerHTML='<div class="err">❌ '+(j.msg||'Chave inválida ou não encontrada')+'</div><button class="btn btn-ghost" onclick="location.reload()" style="margin-top:12px">Tentar novamente</button>';
-    }
-  }catch(err){btn.disabled=false;btn.textContent='Consultar Licença';}
-});
-function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+  _wsKey=key;
+  fetch(_BP+'/api/auth/validate-portal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key})})
+    .then(function(r){return r.json();})
+    .then(function(j){
+      if(j.ok){document.getElementById('portal-content').innerHTML=buildDashboard(j);}
+      else{document.getElementById('portal-content').innerHTML='<div class="msg-err">❌ '+wsEsc(j.msg||'Chave inválida ou não encontrada')+'</div><button class="btn" onclick="wsReset()" style="width:100%;background:transparent;border:1px solid #183326;color:#8ab89a;margin-top:12px">Tentar novamente</button>';}
+    })
+    .catch(function(){btn.disabled=false;btn.textContent='Consultar Licença';});
+}
+
+document.getElementById('ws-login-form').addEventListener('submit',handleWsSubmit);
+})();
 </scr`+`ipt></body></html>`;
 }
 
@@ -1623,6 +1770,20 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
       dailyUses: rec.uses || 0,
       features:  (up && up.features) || [],
     });
+    return;
+  }
+
+  if (pathname === '/api/remove-device' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    const body = await readJson(req);
+    const code = normKey(sanitizeInput(String(body.key || ''), 60));
+    const ph   = sanitizeInput(String(body.phone || ''), 20);
+    if (!code || !ph) { sendJson(res, { ok: false, msg: 'Parâmetros inválidos' }, 400); return; }
+    const rec = await findKey(code);
+    if (!rec) { sendJson(res, { ok: false, msg: 'Chave não encontrada' }, 404); return; }
+    await dbWS.collection(COL.licenses).updateOne({ code: normKey(code) }, { $pull: { phones: ph } });
+    invalidateKeysCache();
+    sendJson(res, { ok: true });
     return;
   }
 
