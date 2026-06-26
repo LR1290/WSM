@@ -1426,13 +1426,14 @@ function pubShell(title, body) {
 }
 
 function renderPortal(chromeId) {
+  const bp = WS_BASE_PATH || '';
   return pubShell('WSPEED — Extensão WhatsApp', `
 <div class="card" style="text-align:center;padding:48px 28px">
 <h1 style="font-size:2rem;font-weight:900;color:#39ff14;margin-bottom:10px">WSPEED</h1>
 <p style="color:#5a8a6e;margin-bottom:24px">Extensão profissional para WhatsApp Web</p>
 <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
 ${chromeId ? `<a class="btn" href="https://chromewebstore.google.com/detail/${esc(chromeId)}" target="_blank" rel="noopener">Instalar extensão</a>` : ''}
-<a class="btn btn-ghost" href="/${esc(chromeId)}/auth-painel">Minha conta</a>
+<a class="btn btn-ghost" href="${bp}/painel">Minha conta</a>
 </div>
 </div>`);
 }
@@ -1441,7 +1442,7 @@ function clientShell(title, body) {
   return pubShell(title, body);
 }
 
-const CLIENT_PANEL_RE = WS_CHROME_ID ? new RegExp('^/' + WS_CHROME_ID.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(/|$)') : null;
+const CLIENT_PANEL_RE = /^\/painel(\/|$)/;
 
 function renderClientAuthPainel(msg) {
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WSPEED — Minha Conta</title><style>${PUB_CSS}input{width:100%;padding:9px 11px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.84rem;margin-top:5px}.lbl{font-size:.73rem;color:#5a8a6e;display:block;margin-bottom:2px}.err{color:#ff8899;font-size:.78rem;background:rgba(255,68,102,.09);border:1px solid rgba(255,68,102,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}.ok{color:#39ff14;font-size:.78rem;background:rgba(57,255,20,.09);border:1px solid rgba(57,255,20,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}</style></head><body>
@@ -1479,7 +1480,6 @@ document.getElementById('login-form').addEventListener('submit',async function(e
 }
 
 async function handleClientPanel(req, res, pathname) {
-  if (!CLIENT_PANEL_RE) return false;
   if (!CLIENT_PANEL_RE.test(pathname)) return false;
   const sub = pathname.replace(CLIENT_PANEL_RE, '/') || '/';
   if (sub === '/auth-painel' || sub === '/auth-painel/') {
@@ -2611,7 +2611,8 @@ async function handleRequest(req, res) {
       : (WS_BASE_PATH ? null : pathname);
 
     if (_wsSubPath !== null) {
-      if (_wsSubPath === '/' || _wsSubPath === '') { sendHtml(res, renderPortal(WS_CHROME_ID)); return; }
+      if (_wsSubPath === '/' || _wsSubPath === '') { sendHtml(res, renderClientAuthPainel('')); return; }
+      if (_wsSubPath === '/instalar' && method==='GET') { sendHtml(res, renderPortal(WS_CHROME_ID)); return; }
       if (_wsSubPath === '/faq' && method==='GET') { sendHtml(res, pubShell('FAQ — WSPEED','<div class="card"><h2 style="color:#39ff14;margin-bottom:16px">FAQ</h2><p style="color:#5a8a6e">Perguntas frequentes em breve.</p></div>')); return; }
       if (_wsSubPath === '/planos' && method==='GET') { sendHtml(res, pubShell('Planos — WSPEED','<div class="card"><h2 style="color:#39ff14;margin-bottom:16px">Planos</h2><p style="color:#5a8a6e">Consulte nossos planos.</p></div>')); return; }
       if (_wsSubPath === '/privacidade' && method==='GET') { sendHtml(res, pubShell('Privacidade — WSPEED','<div class="card"><h2 style="color:#39ff14;margin-bottom:16px">Política de Privacidade</h2><p style="color:#5a8a6e">Seus dados são protegidos.</p></div>')); return; }
