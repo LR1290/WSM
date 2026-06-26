@@ -1,2654 +1,1912 @@
 'use strict';
-const http    = require('http');
-const https   = require('https');
-const crypto  = require('crypto');
-const zlib    = require('zlib');
-const { URL } = require('url');
+const http       = require('http');
+const https      = require('https');
+const crypto     = require('crypto');
+const zlib       = require('zlib');
 const { MongoClient } = require('mongodb');
 
-const SESSION_TTL_MS       = 24 * 60 * 60 * 1000;
-const ANTI_SLEEP_MS        = 5  * 60 * 1000;
+const PORT         = parseInt(process.env.PORT || '3000', 10);
+const MONGODB_URI  = process.env.MONGODB_URI || '';
+const APP_SECRET   = process.env.APP_SECRET || '';
+const WEBHOOK_URL  = process.env.WEBHOOK_URL || '';
 
-const COL = {
-  settings : 'settings',
-  licenses : 'licenses',
-  logs     : 'logs',
-  sessions : 'sessions',
+const ZVM_ADMIN_USER  = process.env.ZVM_ADMIN_USER  || process.env.ADMIN_USER || 'admin';
+const ZVM_ADMIN_PASS  = process.env.ZVM_ADMIN_PASS  || process.env.ADMIN_PASS || '';
+const ZVM_TOTP_SECRET = process.env.ZVM_TOTP_SECRET || process.env.TOTP_SECRET || '';
+const ZVM_ANALYTICS_PASS = process.env.ZVM_ANALYTICS_PASS || process.env.ANALYTICS_PASS || '';
+const ZVM_PAYT_SECRET    = process.env.ZVM_PAYT_SECRET    || process.env.PAYT_SECRET    || '';
+const LOG_RETENTION_DAYS = parseInt(process.env.LOG_RETENTION_DAYS || '30', 10);
+const LOG_MAX            = parseInt(process.env.LOG_MAX || '1000', 10);
+const MAX_USES           = parseInt(process.env.MAX_USES || '3', 10);
+
+const WS_DB_NAME       = process.env.WS_DB_NAME    || 'waspeed';
+const WS_CHROME_ID     = process.env.CHROME_STORE_ID || '';
+const WS_BASE_URL      = process.env.BASE_URL       || `http://localhost:${PORT}`;
+const WS_PUBLIC_URL    = process.env.PUBLIC_URL     || WS_BASE_URL;
+const WS_ACCESS_TOKEN  = process.env.ACCESS_TOKEN   || '';
+const WS_WL_ID         = process.env.WL_ID          || 'waspeed';
+const WS_COOKIE_NAME   = process.env.COOKIE_NAME    || 'ws_sess';
+const ANTI_SLEEP_MS    = 5 * 60 * 1000;
+const SESSION_TTL_MS   = 8 * 60 * 60 * 1000;
+
+const COL = { settings: 'settings', licenses: 'licenses', logs: 'logs', sessions: 'sessions' };
+const LOG_LEVELS = { DEBUG: 'DEBUG', INFO: 'INFO', WARN: 'WARN', ERROR: 'ERROR', CRITICAL: 'CRITICAL' };
+
+const FULL_PERMISSIONS = ['create_flow','massive_dispatching','schedule_item','send_flow','send_funnel','send_trigger','zapsaver'];
+const USAGE_ITEM_TYPES = ['audio','document','media','message','flow','funnel','bulkMessages','scheduleItem'];
+const FREE_AUTH_KEY    = 'free';
+const FREE_PLAN_ID     = 'ZV_FREE';
+const FREE_OWNER_ID    = '6a6d6a86-6bc6-4359-ad49-05639915e368';
+const AVAILABLE_MODULES = ['zapSaver','massiveDispatching','scheduler','funnels','flows','crm'];
+const DEFAULT_MODULES   = { zapSaver: true, massiveDispatching: true, scheduler: true, funnels: true, flows: true, crm: true };
+
+const USAGE_LIMITS = {
+  free:    { audio:5, document:5, media:5, message:200, flow:3, funnel:3, bulkMessages:1, scheduleItem:10 },
+  pro:     { audio:9999, document:9999, media:9999, message:9999, flow:9999, funnel:9999, bulkMessages:9999, scheduleItem:9999 },
 };
 
-const LOG_LEVELS = { INFO: 'INFO', WARN: 'WARN', SECURITY: 'SECURITY', CRITICAL: 'CRITICAL' };
-const _logBuffer = [];
-const LOG_BUFFER_MAX = 500;
-
-function slog(level, msg, meta = {}) {
-  const entry = {
-    ts   : new Date().toISOString(),
-    level,
-    msg,
-    ...( Object.keys(meta).length ? { meta } : {} ),
-  };
-  const line = JSON.stringify(entry);
-  if (level === LOG_LEVELS.CRITICAL || level === LOG_LEVELS.SECURITY) {
-    console.error(line);
-  } else if (level === LOG_LEVELS.WARN) {
-    console.warn(line);
-  } else {
-    console.log(line);
-  }
-  _logBuffer.push(entry);
-  if (_logBuffer.length > LOG_BUFFER_MAX) _logBuffer.shift();
+function deriveSlug(seed) {
+  if (!APP_SECRET) return null;
+  return crypto.createHmac('sha256', APP_SECRET).update(seed).digest('hex').slice(0, 14);
 }
+const _slugAdmin     = deriveSlug('admin-panel');
+const _slugMod       = deriveSlug('mod-panel');
+const _slugAnalytics = deriveSlug('analytics-panel');
+const R_ZVM_ADMIN    = _slugAdmin     ? '/' + _slugAdmin     : '/zvm-admin';
+const R_ZVM_MOD      = _slugMod       ? '/' + _slugMod       : '/zvm-mod';
+const R_ANALYTICS    = _slugAnalytics ? '/' + _slugAnalytics : '/analytics';
+const R_EXT          = '/extension';
 
-function envStr(key, fallback = '') {
-  return String(process.env[key] ?? fallback).trim().replace(/^["']|["']$/g, '');
-}
+const _wsAdminSlug = deriveSlug('ws-admin-panel');
+const _wsModSlug   = deriveSlug('ws-mod-panel');
+const R_WS_ADMIN   = _wsAdminSlug ? '/' + _wsAdminSlug : '/admin';
+const R_WS_MOD     = _wsModSlug   ? '/' + _wsModSlug   : '/mod';
 
-function dbNameFromMongoUri(uri) {
-  const m = String(uri || '').match(/mongodb(?:\+srv)?:\/\/[^/]+\/([^/?]+)/);
-  return m?.[1] || 'waspeed';
-}
-
-(function validateEnv() {
-  const missing = [];
-  if (!envStr('MONGODB_URI'))         missing.push('MONGODB_URI');
-  if (!envStr('BASE_URL') && !envStr('PUBLIC_URL') && !envStr('RENDER_EXTERNAL_URL'))
-    missing.push('BASE_URL / PUBLIC_URL / RENDER_EXTERNAL_URL');
-
-  if (missing.length) {
-    slog(LOG_LEVELS.CRITICAL, 'Variáveis de ambiente obrigatórias ausentes', { missing });
-    process.exit(1);
+const MODS = (function() {
+  const out = [];
+  for (let i = 1; i <= 10; i++) {
+    const u = process.env[`MOD${i}_USER`], p = process.env[`MOD${i}_PASS`], t = process.env[`MOD${i}_TOTP`], n = process.env[`MOD${i}_NAME`];
+    if (u && p) out.push({ user: u, pass: p, totp: t || '', name: n || u });
   }
-
-  const uri = envStr('MONGODB_URI');
-  if (/xxxxx|USUARIO|SENHA|<password>|YOUR_CLUSTER/i.test(uri)) {
-    slog(LOG_LEVELS.CRITICAL, 'MONGODB_URI contém placeholders do template. Forneça a URI real do Atlas.');
-    process.exit(1);
-  }
-
-  if (!envStr('JWT_SECRET') && !envStr('ACCESS_TOKEN')) {
-    slog(LOG_LEVELS.WARN, 'JWT_SECRET / ACCESS_TOKEN não definido — usando fallback inseguro');
-  }
+  const u0 = process.env.MOD_USER, p0 = process.env.MOD_PASS;
+  if (u0 && p0 && !out.length) out.push({ user: u0, pass: p0, totp: process.env.MOD_TOTP || '', name: process.env.MOD_NAME || u0 });
+  return out;
 })();
 
-const config = {
-  port             : Number(process.env.PORT) || 3000,
-  baseUrl          : (envStr('BASE_URL') || envStr('PUBLIC_URL') || envStr('RENDER_EXTERNAL_URL')).replace(/\/$/, ''),
-  publicUrl        : (envStr('PUBLIC_URL') || envStr('BASE_URL') || envStr('RENDER_EXTERNAL_URL')).replace(/\/$/, ''),
-  mongoUri         : envStr('MONGODB_URI'),
-  dbName           : envStr('MONGODB_DB') || dbNameFromMongoUri(envStr('MONGODB_URI')),
-  criptKey         : envStr('ACCESS_TOKEN', envStr('JWT_SECRET', 'ffce211a-7b07-4d91-ba5d-c40bb4034a83')),
-  chromeStoreId    : envStr('CHROME_STORE_ID', 'balkfdkhbcjjmhndnblgmlmcabnapogp'),
-  wlId             : envStr('WL_ID', 'watidy'),
-  adminUser        : envStr('ADMIN_USER', 'admin'),
-  adminPass        : envStr('ADMIN_PASS', 'waspeed-admin-change-me'),
-  adminPath        : envStr('ADMIN_PATH', 'admin-waspeed'),
-  modPath          : envStr('MOD_PATH', 'mod-waspeed'),
-  installUrl       : envStr('INSTALL_URL', 'https://web.whatsapp.com'),
-  notesRedirect    : envStr('NOTES_REDIRECT').toLowerCase() === 'true',
-  logMax           : Math.min(Number(process.env.LOG_MAX) || 500, 2000),
-  expiryWarnHours  : Math.max(1, Math.min(720, Number(process.env.EXPIRY_WARN_HOURS) || 48)),
-  webhookUrl       : envStr('SECURITY_WEBHOOK_URL'),
-  cookieName       : 'ws_' + crypto.createHash('sha256')
-                       .update(envStr('ACCESS_TOKEN', 'waspeed-static'))
-                       .digest('hex').slice(0, 8),
-};
+let _mongoClient = null;
+let dbZVM        = null;
+let dbWS         = null;
+let mongoReady   = false;
+let server       = null;
 
-if (config.adminPass === 'waspeed-admin-change-me') {
-  slog(LOG_LEVELS.WARN, 'ADMIN_PASS ainda é o default — altere no Render');
-}
-
-slog(LOG_LEVELS.INFO, 'WaSpeed config carregado', {
-  port   : config.port,
-  db     : config.dbName,
-  url    : config.baseUrl,
-  cookie : config.cookieName,
-});
-
-const R_ADMIN = `/${config.adminPath}`;
-const R_MOD   = `/${config.modPath}`;
-
-let mongoClient     = null;
-let db              = null;
-let mongoReady      = false;
-let cachedSettings  = null;
-let configJsonBody  = null;
-let server          = null;
-let cbFailCount     = 0;
-const CB_THRESHOLD  = 5;
-const CB_RESET_MS   = 60000;
-let cbOpenUntil     = 0;
-
-function cbIsOpen() {
-  if (Date.now() < cbOpenUntil) return true;
-  return false;
-}
-
-function cbRecordFailure() {
+let cbFailCount  = 0;
+let cbOpenUntil  = 0;
+const CB_THRESHOLD = 5;
+const CB_RESET_MS  = 60000;
+function cbIsOpen() { return Date.now() < cbOpenUntil; }
+function cbRecord(ok) {
+  if (ok) { cbFailCount = 0; return; }
   cbFailCount++;
-  if (cbFailCount >= CB_THRESHOLD) {
-    cbOpenUntil = Date.now() + CB_RESET_MS;
-    slog(LOG_LEVELS.CRITICAL, 'Circuit breaker ABERTO — MongoDB indisponível', { until: new Date(cbOpenUntil).toISOString() });
-    dispatchWebhookAlert('circuit_breaker_open', { cbOpenUntil });
+  if (cbFailCount >= CB_THRESHOLD) { cbOpenUntil = Date.now() + CB_RESET_MS; cbFailCount = 0; }
+}
+
+async function getMongoDb() {
+  if (!_mongoClient) {
+    _mongoClient = new MongoClient(MONGODB_URI, { maxPoolSize: 10, serverSelectionTimeoutMS: 5000 });
+    await _mongoClient.connect();
+    dbZVM = _mongoClient.db('zapvoice');
+    dbWS  = _mongoClient.db(WS_DB_NAME);
   }
+  return dbZVM;
 }
 
-function cbRecordSuccess() {
-  cbFailCount = 0;
-  cbOpenUntil = 0;
-}
+let keys = {};
+let logs = [];
 
-const DOM_DEFAULTS = {"version":"1.11","update_path_active":"true","disabled_wait_sync":false,"wpp_mensagens":{"timer":"60000","enable_two_send":false},"newModel":{"model":"taghtml","parm":"body.color-refresh"},"app":{"model":"querySelector","selector":["#app"]},"afiliadoMain":{"model":"querySelector","selector":["body > div"]},"paneSide":{"model":"Element","selector":"#pane-side"},"waPage":{"model":"querySelector","selector":["div.two"]},"two":{"model":"Element","selector":"two"},"menuLateral":{"model":"querySelector","selector":["div.two > div:nth-child(5)"]},"closeChat":{"model":"Element","selector":"x10l6tqk"},"chatListInput":{"model":"querySelector","selector":[".lexical-rich-text-input > div"]},"searchInput":{"model":"querySelector","selector":["[data-icon='search']"]},"downAba":{"model":"querySelector","selector":["header > div > div > div > div > span > div > div:nth-child(1)","header > div._ak0w"]},"chatListHeader":{"model":"querySelector","selector":["header > header > div > span > div"]},"searchCamp":{"model":"querySelector","selector":["#side div[data-testid='chat-list-search-container']"]},"chatName":{"model":"querySelector","selector":["#main header span[title]","#main header div[role=\"button\"] span","#main header h1","#main > header div.x78zum5 > div > div > div > div","#main header [data-testid=\"conversation-info-header-chat-title\"]","#main header"]},"menuVertical":{"model":"querySelector","selector":["#main ._amm9","#main .x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh"]},"menuHorizontal":{"model":"querySelector","selector":["#main > header > div.x1c4vz4f > div"]},"menuFooter":{"model":"querySelector","selector":["footer ._ak1m"]},"respostaRapida":{"model":"querySelector","selector":["footer > div"]},"footerTextArea":{"model":"querySelector","selector":["footer div[contenteditable=true]"]},"mainAudio":{"model":"querySelector","selector":["footer > div.copyable-area > div"]},"assChat":{"model":"querySelector","selector":["#main > div.x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh"]},"assInput":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div > div"]},"assBtn":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div > div > div:nth-child(6)"]},"assEmoji":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div._ak1m > div > button[tabindex='-1']"]},"assCitacao":{"model":"querySelector","selector":["footer div.x9f619.x1okw0bk > button > div > div > div:nth-child(1)"]},"listMensages":{"model":"querySelector","selector":["div[data-scrolltracepolicy='wa.web.conversation.messages']"]},"allMensages":{"model":"querySelectorAll","selector":["#main div > div[data-id]"]},"assistenteChat":{"model":"querySelector","selector":["#main > footer"]},"trasferidos":{"model":"querySelector","selector":["#side div[tabindex='-1']"]},"notification":{"model":"querySelector","selector":["#side > div:nth-child(2)"]},"quotedMsg":{"model":"querySelector","selector":["#main > footer > div.x10l6tqk.x13vifvy.x1o0tod.xh8yej3 > div > div > div > span > div"]},"listChats":{"model":"querySelector","selector":["#pane-side > div > div > div"]},"listChatsUsers":{"model":"querySelectorAll","selector":["#pane-side > div > div > div > div  div[aria-selected]","#pane-side > div > div > div div[role='button'] > div"]},"listChatAtendimento":{"model":"Element","selector":"div div[data-testid='cell-frame-secondary'] div[role='gridcell']"},"insertAtendente":{"model":"Element","selector":"x10l6tqk xh8yej3 x1g42fcv"},"reactFiberContainer":{"model":"listElement","list":{"reactFiber":"__reactFiber","reactFiberIndex":0,"path_user_id":".child.memoizedProps[1].props.id._serialized","path_key_message":".child.memoizedProps.children[0].key"}},"updateChatList":{"model":"querySelector","selector":["#side div._ai04 > button"]},"useTradutor":{"model":"listElement","list":{"main_audio_1":"div.x121pien.x9f619","main_audio_2":"div.x121pien.x9f619","camp_text_1":"row-translate","camp_text_2":"div > span","add_btn_tradutor":"div.x1c4vz4f.x1q0g3np.x6s0dn4","camp_audio_1":"div[role=\"slider\"] > canvas","camp_audio_2":"div.x1e4oeot.x1ui04y5[role=\"slider\"] > div"}},"chatList":{"model":"querySelector","selector":["#pane-side","#side","div.two > div:first-child","div.two > div._aigw"]},"observerFooter":{"model":"querySelector","selector":["#main > span:nth-child(8)","#main > :last-child"]},"observerFooterNewModel":{"model":"querySelector","selector":["#main > span:nth-child(7)","#main > span:nth-child(8)","#main > span:nth-child(9)"]},"whatsModal":{"model":"querySelector","selector":["#app > div > div > span:nth-child(3)"]},"menu_whats":{"model":"querySelector","selector":["#app > div > div.x78zum5.xdt5ytf.x5yr21d > div > header > div > div:nth-child(2) > div","header > div > div:nth-child(2) > div"]},"actionMonitor":{"model":"querySelector","selector":["#main header"]},"footerIconsLeft":{"model":"querySelector","selector":["#main > footer > div.copyable-area > div > span > div > div > div"]},"side":{"model":"querySelector","selector":["#side"]},"chatFiltersContainer":{"model":"listElement","list":{"div_filters":"_akap _akan _arj9"}},"chatFilters":{"model":"querySelectorAll","selector":["#side > div:nth-of-type(3) button"]},"selector_theme":{"model":"querySelector","selector":[".os-win"]}};
-
-function loadDomDefaults() {
-  return structuredClone(DOM_DEFAULTS);
-}
-const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
-
-function safeMerge(base, overrides) {
-  const result = { ...base };
-  for (const [k, v] of Object.entries(overrides)) {
-    if (DANGEROUS_KEYS.has(k)) {
-      slog(LOG_LEVELS.SECURITY, 'Prototype pollution bloqueado', { key: k });
-      continue;
-    }
-    result[k] = v;
-  }
-  return result;
-}
-
-function buildDomConfig(overrides = {}) {
-  const base  = loadDomDefaults();
-  const clean = { ...overrides };
-  delete clean.remote_code;
-  delete clean.dom_selector;
-  const merged = safeMerge(base, clean);
-  merged.update_path        = `${config.baseUrl}/api/urls/update`;
-  merged.update_path_new    = `${config.baseUrl}/api/services/update`;
-  merged.update_path_active = String(merged.update_path_active ?? 'true');
-  if (merged.version === 1 || merged.selectors) {
-    delete merged.selectors;
-    merged.version = base.version || '1.11';
-  }
-  return merged;
-}
-
-function buildConfigJson(overrides) {
-  if (overrides === undefined) overrides = {};
-  return {
-    remote_code  : {
-      version  : '1.0.41',
-      ambiente : 'production',
-      url      : `${config.baseUrl}/api/code`,
-    },
-    dom_selector : buildDomConfig(overrides),
-  };
-}
-async function refreshSettingsCache() {
-  if (!db) return;
-  try {
-    cachedSettings = await db.collection(COL.settings).findOne({ _id: 'global' });
-    configJsonBody = JSON.stringify(buildConfigJson(cachedSettings?.domConfig || {}));
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'refreshSettingsCache falhou', { err: err.message });
-  }
-}
-
-function sendCachedConfigJson(res) {
-  if (res.headersSent) return;
-  if (!configJsonBody) {
-    sendJson(res, buildConfigJson());
-    return;
-  }
-  const body = configJsonBody;
-  res.writeHead(200, {
-    'Content-Type'  : 'application/json; charset=utf-8',
-    'Cache-Control' : 'public, max-age=300',
-    'Content-Length': Buffer.byteLength(body),
-  });
-  res.end(body);
-}
-
-async function connectMongo() {
-  if (db && mongoReady) return db;
-  try {
-    mongoClient = new MongoClient(config.mongoUri, {
-      maxPoolSize             : 20,
-      minPoolSize             : 2,
-      serverSelectionTimeoutMS: 15000,
-      connectTimeoutMS        : 15000,
-    });
-    await mongoClient.connect();
-    db = mongoClient.db(config.dbName);
-    mongoClient.on('serverHeartbeatFailed', () => {
-      slog(LOG_LEVELS.WARN, 'MongoDB heartbeat falhou');
-      cbRecordFailure();
-      if (cbIsOpen()) { mongoReady = false; }
-    });
-    mongoClient.on('serverHeartbeatSucceeded', () => {
-      cbRecordSuccess();
-      if (!mongoReady) {
-        mongoReady = true;
-        slog(LOG_LEVELS.INFO, 'MongoDB reconectado — circuit breaker fechado');
-      }
-    });
-    await ensureIndexes();
-    cbRecordSuccess();
-    return db;
-  } catch (err) {
-    db          = null;
-    mongoReady  = false;
-    cbRecordFailure();
-    slog(LOG_LEVELS.CRITICAL, 'connectMongo falhou', { err: err.message });
-    throw err;
-  }
-}
-
-async function ensureIndexes() {
-  if (!db) return;
-  const specs = [
-    { col: COL.licenses, key: { bearer: 1 },        opts: { unique: true } },
-    { col: COL.licenses, key: { code: 1 },           opts: { unique: true } },
-    { col: COL.licenses, key: { licenseToken: 1 },   opts: { sparse: true } },
-    { col: COL.sessions, key: { token: 1 },          opts: { unique: true } },
-    { col: COL.sessions, key: { expiresAt: 1 },      opts: { expireAfterSeconds: 0 } },
-    { col: COL.logs,     key: { at: -1 },            opts: {} },
-  ];
-  for (const { col, key, opts } of specs) {
+const _saveDebounce = new Map();
+function saveKey(code) {
+  if (_saveDebounce.has(code)) clearTimeout(_saveDebounce.get(code));
+  const tid = setTimeout(async () => {
+    _saveDebounce.delete(code);
+    if (keys[code] === undefined) return;
     try {
-      await db.collection(col).createIndex(key, opts);
-    } catch (err) {
-      if (err.code === 85 || err.code === 86) continue;
-      slog(LOG_LEVELS.WARN, `ensureIndexes ${col}`, { err: err.message });
-    }
-  }
+      const db = await getMongoDb();
+      await db.collection('store').updateOne(
+        { _id: 'keys' },
+        { $set: { [`data.${code}`]: keys[code], updatedAt: new Date() } },
+        { upsert: true }
+      );
+    } catch (e) { console.error('[ZVM-DB] saveKey:', e.message); }
+  }, 2000);
+  _saveDebounce.set(code, tid);
+  invalidateZvmKeysCache();
+  return Promise.resolve();
 }
 
-async function initSeed() {
-  if (!db) throw new Error('MongoDB não conectado');
+async function deleteKeyFromDb(code) {
   try {
-    const settingsCol = db.collection(COL.settings);
-    let doc = await settingsCol.findOne({ _id: 'global' });
-    if (!doc) {
-      doc = {
-        _id         : 'global',
-        installUrl  : config.installUrl,
-        notesHtml   : '<h1>WaSpeed</h1><p>Servidor MongoDB ativo.</p>',
-        webhooks    : [],
-        meet        : {},
-        urls        : {},
-        migration   : {},
-        domConfig   : buildDomConfig(),
-        nextUserId  : 1000,
-        mods        : buildModsFromEnv(),
-        admin       : {
-          username : config.adminUser,
-          password : hashPassword(config.adminPass),
-        },
-      };
-      await settingsCol.insertOne(doc);
-      slog(LOG_LEVELS.INFO, 'Settings inicializados');
-    }
-    await syncCredentialsFromEnv();
-    const count = await db.collection(COL.licenses).countDocuments();
-    if (count === 0) {
-      await createKey({
-        code    : 'ws-demo-premium',
-        label   : 'Demo Premium',
-        premium : true,
-        note    : 'Chave demo — troque em produção',
-      });
-      slog(LOG_LEVELS.INFO, 'Chave demo criada: ws-demo-premium');
-    }
-    await refreshSettingsCache();
-  } catch (err) {
-    slog(LOG_LEVELS.CRITICAL, 'initSeed falhou', { err: err.message });
-    throw err;
-  }
+    const db = await getMongoDb();
+    await db.collection('store').updateOne(
+      { _id: 'keys' },
+      { $unset: { [`data.${code}`]: '' }, $set: { updatedAt: new Date() } }
+    );
+  } catch (e) { console.error('[ZVM-DB] deleteKey:', e.message); }
 }
 
-function buildModsFromEnv() {
-  const prefixes = ['MOD', 'MOD2', 'MOD3', 'MOD4', 'MOD5', 'MOD6'];
-  const mods = [];
-  for (const prefix of prefixes) {
-    const user = envStr(`${prefix}_USER`);
-    const pass = envStr(`${prefix}_PASS`);
-    if (!user || !pass) continue;
-    mods.push({
-      id       : crypto.createHash('sha256').update(`waspeed-mod:${user}`).digest('hex').slice(0, 16),
-      username : user,
-      password : hashPassword(pass),
-      name     : user,
-      active   : true,
-    });
-  }
-  if (mods.length) return mods;
-  return [{
-    id       : crypto.randomBytes(8).toString('hex'),
-    username : 'mod',
-    password : hashPassword('mod123'),
-    name     : 'Moderador',
-    active   : true,
-  }];
-}
-
-async function syncCredentialsFromEnv() {
-  if (!db) return;
+async function saveLogs() {
   try {
-    const patch = {
-      admin : { username: config.adminUser, password: hashPassword(config.adminPass) },
-      mods  : buildModsFromEnv(),
+    const db = await getMongoDb();
+    const recent = logs.slice(-LOG_MAX);
+    await db.collection('store').updateOne(
+      { _id: 'logs' },
+      { $set: { data: recent, updatedAt: new Date() } },
+      { upsert: true }
+    );
+  } catch (e) { console.error('[ZVM-DB] saveLogs:', e.message); }
+}
+
+async function loadDb() {
+  try {
+    const db = await getMongoDb();
+    const [kDoc, lDoc] = await Promise.all([
+      db.collection('store').findOne({ _id: 'keys' }),
+      db.collection('store').findOne({ _id: 'logs' }),
+    ]);
+    return {
+      keys: (kDoc && kDoc.data) ? kDoc.data : {},
+      logs: (lDoc && lDoc.data) ? lDoc.data : [],
     };
-    await db.collection(COL.settings).updateOne({ _id: 'global' }, { $set: patch }, { upsert: true });
-    slog(LOG_LEVELS.INFO, 'Admin/mods sincronizados do .env');
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'syncCredentialsFromEnv', { err: err.message });
+  } catch (e) { console.error('[ZVM-DB] loadDb:', e.message); return { keys: {}, logs: [] }; }
+}
+
+async function savePayment(rec) {
+  try {
+    const db = await getMongoDb();
+    await db.collection('payments').updateOne({ txId: rec.txId }, { $set: rec }, { upsert: true });
+  } catch (e) { console.warn('[ZVM-DB] savePayment:', e.message); }
+}
+
+async function getPayments({ limit = 500 } = {}) {
+  try {
+    const db = await getMongoDb();
+    return await db.collection('payments').find({ approved: true }).sort({ paidAt: -1 }).limit(limit).toArray();
+  } catch { return []; }
+}
+
+function base32Decode(s) {
+  const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const clean = (s || '').toUpperCase().replace(/=+$/, '');
+  let bits = 0, val = 0;
+  const out = [];
+  for (const ch of clean) {
+    const idx = alpha.indexOf(ch);
+    if (idx < 0) continue;
+    val = (val << 5) | idx;
+    bits += 5;
+    if (bits >= 8) { bits -= 8; out.push((val >> bits) & 0xff); }
   }
+  return Buffer.from(out);
+}
+
+function generateTOTP(secret, timeStep) {
+  const key   = base32Decode(secret);
+  const t     = timeStep !== undefined ? timeStep : Math.floor(Date.now() / 30000);
+  const msg   = Buffer.alloc(8);
+  msg.writeUInt32BE(Math.floor(t / 0x100000000), 0);
+  msg.writeUInt32BE(t >>> 0, 4);
+  const hmac  = crypto.createHmac('sha1', key).update(msg).digest();
+  const off   = hmac[hmac.length - 1] & 0xf;
+  const code  = ((hmac[off] & 0x7f) << 24) | (hmac[off+1] << 16) | (hmac[off+2] << 8) | hmac[off+3];
+  return String(code % 1000000).padStart(6, '0');
+}
+
+function verifyTOTP(secret, token) {
+  if (!secret || !token) return false;
+  const t = Math.floor(Date.now() / 30000);
+  for (let d = -2; d <= 2; d++) {
+    if (generateTOTP(secret, t + d) === String(token).trim()) return true;
+  }
+  return false;
 }
 
 function hashPassword(password) {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
-  return `pbkdf2:${salt}:${hash}`;
+  const salt = crypto.randomBytes(32).toString('hex');
+  const dk   = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
+  return `pbkdf2:sha512:120000:${salt}:${dk}`;
 }
 
 function verifyPassword(password, stored) {
-  if (!stored?.startsWith('pbkdf2:')) return false;
-  const rest = stored.slice(7);
-  const sep  = rest.indexOf(':');
-  if (sep < 0) return false;
-  const salt  = rest.slice(0, sep);
-  const hash  = rest.slice(sep + 1);
-  const check = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
+  if (!stored || !stored.startsWith('pbkdf2:')) return false;
+  const [, , iter, salt, dk] = stored.split(':');
+  const expected = crypto.pbkdf2Sync(password, salt, parseInt(iter, 10), 64, 'sha512').toString('hex');
   try {
-    return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(check, 'hex'));
-  } catch {
-    return false;
-  }
+    return crypto.timingSafeEqual(Buffer.from(dk, 'hex'), Buffer.from(expected, 'hex'));
+  } catch { return false; }
 }
-async function verifyAdminCredentials(user, pass) {
-  const u = String(user || '').trim();
-  const p = String(pass || '');  const admin = await getSettingsAdmin().catch(() => null);
-  const _dummy = crypto.pbkdf2Sync('dummy', 'salt', 120000, 64, 'sha512');
 
-  if (!u || !p) return false;
-  if (u.toLowerCase() === config.adminUser.toLowerCase() && p === config.adminPass) {
-    await syncCredentialsFromEnv();
-    await refreshSettingsCache();
-    return true;
-  }  if (admin && u.toLowerCase() === String(admin.username || '').toLowerCase()) {
-    return verifyPassword(p, admin.password);
-  }  void _dummy;
+const NOSQL_OP_RE = /(\$where|\$regex|\$ne|\$gt|\$lt|\$gte|\$lte|\$in|\$nin|\$or|\$and|\$not|\$nor|\$exists|\$type|\$expr|\$jsonSchema|\$mod|\$text|\$search|\$elemMatch|\$size|\$all|\$slice|\$addFields|\$project|\$group|\$lookup|\$unwind|\$replaceRoot|\$redact|\$bucket|\$facet)/i;
+
+function sanitizeString(v) {
+  if (typeof v !== 'string') return '';
+  return v.replace(NOSQL_OP_RE, '').trim();
+}
+
+function sanitizeInput(v, maxLen) {
+  if (typeof v !== 'string') return '';
+  let s = v.slice(0, maxLen || 500);
+  if (NOSQL_OP_RE.test(s)) return '';
+  return s.trim();
+}
+
+function sanitizeObject(obj, depth) {
+  if (!obj || typeof obj !== 'object' || depth > 5) return obj;
+  for (const k of Object.keys(obj)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') { delete obj[k]; continue; }
+    if (typeof obj[k] === 'string') {
+      obj[k] = obj[k].replace(NOSQL_OP_RE, '');
+    } else if (typeof obj[k] === 'object' && obj[k] !== null) {
+      sanitizeObject(obj[k], (depth || 0) + 1);
+    }
+  }
+  return obj;
+}
+
+function detectInjection(v) {
+  if (typeof v !== 'string') return false;
+  return NOSQL_OP_RE.test(v);
+}
+
+function sanitizeKeyRecord(k) {
+  if (!k || typeof k !== 'object') return;
+  for (const bad of ['__proto__', 'constructor', 'prototype']) delete k[bad];
+  if (k.label && typeof k.label === 'string') k.label = sanitizeString(k.label).slice(0, 60);
+  if (!Array.isArray(k.phones)) k.phones = [];
+  if (typeof k.uses    !== 'number') k.uses    = 0;
+  if (typeof k.active  !== 'boolean') k.active = true;
+}
+
+const _rlMap = new Map();
+const RL_CONFIG = {
+  login:        { max: 5,  windowMs: 60000,  blockMs: 600000 },
+  api:          { max: 30, windowMs: 60000,  blockMs: 120000 },
+  ext_key:      { max: 20, windowMs: 60000,  blockMs: 120000 },
+  check_status: { max: 60, windowMs: 60000,  blockMs: 60000  },
+};
+
+function checkRateLimit(ip, type) {
+  const cfg = RL_CONFIG[type] || RL_CONFIG.api;
+  const key = ip + ':' + type;
+  const now = Date.now();
+  let r = _rlMap.get(key);
+  if (!r) { r = { count: 0, windowStart: now, blockedUntil: 0 }; _rlMap.set(key, r); }
+  if (r.blockedUntil && now < r.blockedUntil) return false;
+  if (now - r.windowStart > cfg.windowMs) { r.count = 0; r.windowStart = now; }
+  r.count++;
+  if (r.count > cfg.max) { r.blockedUntil = now + cfg.blockMs; return false; }
+  return true;
+}
+
+function getRateLimitWait(ip, type) {
+  const key = ip + ':' + type;
+  const r   = _rlMap.get(key);
+  if (!r || !r.blockedUntil) return 1;
+  return Math.ceil((r.blockedUntil - Date.now()) / 60000);
+}
+
+function checkRate(ip, action) {
+  return checkRateLimit(ip, action || 'login');
+}
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, r] of _rlMap) {
+    if (now - r.windowStart > 3600000 && (!r.blockedUntil || now > r.blockedUntil)) _rlMap.delete(k);
+  }
+}, 300000);
+
+const ZVM_SESSIONS       = {};
+const ZVM_MOD_SESSIONS   = {};
+const ZVM_AN_SESSIONS    = {};
+
+function generateToken() { return crypto.randomBytes(32).toString('hex'); }
+function generateCode()  { const r = () => crypto.randomBytes(3).toString('hex').slice(0,5); return `zv-${r()}-${r()}-${r()}`; }
+
+function isAdminSession(req) {
+  const m = (req.headers.cookie || '').match(/zv_admin=([a-f0-9]+)/);
+  if (!m) return false;
+  const s = ZVM_SESSIONS[m[1]];
+  return s && new Date(s.expiresAt) > new Date();
+}
+function isModSession(req) {
+  const m = (req.headers.cookie || '').match(/zv_mod=([a-f0-9]+)/);
+  if (!m) return false;
+  const s = ZVM_MOD_SESSIONS[m[1]];
+  return s && new Date(s.expiresAt) > new Date();
+}
+function isAnalyticsSession(req) {
+  const m = (req.headers.cookie || '').match(/zv_an=([a-f0-9]+)/);
+  if (!m) return false;
+  const s = ZVM_AN_SESSIONS[m[1]];
+  return s && new Date(s.expiresAt) > new Date();
+}
+function clearAnalyticsCookie(res) {
+  res.setHeader('Set-Cookie', 'zv_an=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
+}
+
+function isKeyExpiredZvm(k) {
+  if (!k.expiresAt) return false;
+  return new Date(k.expiresAt) < new Date();
+}
+
+function hoursUntilExpiry(k) {
+  if (!k.expiresAt) return null;
+  const ms = new Date(k.expiresAt) - Date.now();
+  return ms > 0 ? Math.floor(ms / 3600000) : 0;
+}
+
+function daysUntilExpiry(k) {
+  if (!k.expiresAt) return null;
+  const ms = new Date(k.expiresAt) - Date.now();
+  return ms > 0 ? Math.floor(ms / 86400000) : 0;
+}
+
+function getKeyExpiryMeta(k) {
+  if (!k.expiresAt) return { expired: false, expiringSoon: false, hoursLeft: null, daysLeft: null };
+  const ms = new Date(k.expiresAt) - Date.now();
+  const expired = ms <= 0;
+  return {
+    expired,
+    expiringSoon: !expired && ms < 72 * 3600000,
+    hoursLeft:    expired ? 0 : Math.floor(ms / 3600000),
+    daysLeft:     expired ? 0 : Math.floor(ms / 86400000),
+  };
+}
+
+function getKeyDisplayStatus(k) {
+  if (!k.active) return 'bloqueado';
+  if (isKeyExpiredZvm(k)) return 'expirada';
+  if (k.expireDuration && !k.expiresAt) return 'pendente';
+  return 'ativo';
+}
+
+function parseKeyExpiryFromBody(body, opts) {
+  const days  = parseInt(body.expireDays    || body.days  || 0);
+  const hours = parseInt(body.expireHours   || body.hours || 0);
+  const mins  = (opts && opts.allowMinutes) ? parseInt(body.expireMinutes || body.mins || 0) : 0;
+  const ms    = ((days * 1440) + (hours * 60) + mins) * 60000;
+  if (!ms) return { expiresAt: null, expireDuration: null };
+  if (body.ativarNoPrimeiroUso || body.firstUse) return { expiresAt: null, expireDuration: ms };
+  return { expiresAt: new Date(Date.now() + ms).toISOString(), expireDuration: ms };
+}
+
+async function ensureKeyLoaded(code) {
+  if (keys[code] !== undefined) return true;
+  try {
+    const db  = await getMongoDb();
+    const doc = await db.collection('store').findOne({ _id: 'keys' });
+    if (doc && doc.data && doc.data[code]) {
+      keys[code] = doc.data[code];
+      sanitizeKeyRecord(keys[code]);
+      return true;
+    }
+  } catch {}
   return false;
 }
 
-async function getSettingsAdmin() {
-  if (!db) return cachedSettings?.admin || null;
-  try {
-    const doc = await db.collection(COL.settings).findOne({ _id: 'global' }, { projection: { admin: 1 } });
-    return doc?.admin || null;
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'getSettingsAdmin', { err: err.message });
-    return cachedSettings?.admin || null;
-  }
+async function adminGetKey(code) {
+  if (keys[code]) return keys[code];
+  if (await ensureKeyLoaded(code)) return keys[code];
+  return null;
 }
 
-async function verifyModCredentials(user, pass) {
-  const u = String(user || '').trim();
-  const p = String(pass || '');
-  if (!u || !p) return null;
+function resolvePhoneToRemove(phones, { phoneIdx, phoneTxt }) {
+  if (phoneTxt) return phones.find(p => p === phoneTxt) || null;
+  if (phoneIdx >= 0 && phoneIdx < phones.length) return phones[phoneIdx];
+  return null;
+}
 
-  for (const prefix of ['MOD', 'MOD2', 'MOD3', 'MOD4', 'MOD5', 'MOD6']) {
-    const mu = envStr(`${prefix}_USER`);
-    const mp = envStr(`${prefix}_PASS`);
-    if (mu && mp && u.toLowerCase() === mu.toLowerCase() && p === mp) {
-      await syncCredentialsFromEnv();
-      await refreshSettingsCache();
-      return {
-        name  : mu,
-        modId : crypto.createHash('sha256').update(`waspeed-mod:${mu}`).digest('hex').slice(0, 16),
-      };
+function removePhoneFromKey(k, phone) {
+  k.phones = (k.phones || []).filter(p => p !== phone);
+  if (k.lastPhone === phone) k.lastPhone = k.phones[k.phones.length - 1] || null;
+}
+
+function clearAllPhonesFromKey(k) {
+  k.phones   = [];
+  k.lastPhone = null;
+  k.uses      = 0;
+}
+
+function isFreeAuthKey(k) { return !k || k === FREE_AUTH_KEY; }
+function isFreePlanId(pid) { return pid === FREE_PLAN_ID; }
+function isPaidPlan(pid)   { return pid && pid !== FREE_PLAN_ID; }
+
+function normalizeProUsage(usage) {
+  const out = {};
+  for (const t of USAGE_ITEM_TYPES) out[t] = { used: 0, limit: 9999, blocked: false, ...(usage && usage[t] ? usage[t] : {}) };
+  return out;
+}
+
+function unlimitedUsagePayload() {
+  const out = {};
+  for (const t of USAGE_ITEM_TYPES) out[t] = { used: 0, limit: 9999, blocked: false };
+  return out;
+}
+
+function usageTodayKey() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function ensureKeyUsage(code, k) {
+  if (!k.usage) k.usage = {};
+  const today = usageTodayKey();
+  if (!k.usage[today]) k.usage[today] = {};
+  for (const t of USAGE_ITEM_TYPES) {
+    if (!k.usage[today][t]) k.usage[today][t] = { used: 0 };
+  }
+  return k.usage[today];
+}
+
+async function ensureFreeUsage(ip) {
+  try {
+    const db  = await getMongoDb();
+    const today = usageTodayKey();
+    const rec   = await db.collection('free_usage').findOneAndUpdate(
+      { _id: ip + ':' + today },
+      { $setOnInsert: { _id: ip + ':' + today, date: today, ip } },
+      { upsert: true, returnDocument: 'after' }
+    );
+    const doc = rec.value || rec;
+    const usage = {};
+    const lim   = USAGE_LIMITS.free;
+    for (const t of USAGE_ITEM_TYPES) {
+      const used = (doc && doc[t]) ? doc[t] : 0;
+      usage[t] = { used, limit: lim[t], blocked: used >= lim[t] };
     }
+    return usage;
+  } catch { return unlimitedUsagePayload(); }
+}
+
+function buildUsagePayload(todayUsage, k) {
+  const isPro = k && k.active && !isKeyExpiredZvm(k);
+  const lim   = isPro ? USAGE_LIMITS.pro : USAGE_LIMITS.free;
+  const out   = {};
+  for (const t of USAGE_ITEM_TYPES) {
+    const used = todayUsage && todayUsage[t] ? todayUsage[t].used : 0;
+    out[t] = { used, limit: lim[t], blocked: used >= lim[t] };
+  }
+  return out;
+}
+
+async function incrementUsageRow(code, k, itemType, qty) {
+  const day = usageTodayKey();
+  if (!k.usage) k.usage = {};
+  if (!k.usage[day]) k.usage[day] = {};
+  if (!k.usage[day][itemType]) k.usage[day][itemType] = { used: 0 };
+  k.usage[day][itemType].used += (qty || 1);
+  saveKey(code);
+}
+
+function resolveUsageKey(code, k) {
+  return isFreeAuthKey(code) ? null : code;
+}
+
+async function findKeyCodeByPhone(phone) {
+  for (const [code, k] of Object.entries(keys)) {
+    if ((k.phones || []).includes(phone)) return code;
   }
   try {
-    const doc = await db.collection(COL.settings).findOne({ _id: 'global' }, { projection: { mods: 1 } });
-    const mod = (doc?.mods || []).find(
-      (m) => m.active !== false && u.toLowerCase() === String(m.username || '').toLowerCase(),
-    );
-    if (mod && verifyPassword(p, mod.password)) {
-      return { name: mod.name || mod.username, modId: mod.id };
+    const db  = await getMongoDb();
+    const doc = await db.collection('store').findOne({ _id: 'keys' });
+    if (doc && doc.data) {
+      for (const [code, k] of Object.entries(doc.data)) {
+        if ((k.phones || []).includes(phone)) { keys[code] = k; return code; }
+      }
     }
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'verifyModCredentials', { err: err.message });
+  } catch {}
+  return null;
+}
+
+async function findKeyCodeByManager(manager) {
+  for (const [code, k] of Object.entries(keys)) {
+    if (k.manager === manager) return code;
   }
   return null;
 }
 
-async function createSession(role, meta = {}) {
-  if (!db) return null;
-  const token     = crypto.randomBytes(32).toString('hex');
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
-  try {
-    await db.collection(COL.sessions).insertOne({
-      token, role, ...meta, createdAt: new Date(), expiresAt,
-    });
-    return { token, expiresAt };
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'createSession', { err: err.message });
-    return null;
-  }
-}
-
-async function validateSession(token) {
-  if (!token || !db) return null;
-  try {
-    return await db.collection(COL.sessions).findOne({
-      token, expiresAt: { $gt: new Date() },
-    });
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'validateSession', { err: err.message });
-    return null;
-  }
-}
-
-async function destroySession(token) {
-  if (!token || !db) return;
-  try { await db.collection(COL.sessions).deleteOne({ token }); }
-  catch (err) { slog(LOG_LEVELS.WARN, 'destroySession', { err: err.message }); }
-}
-function setSessionCookie(res, token, maxAgeSec = 86400) {
-  const secure = config.baseUrl.startsWith('https');
-  const parts  = [
-    `${config.cookieName}=${token}`,
-    'Path=/', 'HttpOnly', 'SameSite=Strict',
-    `Max-Age=${maxAgeSec}`,
-  ];
-  if (secure) parts.push('Secure');
-  res.setHeader('Set-Cookie', parts.join('; '));
-}
-
-function clearSessionCookie(res) {
-  const secure = config.baseUrl.startsWith('https');
-  const parts  = [`${config.cookieName}=`, 'Path=/', 'HttpOnly', 'SameSite=Strict', 'Max-Age=0'];
-  if (secure) parts.push('Secure');
-  res.setHeader('Set-Cookie', parts.join('; '));
-}
-
-function parseCookies(req) {
-  const out = {};
-  for (const part of (req.headers.cookie || '').split(';')) {
-    const [k, ...v] = part.trim().split('=');
-    if (k) out[k.trim()] = decodeURIComponent(v.join('='));
-  }
-  return out;
-}
-const NOSQL_OP_RE = /\$(?:gt|gte|lt|lte|ne|eq|in|nin|or|and|not|nor|exists|type|regex|where|expr|elemMatch|size|all|rename|set|unset|push|pull|addToSet|pop)\b/gi;
-
-function sanitizeString(s) {
-  if (typeof s !== 'string') return s;
-  const clean = s.replace(/\u0000/g, '').replace(NOSQL_OP_RE, '');
-  return clean;
-}
-
-function sanitizeObject(obj, depth) {
-  if (depth === undefined) depth = 0;
-  if (depth > 10 || obj === null || typeof obj !== 'object') return obj;
-  const out = Array.isArray(obj) ? [] : Object.create(null);
-  const keys = Object.keys(obj);
-  for (let i = 0; i < keys.length; i++) {
-    const k = keys[i];
-    if (DANGEROUS_KEYS.has(k)) continue;
-    const ks = sanitizeString(String(k));
-    const v  = obj[k];
-    if (typeof v === 'string') {
-      out[ks] = sanitizeString(v);
-    } else if (typeof v === 'object' && v !== null) {
-      out[ks] = sanitizeObject(v, depth + 1);
-    } else {
-      out[ks] = v;
-    }
-  }
-  return out;
-}
-
-function detectInjection(input) {
-  const s = typeof input === 'string' ? input : JSON.stringify(input);
-  return NOSQL_OP_RE.test(s);
-}
-
-function normKey(raw) {
-  return sanitizeString(String(raw || '')).trim().toLowerCase().slice(0, 48);
-}
-
-function generateKeyCode() {
-  const p = () => crypto.randomBytes(3).toString('hex');
-  return `ws-${p()}-${p()}-${p()}`.slice(0, 24);
-}
-
-function isKeyExpired(rec) {
-  if (!rec?.expiresAt) return false;
-  return new Date(rec.expiresAt).getTime() < Date.now();
-}
-
-function keyStatus(rec) {
-  if (!rec?.active) return 'blocked';  if (rec.ativarNoPrimeiroUso && !rec.primeiroUsoAt) return 'pending';
-  if (isKeyExpired(rec)) return 'expired';
-  return rec.premium ? 'active' : 'free';
-}
-
-async function findKey(code) {
-  const k = normKey(code);
-  if (!k || !db) return null;
-  if (detectInjection(k)) {
-    slog(LOG_LEVELS.SECURITY, 'NoSQL injection detectado em findKey', { input: String(code).slice(0, 80) });
-    dispatchWebhookAlert('nosql_injection', { fn: 'findKey', input: String(code).slice(0, 80) });
-    return null;
-  }
-  try {
-    return await db.collection(COL.licenses).findOne({ code: k });
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'findKey', { err: err.message });
-    return null;
-  }
-}
-
-async function findKeyByBearer(bearer) {
-  const b = sanitizeString(String(bearer || '').trim());
-  if (!b || !db) return null;
-  if (detectInjection(b)) {
-    slog(LOG_LEVELS.SECURITY, 'NoSQL injection detectado em findKeyByBearer', { input: b.slice(0, 80) });
-    dispatchWebhookAlert('nosql_injection', { fn: 'findKeyByBearer', input: b.slice(0, 80) });
-    return null;
-  }
-  try {
-    return await db.collection(COL.licenses).findOne({
-      $or: [{ bearer: b }, { code: normKey(b) }, { access_token_plugin: b }, { bearer_token: b }],
-    });
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'findKeyByBearer', { err: err.message });
-    return null;
-  }
-}
-
-async function listLicenses(filter = {}) {
-  if (!db) return [];
-  try {
-    return await db.collection(COL.licenses).find(sanitizeObject(filter)).sort({ createdAt: -1 }).toArray();
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'listLicenses', { err: err.message });
-    return [];
-  }
-}
-
-async function createKey(input = {}, modName = null) {
-  if (!db) throw new Error('MongoDB indisponível');
-  const code     = normKey(input.code) || generateKeyCode();
-  const existing = await findKey(code);
-  if (existing) throw new Error('Chave já existe');
-
-  let userId;
-  try {
-    const upd = await db.collection(COL.settings).findOneAndUpdate(
-      { _id: 'global' },
-      { $inc: { nextUserId: 1 } },
-      { returnDocument: 'after' },
-    );
-    userId = upd?.nextUserId ? upd.nextUserId - 1 : 1000;
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'createKey nextUserId', { err: err.message });
-    throw err;
-  }
-
-  const rec = {
-    code,
-    bearer              : code,
-    user_id             : userId,
-    label               : input.label || 'Cliente',
-    email               : input.email || '',
-    active              : input.active !== false,
-    premium             : input.premium !== false,
-    expiresAt           : input.expiresAt || null,
-    expireDays          : input.expireDays || 0,
-    maxUses             : input.maxUses ?? -1,
-    phones              : Array.isArray(input.phones) ? input.phones : [],
-    uses                : 0,
-    note                : input.note || '',
-    modName             : modName || input.modName || null,
-    bearer_token        : code,
-    access_token_plugin : code,
-    createdAt           : new Date().toISOString(),
-    lastUsed            : null,
-    lastIp              : null,
-    lastPhone           : null,
-    ativarNoPrimeiroUso : input.ativarNoPrimeiroUso === true,
-    primeiroUsoAt       : null,
-  };
-  if (input.expiresAt) {
-    rec.expiresAt = input.expiresAt;
-  } else if (input.expireDays > 0) {
-    rec.expiresAt = new Date(Date.now() + input.expireDays * 86400000).toISOString();
-  }
-
-  try {
-    await db.collection(COL.licenses).insertOne(rec);
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'createKey insert', { err: err.message });
-    throw err;
-  }
-  await addLog('key_create', `Chave ${code} criada`, { code, modName });
-  return rec;
-}
-
-async function updateLicense(code, patch) {
-  if (!db) return false;
-  try {
-    await db.collection(COL.licenses).updateOne({ code: normKey(code) }, { $set: sanitizeObject(patch) });
-      return true;
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'updateLicense', { err: err.message });
-    return false;
-  }
-}
-
-async function deleteLicense(code) {
-  if (!db) return false;
-  try {
-    await db.collection(COL.licenses).deleteOne({ code: normKey(code) });
-      return true;
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'deleteLicense', { err: err.message });
-    return false;
-  }
-}
-
-async function getOrCreateFreeKey(extensionId, ip) {
-  const seed = String(extensionId || ip || 'anonymous');
-  const code = normKey(`ws-free-${crypto.createHash('sha256').update(seed).digest('hex').slice(0, 16)}`);
-  const existing = await findKey(code);
-  if (existing) return { code, rec: existing };
-  const rec = await createKey({
-    code,
-    label     : 'Usuario Gratuito',
-    premium   : false,
-    note      : 'Registro free automático',
-    expireDays: 0,
-  });
-  return { code, rec };
-}
-
-const EMPTY_AUTH_GOOGLE = {
-  user_id: '', name: '', picture: '', email_auth: '', access_token: '',
-  expires_in: NaN, id_token: '', refresh_token: '', scope: '', token_type: '', updated_at: NaN,
-};
-
-function formatDateYMD(value) {
-  const dt = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(dt.getTime())) return formatDateYMD(new Date());
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-}
-
-function buildUserPremium(code, rec) {
-  if (keyStatus(rec) !== 'active') return null;
-  let dataLiberacao;
-  if (rec.expiresAt) {
-    const exp = new Date(rec.expiresAt);
-    if (!Number.isNaN(exp.getTime())) {
-      exp.setFullYear(exp.getFullYear() - 1);
-      dataLiberacao = formatDateYMD(exp);
-    }
-  }
-  if (!dataLiberacao) dataLiberacao = formatDateYMD(rec.createdAt || new Date());
-  return { id_assinatura: String(rec.user_id || code), data_liberacao: dataLiberacao, teste: '0' };
-}
-
-function keyToUser(code, rec) {
+function getFreeAuthData(ip, usage) {
   return {
-    user_id             : String(rec.user_id),
-    name                : rec.label || 'Usuario',
-    email               : rec.email || '',
-    wl_id               : config.wlId,
-    bearer_token        : rec.bearer_token || code,
-    access_token_plugin : rec.access_token_plugin || code,
-    user_premium        : buildUserPremium(code, rec),
-    dataCadastro        : rec.createdAt || new Date().toISOString(),
-    whatsapp_registro   : rec.lastPhone || '',
-    whatsapp_plugin     : rec.lastPhone || '',
-    path                : '',
-    afiliado            : '',
-    campanhaID          : '',
-    start_form          : true,
-    cookies             : { _fbc: '', _fbp: '', _ga: '', _ttclid: '', _ttp: '' },
-  };
-}
-
-async function authSuccess(code, rec, meta) {
-  const st = keyStatus(rec);
-  if (st === 'blocked') return { ok: false, msg_id: 'user_blocked' };
-  if (st === 'expired') return { ok: false, msg_id: 'license_expired' };
-  if (st === 'pending' && rec.ativarNoPrimeiroUso && !rec.primeiroUsoAt) {
-    await updateLicense(code, { primeiroUsoAt: new Date().toISOString() });
-    rec.primeiroUsoAt = new Date().toISOString();
-    await addLog('key_activated', 'Chave ' + code + ' ativada no primeiro uso', { code });
-  }
-  const now   = new Date().toISOString();
-  const phone = sanitizeString(String((meta && meta.phone) || rec.lastPhone || '').slice(0, 40));
-  const ip    = sanitizeString(String((meta && meta.ip)    || rec.lastIp   || '').slice(0, 64));
-  const atomicPatch = { lastUsed: now };
-  if (phone) atomicPatch.lastPhone = phone;
-  if (ip)    atomicPatch.lastIp    = ip;
-  const maxU = (rec.maxUses != null) ? rec.maxUses : -1;
-  const isUnlimited = maxU <= 0 || maxU === -1;
-  const phoneAlreadyLinked = phone && (rec.phones || []).includes(phone);
-  if (!db) return { ok: false, msg_id: 'db_unavailable' };
-  try {
-    const updateOp = { $set: atomicPatch, $inc: { uses: 1 } };
-    if (phone && !phoneAlreadyLinked) {
-      if (!isUnlimited && (rec.phones || []).length >= maxU) {
-        return { ok: false, msg_id: 'max_devices_reached' };
-      }
-      updateOp.$addToSet = { phones: phone };
-    }
-    await db.collection(COL.licenses).updateOne({ code: normKey(code) }, updateOp);
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'authSuccess atomic update', { err: err.message });
-  }
-  rec.lastUsed  = now;
-  rec.lastPhone = phone || rec.lastPhone;
-  rec.lastIp    = ip    || rec.lastIp;
-  if (phone && !phoneAlreadyLinked) {
-    rec.phones = (rec.phones || []).concat([phone]);
-    rec.uses   = (rec.uses || 0) + 1;
-  }
-  const finalSt = keyStatus(rec);
-  return {
-    ok  : true,
-    body: {
-      success    : true,
-      user       : keyToUser(code, rec),
-      auth_google: EMPTY_AUTH_GOOGLE,
-      user_status: finalSt === 'active' ? 'active' : 'free',
+    ok: true, status: true,
+    data: {
+      keyId: FREE_AUTH_KEY,
+      planId: FREE_PLAN_ID,
+      ownerId: FREE_OWNER_ID,
+      plan: 'free',
+      active: true,
+      permissions: [],
+      usage: usage || unlimitedUsagePayload(),
+      expiresAt: null,
+      hoursLeft: null,
     },
   };
 }
 
-async function addLog(type, message, meta = {}) {
-  if (!db) return;
-  try {
-    await db.collection(COL.logs).insertOne({
-      id: crypto.randomBytes(8).toString('hex'),
-      at: new Date().toISOString(),
-      type,
-      message,
-      meta,
-    });
-    const excess = await db.collection(COL.logs).countDocuments() - config.logMax;
-    if (excess > 0) {
-      const old = await db.collection(COL.logs).find({}).sort({ at: 1 }).limit(excess).project({ _id: 1 }).toArray();
-      await db.collection(COL.logs).deleteMany({ _id: { $in: old.map((o) => o._id) } });
-    }
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'addLog', { err: err.message });
-  }
-}
-
-async function getRecentLogs(limit = 200) {
-  if (!db) return [];
-  try {
-    return await db.collection(COL.logs).find({}).sort({ at: -1 }).limit(limit).toArray();
-  } catch (err) {
-    slog(LOG_LEVELS.WARN, 'getRecentLogs', { err: err.message });
-    return [];
-  }
-}
-
-function dispatchWebhookAlert(event, data = {}) {
-  const url = config.webhookUrl;
-  if (!url) return;
-  const payload = JSON.stringify({
-    service: 'waspeed',
-    event,
-    ts     : new Date().toISOString(),
-    data,
-  });
-  try {
-    const u    = new URL(url);
-    const opts = {
-      hostname: u.hostname,
-      port    : u.port || 443,
-      path    : u.pathname + u.search,
-      method  : 'POST',
-      headers : {
-        'Content-Type'  : 'application/json',
-        'Content-Length': Buffer.byteLength(payload),
-      },
-    };
-    const req = https.request(opts, (r) => r.resume());
-    req.on('error', () => {});
-    req.setTimeout(5000, () => req.destroy());
-    req.write(payload);
-    req.end();
-  } catch {}
-}
-
-const RL         = { login: { max: 10, windowMs: 60000, blockMs: 300000 } };
-const rateMap    = new Map();
-const bruteCount = new Map();
-
-function checkRate(ip, action = 'login') {
-  const cfg = RL[action] || RL.login;
-  const key = `${ip}:${action}`;
-  const now = Date.now();
-  let e = rateMap.get(key);
-  if (!e || now > e.reset) e = { count: 0, reset: now + cfg.windowMs, blockedUntil: 0 };
-  if (now < e.blockedUntil) return false;
-  e.count++;
-  if (e.count > cfg.max) {
-    e.blockedUntil = now + cfg.blockMs;
-    const bc = (bruteCount.get(ip) || 0) + 1;
-    bruteCount.set(ip, bc);
-    if (bc >= 3) {
-      slog(LOG_LEVELS.SECURITY, 'Brute force detectado', { ip, action });
-      dispatchWebhookAlert('brute_force', { ip, action, count: bc });
-    }
-  }
-  rateMap.set(key, e);
-  return e.count <= cfg.max;
-}
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, e] of rateMap) {
-    if (now > e.reset && now > (e.blockedUntil || 0)) rateMap.delete(k);
-  }
-}, 300000).unref();
-
-function esc(s) {
-  return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function applySecurityHeaders(res) {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Permissions-Policy', 'geolocation=(), microphone=()');  res.removeHeader('X-Powered-By');
-  const secure = config.baseUrl.startsWith('https');
-  if (secure) {
-    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
-  }
-  res.setHeader(
-    'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'"
-  );
-}
-
-function sendJson(res, data, status) {
-  if (status === undefined) status = 200;
-  if (res.headersSent) return;
-  const body = JSON.stringify(data);
-  res.writeHead(status, {
-    'Content-Type'  : 'application/json; charset=utf-8',
-    'Content-Length': Buffer.byteLength(body),
-  });
-  res.end(body);
-}
-
-function sendJsonGzip(req, res, data, status) {
-  if (status === undefined) status = 200;
-  if (res.headersSent) return;
-  const body   = JSON.stringify(data);
-  const accept = req.headers['accept-encoding'] || '';
-  const useGz  = accept.includes('gzip');
-  const useDeflate = !useGz && accept.includes('deflate');
-  if (!useGz && !useDeflate) {
-    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) });
-    res.end(body);
-    return;
-  }
-  const compress = useGz ? zlib.gzip : zlib.deflate;
-  compress(body, (err, buf) => {
-    if (err || res.headersSent) { res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) }); res.end(body); return; }
-    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Encoding': useGz ? 'gzip' : 'deflate', 'Content-Length': buf.length });
-    res.end(buf);
-  });
-}
-
-function sendHtml(res, html, status = 200) {
-  if (res.headersSent) return;
-  res.writeHead(status, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(html);
-}
-
-function sendText(res, text, status = 200) {
-  if (res.headersSent) return;
-  res.writeHead(status, { 'Content-Type': 'text/plain; charset=utf-8' });
-  res.end(text);
-}
-
-function sendError(res, status, msgId) {
-  if (res.headersSent) return;
-  sendJson(res, { success: false, msg_id: msgId }, status);
-}
-function sendInternalError(res, err, context = '') {
-  const errorId = crypto.randomBytes(8).toString('hex');
-  slog(LOG_LEVELS.CRITICAL, `Internal error [${errorId}] ${context}`, { err: err?.message, stack: err?.stack });
-  dispatchWebhookAlert('internal_error_recurring', { errorId, context, msg: err?.message });
-  if (!res.headersSent) {
-    sendJson(res, { success: false, msg_id: 'server_error', error_id: errorId }, 500);
-  }
-}
-
-function corsHeaders(req, pathname) {
-  const origin = req.headers.origin || '';
-  const isPanel = pathname.startsWith(R_ADMIN) || pathname.startsWith(R_MOD);
-  const isChromeExt = origin.startsWith('chrome-extension://') || origin.startsWith('moz-extension://');
-  const allowOrigin = isPanel ? 'null' : (isChromeExt || origin ? origin : '*');
+function getAuthData(code, k, usage) {
+  const expMeta = getKeyExpiryMeta(k);
   return {
-    'Access-Control-Allow-Origin'      : allowOrigin,
-    'Access-Control-Allow-Methods'     : 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers'     : 'Content-Type, Authorization, access-token, accept, X-Extension-ID',
-    'Access-Control-Allow-Credentials' : isChromeExt ? 'true' : 'false',
-    'Access-Control-Max-Age'           : '86400',
+    ok: true, status: true,
+    data: {
+      keyId:       code,
+      planId:      'ZV_PRO',
+      ownerId:     k.ownerId || code,
+      plan:        'pro',
+      active:      k.active && !expMeta.expired,
+      permissions: FULL_PERMISSIONS,
+      modules:     k.modules || DEFAULT_MODULES,
+      usage:       usage || buildUsagePayload(null, k),
+      expiresAt:   k.expiresAt || null,
+      hoursLeft:   expMeta.hoursLeft,
+      daysLeft:    expMeta.daysLeft,
+      expiringSoon: expMeta.expiringSoon,
+    },
   };
 }
 
-function applyCors(req, res, pathname) {
-  for (const [k, v] of Object.entries(corsHeaders(req, pathname))) res.setHeader(k, v);
+async function fireWebhook(event, code, detail) {
+  if (!WEBHOOK_URL) return;
+  try {
+    const body = JSON.stringify({ event, code, detail, ts: new Date().toISOString() });
+    const u    = new URL(WEBHOOK_URL);
+    const mod  = WEBHOOK_URL.startsWith('https') ? https : http;
+    const r    = mod.request({ hostname: u.hostname, port: u.port || (WEBHOOK_URL.startsWith('https') ? 443 : 80), path: u.pathname + u.search, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, (res) => { res.resume(); });
+    r.on('error', () => {});
+    r.setTimeout(5000, () => r.destroy());
+    r.write(body); r.end();
+  } catch {}
 }
-async function readBody(req, max = 2 * 1024 * 1024) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let size     = 0;
-    let settled  = false;
 
-    const done = (err, result) => {
-      if (settled) return;
-      settled = true;
-      if (err) reject(err);
-      else resolve(result);
-    };
+const DEDUP_WINDOWS = { relogin_ok: 86400000, expired: 300000, login_blocked: 300000, warn_limit: 600000 };
+const _dedupMap = new Map();
 
-    req.on('data', (c) => {
-      size += c.length;
-      if (size > max) {
-        done(new Error('payload_too_large'));
-        req.destroy();
-        return;
-      }
-      chunks.push(c);
-    });
+async function addLogZvm({ keyCode, label, phone, ip, wppVersion, action, detail }) {
+  const now   = Date.now();
+  const dedupKey = action + ':' + (keyCode || '') + ':' + (phone || '');
+  const win      = DEDUP_WINDOWS[action];
+  if (win) {
+    const last = _dedupMap.get(dedupKey);
+    if (last && now - last < win) return;
+    _dedupMap.set(dedupKey, now);
+  }
+  const entry = {
+    timestamp:  new Date().toISOString(),
+    keyCode:    keyCode  || '',
+    label:      label    || '',
+    phone:      phone    || '',
+    ip:         ip       || '',
+    wppVersion: wppVersion || '',
+    action:     action   || '',
+    detail:     detail   || '',
+  };
+  logs.unshift(entry);
+  if (logs.length > LOG_MAX) logs = logs.slice(0, LOG_MAX);
+  const cutoff = new Date(now - LOG_RETENTION_DAYS * 86400000).toISOString();
+  logs = logs.filter(l => l.timestamp > cutoff);
+  saveLogs().catch(() => {});
+}
+
+function buildLogsHtml(list) {
+  const src = list || logs;
+  if (!src.length) return '<tr><td colspan="6" style="padding:18px;text-align:center;color:#5a8a6e">Nenhum log</td></tr>';
+  return src.slice(0, 400).map(l => {
+    const action = l.action || '';
+    const isOk   = action.includes('ok') || action.includes('renewed');
+    const isWarn = action.includes('warn') || action.includes('blocked') || action.includes('expired');
+    const col    = isOk ? '#39ff14' : isWarn ? '#ff8899' : '#8ab89a';
+    return `<tr>
+      <td class="zvm-td" style="font-size:.72rem;color:#5a8a6e">${esc(l.timestamp ? l.timestamp.slice(0,19).replace('T',' ') : '')}</td>
+      <td class="zvm-td"><span style="font-family:monospace;font-size:.72rem;font-weight:700;color:${col};background:${col}15;border:1px solid ${col}28;padding:2px 8px;border-radius:4px">${esc(action.toUpperCase())}</span></td>
+      <td class="zvm-td zvm-muted" style="font-size:.78rem">${esc(l.keyCode)}</td>
+      <td class="zvm-td zvm-muted" style="font-size:.78rem">${esc(l.phone)}</td>
+      <td class="zvm-td zvm-muted" style="font-size:.78rem">${esc(l.ip)}</td>
+      <td class="zvm-td zvm-muted" style="font-size:.75rem">${esc(l.detail || l.wppVersion || '')}</td>
+    </tr>`;
+  }).join('');
+}
+
+let _zvmKeysHtmlCache = null;
+function invalidateZvmKeysCache() { _zvmKeysHtmlCache = null; }
+function getKeysHtmlCached() {
+  if (_zvmKeysHtmlCache) return _zvmKeysHtmlCache;
+  _zvmKeysHtmlCache = buildZvmKeysHtml();
+  return _zvmKeysHtmlCache;
+}
+
+function getKeyStats() {
+  const all = Object.values(keys);
+  return {
+    totalKeys:   all.length,
+    activeKeys:  all.filter(k => k.active && !isKeyExpiredZvm(k) && !(k.expireDuration && !k.expiresAt)).length,
+    expiredKeys: all.filter(k => isKeyExpiredZvm(k)).length,
+    pendingKeys: all.filter(k => k.expireDuration && !k.expiresAt).length,
+    blockedKeys: all.filter(k => !k.active).length,
+  };
+}
+
+function buildZvmKeysHtml() {
+  const entries = Object.entries(keys).sort((a, b) => (b[1].createdAt || '').localeCompare(a[1].createdAt || ''));
+  if (!entries.length) return '<tr><td colspan="9" style="padding:18px;text-align:center;color:#5a8a6e">Nenhuma chave</td></tr>';
+  return entries.map(([code, k]) => {
+    const st    = getKeyDisplayStatus(k);
+    const col   = st === 'ativo' ? '#39ff14' : st === 'pendente' ? '#ffcc00' : '#ff8899';
+    const exp   = k.expiresAt ? k.expiresAt.slice(0,10) : (k.expireDuration ? 'Ao 1º uso' : '∞');
+    const mu    = k.maxUses === -1 ? '∞' : (k.maxUses > 0 ? k.maxUses : MAX_USES);
+    const safe  = code.split('"').join('&quot;');
+    const slbl  = (k.label||'').split('"').join('&quot;').split('&').join('&amp;').split('<').join('&lt;');
+    const snote = (k.note||'').split('"').join('&quot;').split('&').join('&amp;').split('<').join('&lt;');
+    return `<tr data-code="${safe}" data-label="${slbl}" data-phone="${(k.lastPhone||'')}" data-status="${st}">
+      <td class="zvm-td"><code style="font-size:.72rem">${esc(code)}</code></td>
+      <td class="zvm-td" style="font-size:.8rem">${esc(k.label||'')}</td>
+      <td class="zvm-td"><span style="font-size:.7rem;font-weight:700;color:${col};background:${col}15;border:1px solid ${col}28;padding:2px 8px;border-radius:4px">${st.toUpperCase()}</span></td>
+      <td class="zvm-td" style="font-size:.75rem">${esc(exp)}</td>
+      <td class="zvm-td" style="font-size:.78rem">${(k.phones||[]).length}/${mu}</td>
+      <td class="zvm-td zvm-muted" style="font-size:.75rem">${esc(k.lastPhone||'')}</td>
+      <td class="zvm-td zvm-muted" style="font-size:.75rem">${esc(k.lastIp||'')}</td>
+      <td class="zvm-td zvm-muted" style="font-size:.73rem">${esc(k.note||'')}</td>
+      <td class="zvm-td">
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="zvm-btn" onclick="toggleKey('${safe}')">${k.active?'Bloquear':'Ativar'}</button>
+          <button class="zvm-btn" onclick="openRenew('${safe}')">Renovar</button>
+          <button class="zvm-btn" onclick="openMaxUses('${safe}',${k.maxUses != null ? k.maxUses : MAX_USES})">Usos</button>
+          <button class="zvm-btn" onclick="openNote('${safe}','${snote}')">Nota</button>
+          <button class="zvm-btn" onclick="openLabel('${safe}','${slbl}')">Renomear</button>
+          <button class="zvm-btn zvm-btn-del" onclick="deleteKey('${safe}')">×</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+
+async function getPaymentStats() {
+  try {
+    const db = await getMongoDb();
+    const payments = await db.collection('payments').find({ approved: true }).toArray();
+    const totalRev = payments.reduce((s, p) => s + (p.amount || 0), 0);
+    const byProduct = {};
+    const byDay     = {};
+    const byHour    = new Array(24).fill(0);
+    const byMethod  = {};
+    for (const p of payments) {
+      const prod = p.productName || 'Outros';
+      byProduct[prod] = (byProduct[prod] || 0) + (p.amount || 0);
+      const day = (p.paidAt || '').slice(0, 10);
+      if (day) byDay[day] = (byDay[day] || 0) + (p.amount || 0);
+      const h = new Date(p.paidAt).getHours();
+      if (!isNaN(h)) byHour[h] += p.amount || 0;
+      const meth = p.paymentMethod || 'outros';
+      byMethod[meth] = (byMethod[meth] || 0) + 1;
+    }
+    return { total: payments.length, revenue: totalRev, byProduct, byDay, byHour, byMethod };
+  } catch (e) { return { total: 0, revenue: 0, byProduct: {}, byDay: {}, byHour: [], byMethod: {} }; }
+}
+
+async function parseBody(req) {
+  return new Promise((resolve) => {
+    let body = '';
+    req.on('data', c => { body += c; if (body.length > 1048576) req.destroy(); });
     req.on('end', () => {
-      const raw = Buffer.concat(chunks).toString('utf8');      done(null, raw.replace(/\u0000/g, ''));
+      try { resolve(sanitizeObject(JSON.parse(body), 0)); }
+      catch { try { resolve(Object.fromEntries(new URLSearchParams(body))); } catch { resolve({}); } }
     });
-    req.on('error', (e) => done(e));
-    req.on('aborted', () => done(new Error('request_aborted')));    setTimeout(() => done(new Error('body_read_timeout')), 30000);
+    req.on('error', () => resolve({}));
+  });
+}
+
+async function parseFormBody(req) {
+  return new Promise((resolve) => {
+    let body = '';
+    req.on('data', c => { body += c; });
+    req.on('end', () => { try { resolve(new URLSearchParams(body)); } catch { resolve(new URLSearchParams()); } });
+    req.on('error', () => resolve(new URLSearchParams()));
+  });
+}
+
+async function readBody(req) {
+  return new Promise((resolve) => {
+    let body = '';
+    req.on('data', c => { body += c; if (body.length > 2097152) req.destroy(); });
+    req.on('end', () => resolve(body));
+    req.on('error', () => resolve(''));
   });
 }
 
 async function readJson(req) {
   const raw = await readBody(req);
-  if (!raw) return Object.create(null);
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return Object.create(null);
-  }
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return Object.create(null);
-  return sanitizeObject(parsed);
+  try { return sanitizeObject(JSON.parse(raw), 0); } catch { return {}; }
 }
 
-function requireAccessToken(req) {
-  return req.headers['access-token'] === config.criptKey;
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+function applySecurityHeaders(res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+}
+
+function corsHeaders(res, origin) {
+  const allowed = ['https://web.whatsapp.com', 'https://app.wascript.com.br', 'https://dev.watools.com.br'];
+  if (origin && allowed.some(a => origin === a || origin.endsWith('.wascript.com.br'))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  } else {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Extension-ID,X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+}
+
+function applyCors(req, res) {
+  const origin = req.headers.origin || '';
+  corsHeaders(res, origin);
+}
+
+function sendJson(res, data, status) {
+  if (res.headersSent) return;
+  const body = JSON.stringify(data);
+  if (body.length > 2048) {
+    zlib.gzip(Buffer.from(body), (err, gz) => {
+      if (err || res.headersSent) {
+        res.writeHead(status || 200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(body);
+        return;
+      }
+      res.writeHead(status || 200, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Encoding': 'gzip' });
+      res.end(gz);
+    });
+    return;
+  }
+  res.writeHead(status || 200, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(body);
+}
+
+function sendJsonGzip(req, res, data, status) {
+  sendJson(res, data, status);
+}
+
+function sendHtml(res, html, status) {
+  if (res.headersSent) return;
+  const buf = Buffer.from(html);
+  if (buf.length > 4096) {
+    zlib.gzip(buf, (err, gz) => {
+      if (err || res.headersSent) {
+        res.writeHead(status || 200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.end(buf);
+        return;
+      }
+      res.writeHead(status || 200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Encoding': 'gzip' });
+      res.end(gz);
+    });
+    return;
+  }
+  res.writeHead(status || 200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(buf);
+}
+
+function sendText(res, text, status) {
+  if (res.headersSent) return;
+  res.writeHead(status || 200, { 'Content-Type': 'text/plain; charset=utf-8' });
+  res.end(text);
+}
+
+function sendError(res, status, msg) {
+  sendJson(res, { success: false, error: msg, msg_id: msg }, status);
+}
+
+function sendInternalError(res, err, path) {
+  console.error(`[ERR] ${path}:`, err && err.message ? err.message : err);
+  if (!res.headersSent) sendJson(res, { success: false, error: 'internal_error' }, 500);
+}
+
+function parseCookies(req) {
+  const out = {};
+  (req.headers.cookie || '').split(';').forEach(c => {
+    const [k, ...v] = c.trim().split('=');
+    if (k) out[k.trim()] = decodeURIComponent(v.join('='));
+  });
+  return out;
+}
+
+function slog(level, msg, meta) {
+  const line = `[${new Date().toISOString()}] [${level}] ${msg}` + (meta ? ' ' + JSON.stringify(meta) : '');
+  if (level === LOG_LEVELS.ERROR || level === LOG_LEVELS.CRITICAL || level === LOG_LEVELS.WARN) console.error(line);
+  else console.log(line);
+}
+
+const DOM_DEFAULTS = {
+  selectors: {
+    chatContainer:   '[data-testid="conversation-panel-wrapper"]',
+    msgIn:           '[data-testid="msg-container"]',
+    msgOut:          '[data-testid="msg-container"]',
+    contactName:     '[data-testid="conversation-title"]',
+    searchInput:     '[data-testid="search-input"]',
+    chatList:        '[data-testid="cell-frame-container"]',
+    attachBtn:       '[data-testid="attach-btn"]',
+    sendBtn:         '[data-testid="send-btn"]',
+    msgInput:        '[data-testid="conversation-compose-box-input"]',
+    reactionBtn:     '[data-testid="reaction-btn"]',
+    emojiPicker:     '[data-testid="emoji-picker"]',
+    stickerBtn:      '[data-testid="sticker-picker"]',
+    audioBtn:        '[data-testid="audio-btn"]',
+    footer:          '[data-testid="conversation-footer"]',
+    header:          '[data-testid="conversation-header"]',
+  },
+  features: { zapSaver: true, scheduler: true, funnels: true, flows: true, crm: true, massiveDispatching: true },
+};
+
+function safeMerge(defaults, overrides) {
+  if (!overrides || typeof overrides !== 'object') return defaults;
+  const out = JSON.parse(JSON.stringify(defaults));
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v !== null && v !== undefined && typeof v !== 'function') {
+      if (typeof v === 'object' && !Array.isArray(v) && typeof out[k] === 'object' && !Array.isArray(out[k])) {
+        out[k] = safeMerge(out[k], v);
+      } else {
+        out[k] = v;
+      }
+    }
+  }
+  return out;
+}
+
+let _settingsCache     = null;
+let _settingsCacheTime = 0;
+const SETTINGS_CACHE_TTL = 30000;
+
+async function getSettingsAdmin() {
+  const now = Date.now();
+  if (_settingsCache && now - _settingsCacheTime < SETTINGS_CACHE_TTL) return _settingsCache;
+  try {
+    const doc = await dbWS.collection(COL.settings).findOne({ _id: 'main' });
+    _settingsCache     = doc || {};
+    _settingsCacheTime = now;
+    return _settingsCache;
+  } catch { return _settingsCache || {}; }
+}
+
+function buildDomConfig(settings) {
+  const overrides = (settings && settings.domConfig) ? settings.domConfig : {};
+  return safeMerge(DOM_DEFAULTS, overrides);
+}
+
+function buildConfigJson(settings) {
+  const dom = buildDomConfig(settings);
+  return {
+    version:    '5.0.0',
+    selectors:  dom.selectors,
+    features:   dom.features,
+    updatedAt:  new Date().toISOString(),
+  };
+}
+
+let _configJsonCache    = null;
+let _configJsonCacheAt  = 0;
+
+async function sendCachedConfigJson(res) {
+  const now = Date.now();
+  if (!_configJsonCache || now - _configJsonCacheAt > 300000) {
+    const settings   = await getSettingsAdmin();
+    _configJsonCache  = JSON.stringify(buildConfigJson(settings));
+    _configJsonCacheAt = now;
+  }
+  res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=600' });
+  res.end(_configJsonCache);
+}
+
+async function connectMongo() {
+  await getMongoDb();
+  await ensureIndexes();
+}
+
+async function ensureIndexes() {
+  try {
+    await dbWS.collection(COL.licenses).createIndex({ code: 1 }, { unique: true });
+    await dbWS.collection(COL.licenses).createIndex({ bearer_token: 1 });
+    await dbWS.collection(COL.sessions).createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+    await dbWS.collection(COL.sessions).createIndex({ token: 1 }, { unique: true });
+    await dbWS.collection(COL.logs).createIndex({ createdAt: -1 });
+  } catch (e) { slog(LOG_LEVELS.WARN, 'ensureIndexes', { err: e.message }); }
+}
+
+async function initSeed() {
+  const settings = await getSettingsAdmin();
+  const adminUser = process.env.WS_ADMIN_USER || process.env.ADMIN_USER || 'admin';
+  const adminPass = process.env.WS_ADMIN_PASS || process.env.ADMIN_PASS || '';
+  if (!settings.adminUser && adminUser && adminPass) {
+    const hashed = hashPassword(adminPass);
+    await dbWS.collection(COL.settings).updateOne(
+      { _id: 'main' },
+      { $set: { adminUser, adminPassHash: hashed } },
+      { upsert: true }
+    );
+    _settingsCache = null;
+  }
+}
+
+async function verifyAdminCredentials(user, pass) {
+  const settings = await getSettingsAdmin();
+  if (!settings.adminUser || !settings.adminPassHash) return false;
+  const uBuf = Buffer.from(user || '');
+  const aBuf = Buffer.from(settings.adminUser || '');
+  if (uBuf.length !== aBuf.length) return false;
+  if (!crypto.timingSafeEqual(uBuf.length ? uBuf : Buffer.alloc(1), aBuf.length ? aBuf : Buffer.alloc(1))) return false;
+  return verifyPassword(pass, settings.adminPassHash);
+}
+
+async function verifyModCredentials(user, pass) {
+  const settings = await getSettingsAdmin();
+  const mods     = settings.mods || [];
+  for (const mod of mods) {
+    const uBuf = Buffer.from(user || '');
+    const mBuf = Buffer.from(mod.user || '');
+    if (uBuf.length !== mBuf.length) continue;
+    try {
+      if (crypto.timingSafeEqual(uBuf.length ? uBuf : Buffer.alloc(1), mBuf.length ? mBuf : Buffer.alloc(1)) && verifyPassword(pass, mod.passHash)) {
+        return mod;
+      }
+    } catch { continue; }
+  }
+  return null;
+}
+
+async function createSession(role, meta) {
+  const token     = generateToken();
+  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  const doc       = { token, role, expiresAt, ...meta, createdAt: new Date() };
+  try {
+    await dbWS.collection(COL.sessions).insertOne(doc);
+    return { token, expiresAt };
+  } catch { return null; }
+}
+
+async function validateSession(token) {
+  if (!token) return null;
+  try {
+    const doc = await dbWS.collection(COL.sessions).findOne({ token, expiresAt: { $gt: new Date() } });
+    return doc || null;
+  } catch { return null; }
+}
+
+async function destroySession(token) {
+  if (!token) return;
+  try { await dbWS.collection(COL.sessions).deleteOne({ token }); } catch {}
+}
+
+function setSessionCookie(res, token) {
+  res.setHeader('Set-Cookie', `${WS_COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Strict; Secure; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}`);
+}
+
+function clearSessionCookie(res) {
+  res.setHeader('Set-Cookie', `${WS_COOKIE_NAME}=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure`);
+}
+
+function normKey(k) { return String(k || '').toLowerCase().trim(); }
+
+function generateKeyCode() {
+  const h = () => crypto.randomBytes(4).toString('hex');
+  return `ws-${h()}-${h()}-${h()}`;
+}
+
+function isKeyExpiredWs(rec) {
+  if (!rec.expiresAt) return false;
+  return new Date(rec.expiresAt) < new Date();
+}
+
+function keyStatus(rec) {
+  if (!rec.active) return 'blocked';
+  if (isKeyExpiredWs(rec)) return 'expired';
+  if (rec.ativarNoPrimeiroUso && !rec.primeiroUsoAt) return 'pending';
+  return 'active';
+}
+
+async function findKey(code) {
+  if (!dbWS) return null;
+  try {
+    return await dbWS.collection(COL.licenses).findOne({ code: normKey(code) });
+  } catch { return null; }
+}
+
+async function findKeyByBearer(token) {
+  if (!dbWS) return null;
+  try {
+    return await dbWS.collection(COL.licenses).findOne({ bearer_token: token });
+  } catch { return null; }
+}
+
+let _keysCache   = null;
+let _keysCacheAt = 0;
+const KEYS_CACHE_TTL = 15000;
+
+function invalidateKeysCache() { _keysCache = null; _keysCacheAt = 0; }
+
+async function getKeysCached() {
+  const now = Date.now();
+  if (_keysCache && now - _keysCacheAt < KEYS_CACHE_TTL) return _keysCache;
+  _keysCache   = await listLicenses();
+  _keysCacheAt = now;
+  return _keysCache;
+}
+
+async function listLicenses() {
+  if (!dbWS) return [];
+  try {
+    return await dbWS.collection(COL.licenses).find({}).sort({ createdAt: -1 }).toArray();
+  } catch { return []; }
+}
+
+async function getKeyStats() {
+  const licenses = await getKeysCached();
+  return {
+    totalKeys:   licenses.length,
+    activeKeys:  licenses.filter(k => k.premium && k.active && !isKeyExpiredWs(k) && !(k.ativarNoPrimeiroUso && !k.primeiroUsoAt)).length,
+    freeKeys:    licenses.filter(k => !k.premium).length,
+    expiredKeys: licenses.filter(k => isKeyExpiredWs(k)).length,
+    blockedKeys: licenses.filter(k => !k.active).length,
+    totalLogs:   0,
+  };
+}
+
+async function createKey(opts) {
+  const code  = generateKeyCode();
+  const exAt  = opts.expiresAt || (opts.expireDays ? new Date(Date.now() + opts.expireDays * 86400000).toISOString() : null);
+  const rec   = {
+    code,
+    label:             sanitizeString(opts.label || 'Cliente').slice(0, 60),
+    premium:           opts.premium !== false,
+    active:            true,
+    expiresAt:         exAt,
+    maxUses:           opts.maxUses !== undefined ? opts.maxUses : -1,
+    phones:            [],
+    uses:              0,
+    lastPhone:         null,
+    lastIp:            null,
+    note:              sanitizeString(opts.note || '').slice(0, 500),
+    ativarNoPrimeiroUso: opts.ativarNoPrimeiroUso === true,
+    primeiroUsoAt:     null,
+    bearer_token:      crypto.randomBytes(24).toString('hex'),
+    access_token_plugin: crypto.randomBytes(24).toString('hex'),
+    user_id:           crypto.randomBytes(8).toString('hex'),
+    createdAt:         new Date().toISOString(),
+    modName:           opts.modName || null,
+  };
+  if (!dbWS) throw new Error('db_unavailable');
+  await dbWS.collection(COL.licenses).insertOne(rec);
+  invalidateKeysCache();
+  await addLog('key_created', 'Chave ' + code + ' criada', { code, label: rec.label });
+  return rec;
+}
+
+async function updateLicense(code, patch) {
+  if (!dbWS) return;
+  await dbWS.collection(COL.licenses).updateOne({ code: normKey(code) }, { $set: patch });
+  invalidateKeysCache();
+}
+
+async function deleteLicense(code) {
+  if (!dbWS) return;
+  await dbWS.collection(COL.licenses).deleteOne({ code: normKey(code) });
+  invalidateKeysCache();
+}
+
+async function addLog(event, message, meta) {
+  try {
+    await dbWS.collection(COL.logs).insertOne({
+      event:     event || 'info',
+      message:   String(message || '').slice(0, 500),
+      meta:      meta || {},
+      createdAt: new Date(),
+    });
+  } catch {}
+}
+
+async function getRecentLogs(limit) {
+  try {
+    return await dbWS.collection(COL.logs).find({}).sort({ createdAt: -1 }).limit(limit || 150).toArray();
+  } catch { return []; }
+}
+
+async function dispatchWebhookAlert(event, meta) {
+  if (!WEBHOOK_URL) return;
+  try {
+    const body = JSON.stringify({ event, meta, ts: new Date().toISOString(), service: 'waspeed' });
+    const u    = new URL(WEBHOOK_URL);
+    const mod  = WEBHOOK_URL.startsWith('https') ? https : http;
+    const r    = mod.request({ hostname: u.hostname, path: u.pathname, method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => res.resume());
+    r.on('error', () => {});
+    r.setTimeout(5000, () => r.destroy());
+    r.write(body); r.end();
+  } catch {}
+}
+
+function parseLicenseExpiry(body) {
+  const days = parseInt(body.expireDays || body.days || 0, 10);
+  const hrs  = parseInt(body.expireHours || body.hours || 0, 10);
+  const ms   = (days * 1440 + hrs * 60) * 60000;
+  if (!ms) return { expiresAt: null, expireDays: null };
+  return { expiresAt: new Date(Date.now() + ms).toISOString(), expireDays: days };
+}
+
+function formatDateYMD(d) {
+  if (!d) return '';
+  return new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
+const EMPTY_AUTH_GOOGLE = {
+  user_id: '', name: '', email: '', wl_id: '', bearer_token: '', access_token_plugin: '',
+  user_premium: { plan: 'free', active: false, features: [] },
+  dataCadastro: '', whatsapp_registro: '', whatsapp_plugin: '',
+  path: '', afiliado: '', campanhaID: '', start_form: true,
+  cookies: { _fbc: '', _fbp: '', _ga: '', _ttclid: '', _ttp: '' },
+};
+
+function buildUserPremium(code, rec) {
+  const st = keyStatus(rec);
+  return {
+    plan:     rec.premium ? 'pro' : 'free',
+    active:   st === 'active',
+    features: rec.premium ? ['all'] : [],
+    expiresAt: rec.expiresAt || null,
+    maxUses:  rec.maxUses != null ? rec.maxUses : -1,
+  };
+}
+
+function keyToUser(code, rec) {
+  return {
+    user_id:              String(rec.user_id || code),
+    name:                 rec.label || 'Usuario',
+    email:                rec.email || '',
+    wl_id:                WS_WL_ID,
+    bearer_token:         rec.bearer_token || code,
+    access_token_plugin:  rec.access_token_plugin || code,
+    user_premium:         buildUserPremium(code, rec),
+    dataCadastro:         rec.createdAt || new Date().toISOString(),
+    whatsapp_registro:    rec.lastPhone || '',
+    whatsapp_plugin:      rec.lastPhone || '',
+    path: '', afiliado: '', campanhaID: '', start_form: true,
+    cookies: { _fbc: '', _fbp: '', _ga: '', _ttclid: '', _ttp: '' },
+  };
+}
+
+async function authSuccess(code, rec, meta) {
+  const st = keyStatus(rec);
+  if (st === 'blocked')  return { ok: false, msg_id: 'user_blocked' };
+  if (st === 'expired')  return { ok: false, msg_id: 'license_expired' };
+
+  const phone = meta && meta.phone ? String(meta.phone).trim() : null;
+  const ip    = meta && meta.ip    ? meta.ip    : '';
+
+  if (rec.ativarNoPrimeiroUso && !rec.primeiroUsoAt) {
+    await updateLicense(code, { ativarNoPrimeiroUso: false, primeiroUsoAt: new Date().toISOString(), active: true });
+    await addLog('key_activated', 'Chave ativada no primeiro uso: ' + code, { code, ip });
+  }
+
+  const maxU        = rec.maxUses != null ? rec.maxUses : -1;
+  const isUnlimited = maxU <= 0;
+  const atomicPatch = { lastUsed: new Date().toISOString(), lastIp: ip };
+  if (phone) atomicPatch.lastPhone = phone;
+
+  const phoneAlreadyLinked = phone && (rec.phones || []).includes(phone);
+  const updateOp = { $set: atomicPatch, $inc: { uses: 1 } };
+
+  if (phone && !phoneAlreadyLinked) {
+    if (!isUnlimited && (rec.phones || []).length >= maxU) {
+      return { ok: false, msg_id: 'max_devices_reached' };
+    }
+    updateOp.$addToSet = { phones: phone };
+  }
+
+  await dbWS.collection(COL.licenses).updateOne({ code: normKey(code) }, updateOp);
+  invalidateKeysCache();
+  return { ok: true };
+}
+
 function requireExtensionId(req) {
-  const id = req.headers['x-extension-id'] || '';
-  return id === config.chromeStoreId;
+  return req.headers['x-extension-id'] || req.headers['x-plugin-id'] || '';
 }
 
 function parseBearer(req) {
-  const m = /^Bearer\s+(.+)$/i.exec(req.headers.authorization || '');
-  return m ? sanitizeString(m[1].trim()) : '';
+  const auth = req.headers['authorization'] || '';
+  if (auth.startsWith('Bearer ')) return auth.slice(7).trim();
+  return '';
 }
 
-function wppUpdate() {
-  return { success: true, version: '1.11', update: false, message: 'ok' };
+function requireAccessToken(req) {
+  const token = req.headers['x-access-token'] || req.headers['access-token'] || '';
+  if (!WS_ACCESS_TOKEN) return true;
+  return token === WS_ACCESS_TOKEN;
 }
 
-const PANEL_CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
-:root{
-  --bg:#020604;--surface:#070f0a;--surface2:#0a1610;--surface-hover:#0d1f13;
-  --border:#183326;--border-bright:#26543c;
-  --text:#e8fff3;--muted:#5a8a6e;--muted2:#8ab89a;
-  --accent:#39ff14;--accent2:#00ff88;--accent3:#00cc66;
-  --accent-grad:linear-gradient(135deg,#39ff14 0%,#00ff88 60%,#00cc66 100%);
-  --ok-bg:#041f10;--ok-text:#39ff14;
-  --warn-bg:#1e1800;--warn-text:#fde047;
-  --danger:#ff4466;--danger-bg:#200810;--danger-text:#ff8899;
-  --shadow:0 4px 40px rgba(0,0,0,.7);
-  --ring:rgba(57,255,20,.3);
-  --glow:0 0 18px rgba(57,255,20,.22),0 0 36px rgba(0,255,136,.08);
-  --glow-strong:0 0 28px rgba(57,255,20,.4),0 0 56px rgba(0,255,136,.15);
-  --mono:'JetBrains Mono',ui-monospace,monospace;
+function fmtDate(d) {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', hour12: false }); }
+  catch { return String(d); }
 }
-*{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth;height:100%}
-body{
-  font-family:'Inter',system-ui,-apple-system,sans-serif;
-  background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh;
-  background-image:
-    radial-gradient(ellipse 80% 60% at 50% -15%,rgba(57,255,20,.07),transparent),
-    radial-gradient(ellipse 50% 40% at 85% 105%,rgba(0,255,136,.04),transparent),
-    linear-gradient(180deg,rgba(57,255,20,.012) 0%,transparent 60%);
-}
-a{color:var(--accent);text-decoration:none;transition:color .2s,text-shadow .2s}
-a:hover{color:#7fff6e;text-shadow:0 0 10px rgba(57,255,20,.45)}
-/* Layout Principal: Sidebar + Conteúdo */
-html{font-size:15px}
-.layout{display:flex;min-height:100vh;position:relative;z-index:1}
-.sidebar{
-  width:56px;min-height:100vh;background:var(--surface);
-  border-right:1px solid var(--border);display:flex;flex-direction:column;
-  position:sticky;top:0;height:100vh;overflow:hidden;z-index:20;
-  transition:width .28s cubic-bezier(.4,0,.2,1);flex-shrink:0;
-}
-.sidebar:hover{width:240px}
-.sidebar-brand{
-  display:flex;align-items:center;gap:10px;padding:20px 16px 16px;
-  font-weight:800;font-size:1.05rem;letter-spacing:-.02em;
-  color:var(--accent);border-bottom:1px solid var(--border);
-  text-shadow:0 0 18px rgba(57,255,20,.35);white-space:nowrap;
-}
-.brand-dot{width:9px;height:9px;border-radius:50%;background:var(--accent);box-shadow:var(--glow);flex-shrink:0;margin-left:5px}
-.brand-text{opacity:0;transition:opacity .2s .05s;overflow:hidden}
-.sidebar:hover .brand-text{opacity:1}
-.sidebar-section{
-  padding:12px 10px 4px;font-size:.65rem;font-weight:700;text-transform:uppercase;
-  letter-spacing:.1em;color:var(--muted);white-space:nowrap;
-  opacity:0;transition:opacity .2s;
-}
-.sidebar:hover .sidebar-section{opacity:1}
-.nav-item{
-  display:flex;align-items:center;gap:10px;padding:10px 14px;margin:2px 6px;
-  border-radius:9px;cursor:pointer;transition:all .2s ease;font-size:.9rem;font-weight:500;
-  color:var(--muted2);text-decoration:none;border:1px solid transparent;
-  position:relative;white-space:nowrap;overflow:hidden;
-}
-.nav-item:hover,.nav-item.active{
-  color:var(--accent);background:rgba(57,255,20,.06);
-  border-color:rgba(57,255,20,.18);box-shadow:0 0 10px rgba(57,255,20,.08);
-}
-.nav-item .icon{width:20px;text-align:center;flex-shrink:0;font-size:1rem}
-.nav-label{opacity:0;transition:opacity .15s;overflow:hidden}
-.sidebar:hover .nav-label{opacity:1}
-.nav-badge{
-  margin-left:auto;font-size:.68rem;font-weight:700;padding:2px 7px;
-  border-radius:999px;background:rgba(57,255,20,.12);color:var(--accent);
-  border:1px solid rgba(57,255,20,.25);opacity:0;transition:opacity .15s;flex-shrink:0;
-}
-.sidebar:hover .nav-badge{opacity:1}
-.nav-badge.warn{background:rgba(255,180,55,.12);color:#fbbf24;border-color:rgba(255,180,55,.25)}
-.nav-badge.danger{background:rgba(255,68,102,.12);color:var(--danger-text);border-color:rgba(255,68,102,.25)}
-.sidebar-footer{margin-top:auto;padding:12px 6px;border-top:1px solid var(--border)}
-/* Área principal */
-.main-area{flex:1;min-width:0;display:flex;flex-direction:column}
-.topbar{
-  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;
-  padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--border);
-  position:sticky;top:0;z-index:10;backdrop-filter:blur(8px);
-}
-.topbar-title{font-size:1.05rem;font-weight:700;color:var(--text)}
-.topbar-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-.content{padding:20px 24px 48px;flex:1}
-/* Cards */
-.card{
-  background:var(--surface2);border:1px solid var(--border);border-radius:14px;
-  padding:22px 24px;margin-bottom:18px;box-shadow:var(--shadow);
-  transition:border-color .25s ease,box-shadow .25s ease;
-  contain:layout style;
-}
-.card:hover{border-color:rgba(57,255,20,.22);box-shadow:var(--shadow),var(--glow)}
-.card-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:14px}
-/* Métricas */
-.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:20px}
-.metric{
-  background:var(--surface2);border:1px solid var(--border);border-radius:14px;
-  padding:20px;text-align:center;transition:all .25s ease;
-  will-change:transform;
-}
-.metric:hover{transform:translateY(-3px);border-color:rgba(57,255,20,.3);box-shadow:var(--glow)}
-.metric-value{font-size:2.1rem;font-weight:800;letter-spacing:-.04em;line-height:1;margin-bottom:6px}
-.metric-value.accent{color:var(--accent);text-shadow:0 0 18px rgba(57,255,20,.4)}
-.metric-value.warn{color:#fbbf24}
-.metric-value.danger{color:var(--danger)}
-.metric-label{font-size:.72rem;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.06em}
-/* Badges */
-.badge{
-  display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;
-  font-size:.67rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
-}
-.badge-ok{background:var(--ok-bg);color:var(--ok-text);border:1px solid rgba(57,255,20,.3);box-shadow:0 0 8px rgba(57,255,20,.12)}
-.badge-off{background:var(--danger-bg);color:var(--danger-text);border:1px solid rgba(255,68,102,.22)}
-.badge-free{background:var(--warn-bg);color:var(--warn-text);border:1px solid rgba(253,224,71,.18)}
-.badge-warn{background:rgba(255,180,55,.08);color:#fbbf24;border:1px solid rgba(255,180,55,.22)}
-.badge-pending{background:rgba(100,100,255,.1);color:#a0a0ff;border:1px solid rgba(100,100,255,.25)}
-/* Chips de código */
-.key-chip,code.key-chip{
-  font-family:var(--mono);font-size:.8rem;
-  background:#040d06;border:1px solid rgba(57,255,20,.22);color:#7fff6e;
-  padding:5px 11px;border-radius:7px;word-break:break-all;display:inline-block;
-  box-shadow:0 0 8px rgba(57,255,20,.07);
-}
-/* Tabela */
-.tbl-wrap{overflow-x:auto;contain:content}
-table{width:100%;border-collapse:collapse;font-size:.88rem}
-th,td{padding:11px 13px;text-align:left;border-bottom:1px solid var(--border)}
-th{cursor:pointer;color:var(--muted);font-size:.73rem;text-transform:uppercase;
-  user-select:none;white-space:nowrap;position:sticky;top:0;background:var(--surface2)}
-th:hover{color:var(--accent)}
-tr.kr{will-change:transform;contain:layout style}
-tr.kr:hover{background:var(--surface-hover)}
-.act{display:flex;flex-wrap:wrap;gap:4px}
-.bs{padding:5px 9px;border-radius:6px;border:1px solid var(--border);background:transparent;
-  color:var(--text);font-size:.75rem;cursor:pointer;transition:all .2s}
-.bs:hover{border-color:var(--accent);color:var(--accent)}
-.bs.bg{border-color:rgba(57,255,20,.28);color:var(--accent)}
-.bs.bd{border-color:rgba(255,68,102,.25);color:var(--danger-text)}
-/* Formulários */
-label{display:block;font-size:.8rem;font-weight:600;color:var(--muted);margin:0 0 6px}
-.field{margin-bottom:16px}
-input,select,textarea{
-  width:100%;padding:10px 13px;border-radius:8px;border:1px solid var(--border);
-  background:#040d06;color:var(--text);font:inherit;font-size:.93rem;
-  transition:border-color .2s ease,box-shadow .2s ease;
-}
-input:focus,select:focus,textarea:focus{
-  outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring),0 0 10px rgba(57,255,20,.12);
-}
-textarea{resize:vertical;min-height:80px}
-.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
-/* Botões */
-.btn{
-  display:inline-flex;align-items:center;justify-content:center;gap:8px;
-  padding:9px 18px;border:none;border-radius:8px;font:inherit;font-size:.855rem;font-weight:600;
-  cursor:pointer;text-decoration:none;color:#020604;background:var(--accent-grad);
-  transition:all .2s ease;box-shadow:0 4px 18px rgba(57,255,20,.3);
-}
-.btn:hover{transform:translateY(-1px);box-shadow:0 6px 26px rgba(57,255,20,.48);color:#020604}
-.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--text);box-shadow:none}
-.btn-ghost:hover{background:rgba(57,255,20,.05);border-color:rgba(57,255,20,.3);color:var(--accent);box-shadow:0 0 10px rgba(57,255,20,.1)}
-.btn-danger{background:linear-gradient(135deg,#aa0022,#ff4466);color:#fff;box-shadow:0 4px 14px rgba(255,68,102,.25)}
-.btn-sm{padding:5px 11px;font-size:.75rem;border-radius:6px}
-.btn-success{background:var(--accent-grad);color:#020604}
-.btn-w{padding:8px 14px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text);font-size:.8rem;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
-.btn-w:hover{border-color:rgba(57,255,20,.3);color:var(--accent)}
-.btn-p{padding:8px 16px;border-radius:8px;border:none;background:var(--accent-grad);color:#020604;font-size:.82rem;font-weight:600;cursor:pointer}
-/* Alertas */
-.alert{
-  padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:.875rem;
-  background:rgba(57,255,20,.05);color:#7fff6e;border:1px solid rgba(57,255,20,.18);
-}
-.alert-danger{background:rgba(255,68,102,.07);color:var(--danger-text);border-color:rgba(255,68,102,.22)}
-.alert-warn{background:rgba(255,180,55,.06);color:#fbbf24;border-color:rgba(255,180,55,.2)}
-/* Logs */
-.log-list{display:flex;flex-direction:column;max-height:68vh;overflow-y:auto;contain:content}
-.log-row{
-  display:grid;grid-template-columns:150px 110px 1fr;gap:14px;padding:12px 14px;
-  border-bottom:1px solid var(--border);font-size:.82rem;transition:background .2s;
-  will-change:transform;contain:layout style;
-}
-.log-row:hover{background:var(--surface-hover)}
-.log-type{font-family:var(--mono);font-size:.72rem;color:var(--accent2)}
-/* Search bar */
-.search-bar{display:flex;flex-wrap:wrap;gap:8px;padding:12px 0;align-items:center}
-.search-bar input,.search-bar select{flex:1;min-width:130px;padding:8px 12px;
-  border-radius:8px;border:1px solid var(--border);background:#040d06;color:var(--text)}
-/* Gerador inline */
-.gen-form{display:flex;flex-wrap:wrap;gap:7px;align-items:flex-end}
-.gen-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:14px 18px;background:#020904;border-top:1px solid var(--border)}
-.gen-form input,.gen-form select{padding:9px 13px;border-radius:8px;border:1px solid var(--border);background:#040d06;color:var(--text);font-size:.9rem}
-.gen-form input[type=text]{min-width:180px;flex:1}
-.gen-form input[type=number]{width:80px}
-.gen-form select{min-width:90px}
-/* Toast */
-.toast{position:fixed;bottom:22px;right:22px;padding:12px 18px;border-radius:10px;
-  background:var(--surface2);border:1px solid var(--accent);color:var(--accent);
-  font-size:.855rem;opacity:0;transition:opacity .3s;z-index:999;pointer-events:none;
-  box-shadow:var(--glow)}
-.toast.show{opacity:1}
-/* Modal */
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;
-  align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(3px)}
-.modal-bg.open{display:flex}
-.modal{background:var(--surface2);border:1px solid var(--border-bright);border-radius:14px;
-  padding:24px;max-width:400px;width:90%;box-shadow:var(--glow-strong)}
-.modal h3{margin-bottom:16px;font-size:1.05rem}
-.modal .field{margin-bottom:12px}
-.modal .mrow{display:flex;gap:8px;margin-top:16px}
-/* Login */
-.login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-.login-inner{width:100%;max-width:420px;display:flex;flex-direction:column;align-items:center;gap:22px}
-.login-brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:1.3rem;
-  color:var(--accent);text-shadow:0 0 22px rgba(57,255,20,.38)}
-.login-card{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:16px;padding:34px 30px;box-shadow:var(--shadow),var(--glow)}
-.login-card h1{font-size:1.45rem;margin-bottom:4px;text-align:center}
-.login-card .subtitle{color:var(--muted);font-size:.875rem;margin-bottom:22px;text-align:center}
-.login-card .btn{width:100%;margin-top:8px;color:#020604}
-/* Client panel */
-.app{max-width:1100px;margin:0 auto;padding:28px 24px 56px}
-.topbar-simple{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:16px;
-  padding:14px 24px;margin-bottom:28px;border-radius:14px;
-  background:var(--surface2);border:1px solid var(--border);box-shadow:var(--shadow)}
-.page-head{margin-bottom:24px;text-align:center}
-.page-head h1{font-size:1.8rem;font-weight:800;letter-spacing:-.03em}
-.page-head .subtitle{color:var(--muted);font-size:.9rem;margin-top:6px}
-.info-grid{display:grid;gap:10px}
-.info-row{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline;font-size:.88rem}
-.info-row .label{color:var(--muted);min-width:110px;font-size:.76rem;font-weight:600}
-.steps{counter-reset:step;padding-left:0;list-style:none;text-align:left}
-.steps li{counter-increment:step;padding:10px 0 10px 36px;position:relative;color:var(--muted);font-size:.88rem}
-.steps li::before{content:counter(step);position:absolute;left:0;top:10px;width:24px;height:24px;border-radius:50%;
-  background:var(--surface-hover);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;
-  font-size:.72rem;font-weight:700;color:var(--accent)}
-.toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:16px}
-.empty-state{text-align:center;padding:44px 24px;color:var(--muted)}
-/* SPA section */
-.sec{margin-bottom:20px;background:var(--surface2);border:1px solid var(--border);border-radius:14px;overflow:hidden}
-.sh{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border)}
-.sh-title{font-weight:700;font-size:.92rem}
-/* Stats row */
-.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;padding:16px 0}
-.sc{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center}
-.sc .n{font-size:1.55rem;font-weight:800}
-.sc .l{font-size:.65rem;color:var(--muted);text-transform:uppercase;margin-top:4px;letter-spacing:.06em}
-/* Responsive */
-@media(max-width:768px){
-  .sidebar{width:0;overflow:hidden;position:fixed}
-  .sidebar:hover{width:240px}
-  .layout.sb-open .sidebar{width:240px}
-  .main-area{width:100%}
-  .metrics{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
-  .log-row{grid-template-columns:1fr}
-}
-`;
-
-const CANVAS_BG = `<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas>
-<script>(function(){var c=document.getElementById('_cvs'),ctx=c.getContext('2d');function resize(){c.width=window.innerWidth;c.height=window.innerHeight;}resize();window.addEventListener('resize',resize);var pts=Array.from({length:55},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.35,vy:(Math.random()-.5)*.35,r:Math.random()*1.8+.4};});function draw(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(57,255,20,0.45)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<120){ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(57,255,20,'+(0.1*(1-d/120))+')';ctx.lineWidth=.6;ctx.stroke();}}}requestAnimationFrame(draw);}draw();})();</script>`;
-
 
 function statusBadgeHtml(st) {
-  if (st === 'active')   return '<span class="badge badge-ok">PRO Ativo</span>';
-  if (st === 'blocked')  return '<span class="badge badge-off">Bloqueado</span>';
-  if (st === 'expired')  return '<span class="badge badge-off">Expirado</span>';
-  if (st === 'expirando')return '<span class="badge badge-warn">⏰ Expirando</span>';
-  return '<span class="badge badge-free">Free</span>';
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-const CLIENT_PANEL_RE = /^\/([a-z0-9]{16,32})\/(auth-painel|login|recovery|auth-plugin|redirect-plugin-register|register)\/?$/i;
-
-function clientShell(title, body, _unused, subtitle) {
-  return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)} — WaSpeed</title><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23020604'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2339ff14'%3EWS%3C/text%3E%3C/svg%3E"><style>${PANEL_CSS}</style></head>
-<body><div class="app" style="position:relative;z-index:1">
-<header class="topbar-simple" style="justify-content:space-between"><div style="display:flex;align-items:center;gap:10px;font-weight:800;font-size:1rem;color:var(--accent)"><span class="brand-dot"></span>WaSpeed</div></header>
-<div class="page-head"><h1>${esc(title)}</h1>${subtitle ? `<p class="subtitle">${subtitle}</p>` : ''}</div>
-${body}
-</div>${CANVAS_BG}</body></html>`;
-}
-
-
-const PUB_CSS = `*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}:root{--g:#39ff14;--g2:#00ff88;--dark:#020604;--card:#080e09;--card2:#0c1410;--bdr:#172a1a;--text:#e2f0e2;--muted:#4a6a4c;--r:14px;--glow:0 0 22px rgba(57,255,20,.18)}body{background:var(--dark);color:var(--text);font-family:'Inter',system-ui,sans-serif;min-height:100vh;overflow-x:hidden;background-image:radial-gradient(ellipse 80% 50% at 50% -10%,rgba(57,255,20,.06),transparent)}a{color:var(--g);text-decoration:none}a:hover{text-shadow:0 0 10px rgba(57,255,20,.5)}.pub-nav{display:flex;align-items:center;justify-content:space-between;padding:13px 28px;border-bottom:1px solid var(--bdr);background:var(--card);position:sticky;top:0;z-index:50}.pub-logo{font-weight:800;font-size:1.1rem;color:var(--g);display:flex;align-items:center;gap:8px;letter-spacing:-.02em;text-shadow:0 0 20px rgba(57,255,20,.35)}.pub-links{display:flex;gap:8px}.pub-links a{font-size:.8rem;color:var(--muted);padding:5px 13px;border:1px solid var(--bdr);border-radius:6px;transition:all .2s;font-weight:600}.pub-links a:hover{color:var(--g);border-color:var(--g)}.pub-footer{text-align:center;padding:24px;font-size:.78rem;color:var(--muted);border-top:1px solid var(--bdr)}.pub-footer a{color:var(--muted)}.pub-footer a:hover{color:var(--g)}.card{background:var(--card);border:1px solid var(--bdr);border-radius:var(--r);padding:24px;transition:border-color .2s}.card:hover{border-color:rgba(57,255,20,.22)}.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:9px 20px;border:none;border-radius:8px;font:inherit;font-size:.88rem;font-weight:700;cursor:pointer;color:#020604;background:linear-gradient(135deg,#39ff14,#00ff88);text-decoration:none;transition:all .2s;box-shadow:0 3px 16px rgba(57,255,20,.28)}.btn:hover{transform:translateY(-1px);box-shadow:0 6px 24px rgba(57,255,20,.45);color:#020604}.btn-g{background:transparent;border:1px solid var(--bdr);color:var(--text)}.btn-g:hover{border-color:rgba(57,255,20,.3);color:var(--g)}.alert{padding:11px 15px;border-radius:9px;margin-bottom:14px;font-size:.87rem;background:rgba(57,255,20,.05);color:#7fff6e;border:1px solid rgba(57,255,20,.18)}.alert-d{background:rgba(255,68,102,.07);color:#ff8899;border-color:rgba(255,68,102,.22)}.alert-w{background:rgba(255,180,55,.06);color:#fbbf24;border-color:rgba(255,180,55,.2)}.chip{font-family:'JetBrains Mono',monospace;font-size:.8rem;background:#040d06;border:1px solid rgba(57,255,20,.22);color:#7fff6e;padding:4px 10px;border-radius:6px;display:inline-block}.badge-ok{display:inline-flex;align-items:center;padding:2px 10px;border-radius:999px;font-size:.67rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;background:#041f10;color:var(--g);border:1px solid rgba(57,255,20,.28)}.badge-off{background:#200810;color:#ff8899;border:1px solid rgba(255,68,102,.22)}.badge-free{background:#1e1800;color:#fde047;border:1px solid rgba(253,224,71,.18)}.badge-pend{background:rgba(100,100,255,.1);color:#a0a0ff;border:1px solid rgba(100,100,255,.25)}.field{margin-bottom:14px}label{display:block;font-size:.78rem;font-weight:600;color:var(--muted);margin-bottom:5px}input{width:100%;padding:9px 12px;border-radius:7px;border:1px solid var(--bdr);background:#040d06;color:var(--text);font:inherit;font-size:.9rem;transition:border-color .2s,box-shadow .2s}input:focus{outline:none;border-color:var(--g);box-shadow:0 0 0 3px rgba(57,255,20,.18)}@media(max-width:480px){.pub-nav{padding:10px 16px}}`;
-
-const PUB_CANVAS = `<canvas id="_c" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas><script>(function(){var c=document.getElementById('_c'),x=c.getContext('2d');function r(){c.width=innerWidth;c.height=innerHeight;}r();addEventListener('resize',r);var p=Array.from({length:40},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3,r:Math.random()*1.5+.4};});function d(){x.clearRect(0,0,c.width,c.height);p.forEach(function(a){a.x+=a.vx;a.y+=a.vy;if(a.x<0||a.x>c.width)a.vx*=-1;if(a.y<0||a.y>c.height)a.vy*=-1;x.beginPath();x.arc(a.x,a.y,a.r,0,Math.PI*2);x.fillStyle='rgba(57,255,20,.4)';x.fill();});for(var i=0;i<p.length;i++)for(var j=i+1;j<p.length;j++){var dx=p[i].x-p[j].x,dy=p[i].y-p[j].y,dd=Math.sqrt(dx*dx+dy*dy);if(dd<110){x.beginPath();x.moveTo(p[i].x,p[i].y);x.lineTo(p[j].x,p[j].y);x.strokeStyle='rgba(57,255,20,'+(0.09*(1-dd/110))+')';x.lineWidth=.5;x.stroke();}}requestAnimationFrame(d);}d();})();</script>`;
-
-function pubShell(title, body, activePath, _storeId) {
-  activePath = activePath || '/';
-  const nl = (href, label) => {
-    const isActive = href === '/' ? activePath === '/' : activePath === href;
-    const activeStyle = isActive
-      ? 'color:var(--g);border-color:var(--g);background:rgba(57,255,20,.08);text-shadow:0 0 10px rgba(57,255,20,.4)'
-      : 'color:var(--muted);border-color:var(--bdr);background:transparent';
-    return '<a href="' + href + '" style="font-size:.8rem;padding:5px 13px;border:1px solid;border-radius:6px;transition:all .2s;font-weight:700;text-decoration:none;' + activeStyle + '">' + label + (isActive ? ' <span style="color:var(--g);font-size:.6rem">●</span>' : '') + '</a>';
+  const map = {
+    active:  ['ATIVA',    '#39ff14'],
+    blocked: ['BLOQUEADA','#ff8899'],
+    expired: ['EXPIRADA', '#ff8899'],
+    pending: ['PENDENTE', '#ffcc00'],
+    free:    ['FREE',     '#8ab89a'],
   };
-  const bodyStr = Array.isArray(body) ? body.join('\n') : body;
-  return '<!DOCTYPE html><html lang="pt-BR"><head>\n<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">\n<title>' + esc(title) + ' — WaSpeed</title>\n<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 32 32\'%3E%3Crect width=\'32\' height=\'32\' rx=\'8\' fill=\'%23020604\'/%3E%3Ctext x=\'50%25\' y=\'54%25\' dominant-baseline=\'middle\' text-anchor=\'middle\' font-family=\'monospace\' font-weight=\'700\' font-size=\'13\' fill=\'%2339ff14\'%3EWS%3C/text%3E%3C/svg%3E">\n<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">\n<style>' + PUB_CSS + '</style></head>\n<body>\n<nav class="pub-nav">\n  <div class="pub-logo">\u26a1 WaSpeed</div>\n  <div class="pub-links">\n    ' + nl('/','Portal') + '\n    ' + nl('/faq','FAQ') + '\n    ' + nl('/privacidade','\uD83D\uDD12 Privacidade') + '\n    ' + nl('/planos','\uD83D\uDCB3 Planos') + '\n    <a href="https://wa.me/5521996771552" target="_blank" style="font-size:.8rem;padding:5px 13px;border:1px solid var(--bdr);border-radius:6px;font-weight:600;color:var(--muted);text-decoration:none;transition:all .2s;background:transparent">\uD83D\uDCAC Suporte</a>\n  </div>\n</nav>\n<div style="position:relative;z-index:1;min-height:calc(100vh - 52px - 54px)">' + bodyStr + '</div>\n<footer class="pub-footer">\n  <p>\u00a9 ' + new Date().getFullYear() + ' WaSpeed \u00b7 <a href="/">Portal</a> \u00b7 <a href="/faq">FAQ</a> \u00b7 <a href="/planos">Planos</a> \u00b7 <a href="/privacidade">Privacidade</a></p>\n</footer>\n' + PUB_CANVAS + '</body></html>';
-}
-
-function renderPortal(storeId) {
-  return pubShell('Portal do Cliente', [
-    '<style>',
-    '.portal-bg{min-height:calc(100vh - 52px);display:flex;align-items:center;justify-content:center;padding:32px 16px;background:radial-gradient(ellipse 70% 60% at 50% 40%,rgba(57,255,20,.07),transparent)}',
-    '.glass{background:rgba(8,14,9,.78);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(57,255,20,.2);border-radius:18px;padding:44px 40px;width:100%;max-width:480px;box-shadow:0 8px 48px rgba(0,0,0,.6),0 0 60px rgba(57,255,20,.06)}',
-    '.p-logo{display:flex;flex-direction:column;align-items:center;margin-bottom:28px}',
-    '.p-icon{font-size:2.6rem;margin-bottom:10px}',
-    '.p-brand{font-weight:800;font-size:1.45rem;color:#39ff14;letter-spacing:-.02em;text-shadow:0 0 24px rgba(57,255,20,.45)}',
-    '.p-sub{font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:rgba(57,255,20,.55);margin-top:4px;font-weight:600}',
-    '.key-lbl{font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;color:#39ff14;font-weight:700;margin-bottom:7px;display:block}',
-    '.key-in{width:100%;padding:13px 16px;border-radius:10px;border:1px solid rgba(57,255,20,.28);background:rgba(4,13,6,.92);color:#e8fff3;font-family:"JetBrains Mono",monospace;font-size:.92rem;letter-spacing:.04em;transition:border-color .2s,box-shadow .2s;outline:none;box-sizing:border-box}',
-    '.key-in:focus{border-color:#39ff14;box-shadow:0 0 0 3px rgba(57,255,20,.15),0 0 18px rgba(57,255,20,.1)}',
-    '.btn-main{display:block;width:100%;padding:14px;border-radius:10px;border:none;font:inherit;font-size:1rem;font-weight:800;cursor:pointer;color:#020604;background:linear-gradient(135deg,#39ff14,#00ff88);text-align:center;letter-spacing:.03em;transition:all .2s;box-shadow:0 4px 20px rgba(57,255,20,.35);margin-top:14px}',
-    '.btn-main:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(57,255,20,.5)}',
-    '.divider{height:1px;background:rgba(57,255,20,.1);margin:22px 0}',
-    '.btn-sec{display:flex;align-items:center;gap:10px;width:100%;padding:11px 16px;border-radius:9px;border:1px solid rgba(57,255,20,.12);background:transparent;color:rgba(57,255,20,.55);font:inherit;font-size:.85rem;font-weight:600;cursor:pointer;text-decoration:none;transition:all .2s;margin-bottom:8px;box-sizing:border-box}',
-    '.btn-sec:hover{border-color:rgba(57,255,20,.35);color:#39ff14;background:rgba(57,255,20,.04)}',
-    '.p-lgpd{font-size:.68rem;color:rgba(57,255,20,.35);text-align:center;line-height:1.7;margin-top:22px;padding-top:18px;border-top:1px solid rgba(57,255,20,.08)}',
-    '.p-lgpd a{color:rgba(57,255,20,.5);text-decoration:underline}',
-    '.result-card{margin-top:18px;border-radius:12px;border:1px solid rgba(57,255,20,.2);background:rgba(4,13,6,.85);overflow:hidden;display:none}',
-    '.rc-header{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0}',
-    '.rc-cell{padding:18px 16px;text-align:center;border-bottom:1px solid rgba(57,255,20,.1)}',
-    '.rc-cell:not(:last-child){border-right:1px solid rgba(57,255,20,.08)}',
-    '.rc-val{font-size:1rem;font-weight:700;margin-bottom:6px;min-height:28px;display:flex;align-items:center;justify-content:center}',
-    '.rc-lbl{font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(57,255,20,.4);font-weight:600}',
-    '.rc-section{padding:16px 20px;border-bottom:1px solid rgba(57,255,20,.08)}',
-    '.rc-section:last-child{border-bottom:none}',
-    '.rc-stitle{font-size:.62rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(57,255,20,.4);font-weight:700;margin-bottom:10px}',
-    '.rc-row{display:flex;gap:8px;align-items:baseline;margin-bottom:6px}',
-    '.rc-row:last-child{margin-bottom:0}',
-    '.rc-key{font-size:.75rem;color:rgba(57,255,20,.45);min-width:80px;flex-shrink:0}',
-    '.rc-val2{font-size:.85rem;color:#c8e8c8}',
-    '.kchip{font-family:"JetBrains Mono",monospace;font-size:.75rem;background:#040d06;border:1px solid rgba(57,255,20,.22);color:#7fff6e;padding:3px 9px;border-radius:6px}',
-    '.p-rem-btn{padding:3px 10px;border-radius:5px;border:1px solid rgba(255,68,102,.3);background:transparent;color:#ff8899;font-size:.7rem;font-weight:700;cursor:pointer;transition:all .15s}',
-    '.p-rem-btn:hover{background:rgba(255,68,102,.1)}',
-    '</style>',
-    '<div class="portal-bg">',
-    '<div class="glass">',
-    '<div class="p-logo"><span class="p-icon">⚡</span><span class="p-brand">WaSpeed</span><span class="p-sub">Portal do Cliente</span></div>',
-    '<div style="margin-bottom:16px"><label class="key-lbl">Sua chave de ativação</label>',
-    '<input id="ki" class="key-in" type="text" placeholder="WS-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false" oninput="this.value=this.value.trim().toUpperCase()">',
-    '</div>',
-    '<button class="btn-main" onclick="consultarChave()">🔍 Consultar Minha Chave</button>',
-    '<div id="status-msg" style="display:none;margin-top:14px;padding:10px 14px;border-radius:8px;font-size:.85rem;border:1px solid rgba(57,255,20,.18);background:rgba(57,255,20,.05);color:#7fff6e"></div>',
-    '<div id="result-box" class="result-card">',
-    '<div class="rc-header">',
-    '<div class="rc-cell"><div class="rc-val" id="rc-status">—</div><div class="rc-lbl">Status</div></div>',
-    '<div class="rc-cell"><div class="rc-val" id="rc-lib" style="font-size:.88rem">—</div><div class="rc-lbl">Liberação</div></div>',
-    '<div class="rc-cell"><div class="rc-val" id="rc-val" style="font-size:.82rem">—</div><div class="rc-lbl">Validade</div></div>',
-    '</div>',
-    '<div class="rc-section">',
-    '<div class="rc-stitle">Conta</div>',
-    '<div class="rc-row"><span class="rc-key">Cliente</span><span class="rc-val2" id="rc-label">—</span></div>',
-    '<div class="rc-row"><span class="rc-key">Chave</span><code class="kchip" id="rc-code">—</code></div>',
-    '<div class="rc-row"><span class="rc-key">Dispositivos</span><span class="rc-val2" id="rc-devices">—</span></div>',
-    '</div>',
-    '<div class="rc-section" id="rc-phones-section" style="display:none">',
-    '<div class="rc-stitle">Dispositivos cadastrados — <small style="color:rgba(57,255,20,.35);font-size:.6rem">Clique em Remover para desvincular</small></div>',
-    '<div id="rc-phones-list" style="display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto"></div>',
-    '</div>',
-    '</div>',
-    '<div class="divider"></div>',
-    '<a href="/faq" class="btn-sec">❓ FAQ – Dúvidas Frequentes</a>',
-    '<a href="/planos" class="btn-sec">💳 Ver Planos e Preços</a>',
-    '<p class="p-lgpd">Ao acessar, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com o tratamento de dados conforme a <strong>LGPD – Lei nº 13.709/2018</strong>.</p>',
-    '</div></div>',
-    '<script>',
-    'var _SL={active:"PRO ATIVO",blocked:"BLOQUEADA",expired:"EXPIRADA",free:"FREE",pending:"PENDENTE"};',
-    'var _SC={active:"#39ff14",blocked:"#ff8899",expired:"#ff8899",free:"#fde047",pending:"#a0a0ff"};',
-    'var _curKey="";',
-    'function setStatus(msg,ok){var el=document.getElementById("status-msg");el.style.display="block";el.style.color=ok?"#7fff6e":"#ff8899";el.style.borderColor=ok?"rgba(57,255,20,.18)":"rgba(255,68,102,.22)";el.style.background=ok?"rgba(57,255,20,.05)":"rgba(255,68,102,.07)";el.textContent=msg;}',
-    'function renderPhones(phones){',
-    '  var sec=document.getElementById("rc-phones-section");',
-    '  var list=document.getElementById("rc-phones-list");',
-    '  if(!phones||!phones.length){sec.style.display="none";return;}',
-    '  sec.style.display="block";',
-    '  list.innerHTML=phones.map(function(p){',
-    '    var masked=p.length>6?p.slice(0,2)+"••••"+p.slice(-4):p;',
-    '    return \'<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:7px;border:1px solid rgba(57,255,20,.12);background:rgba(4,13,6,.7)">\'+',
-    '      \'<span style="font-family:monospace;font-size:.82rem;color:#c8e8c8">\'+p+\'</span>\'+',
-    '      \'<button class="p-rem-btn" onclick="removePhone(this,\\\'\'+p+\'\\\')">\u2715 Remover</button>\'+',
-    '    \'</div>\';',
-    '  }).join("");',
-    '}',
-    'async function removePhone(btn,phone){',
-    '  if(!_curKey)return;',
-    '  btn.disabled=true;btn.textContent="...";',
-    '  try{',
-    '    var r=await fetch("/api/portal/remove-phone",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:_curKey.toLowerCase(),phone:phone})});',
-    '    var j=await r.json();',
-    '    if(j.success){setStatus("N\u00famero removido.",true);consultarChave();}',
-    '    else{btn.disabled=false;btn.textContent="\u2715 Remover";setStatus("Erro ao remover.",false);}',
-    '  }catch(e){btn.disabled=false;btn.textContent="\u2715 Remover";setStatus("Erro de conex\u00e3o.",false);}',
-    '}',
-    'async function consultarChave(){',
-    '  var k=document.getElementById("ki").value.trim();',
-    '  if(!k){setStatus("Digite sua chave de ativa\u00e7\u00e3o.",false);return;}',
-    '  _curKey=k;',
-    '  setStatus("Consultando...",true);',
-    '  document.getElementById("result-box").style.display="none";',
-    '  try{',
-    '    var r=await fetch("/api/auth/validate-portal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k.toLowerCase()})});',
-    '    var j=await r.json();',
-    '    if(!j.success){setStatus(j.msg_id==="not_found"?"Chave n\u00e3o encontrada. Verifique e tente novamente.":"Chave inv\u00e1lida.",false);return;}',
-    '    var sl=_SL[j.status]||j.status.toUpperCase();',
-    '    var sc=_SC[j.status]||"#fde047";',
-    '    document.getElementById("rc-status").innerHTML=\'<span style="font-size:.72rem;font-weight:800;color:\'+sc+\';background:\'+sc+\'18;border:1px solid \'+sc+\'28;padding:3px 10px;border-radius:999px;letter-spacing:.06em">\'+sl+"</span>";',
-    '    document.getElementById("rc-lib").textContent=j.liberacao||"\u2014";',
-    '    document.getElementById("rc-val").textContent=j.expiresAt?new Date(j.expiresAt).toLocaleDateString("pt-BR"):"Sem vencimento";',
-    '    document.getElementById("rc-label").textContent=j.label||"\u2014";',
-    '    document.getElementById("rc-code").textContent=j.code||k;',
-    '    document.getElementById("rc-devices").textContent=j.phones+"/"+(j.isUnlimited?"\u221e":String(j.maxUses));',
-    '    renderPhones(j.phoneList||[]);',
-    '    document.getElementById("result-box").style.display="block";',
-    '    setStatus("Chave encontrada.",true);',
-    '  }catch(e){setStatus("Erro de conex\u00e3o. Tente novamente.",false);}',
-    '}',
-    'document.getElementById("ki").addEventListener("keydown",function(e){if(e.key==="Enter")consultarChave();});',
-    '</scr' + 'ipt>',
-  ].join('\n'), '/', storeId);
-}
-
-function renderFaqPage() {
-  const faqs = [
-    ['🔑 Como ativo minha chave?', 'Instale a extensão WaSpeed no Chrome, abra o WhatsApp Web, clique no ícone da extensão, cole sua chave WS-XXXXX-XXXXX e confirme. O status muda para Ativo imediatamente.'],
-    ['📱 Quantos números posso usar?', 'Depende do seu plano: Solo (1), Padrão (3), Pro (5) e Empresarial (10). Ao atingir o limite, novos dispositivos são automaticamente bloqueados.'],
-    ['⏱ Como funciona a renovação?', 'A renovação soma os dias ao tempo restante — você nunca perde dias. Renove antes ou depois do vencimento sem perder o acesso acumulado.'],
-    ['❌ O que acontece ao vencer?', 'A extensão para de funcionar. Suas configurações são preservadas. Basta renovar o plano para retomar o acesso sem reconfigurar nada.'],
-    ['💳 Como pago?', 'Os links de pagamento estão sendo configurados. Enquanto isso, entre em contato com o suporte no WhatsApp para contratar manualmente via PIX.'],
-    ['🔄 Posso trocar de dispositivo?', 'Sim. A chave é vinculada ao número do WhatsApp, não ao computador. Instale em outro Chrome e autentique com o mesmo número.'],
-    ['⚡ O que está incluso em todos os planos?', 'Disparos em massa, funis, fluxos, agendamentos, CRM, etiquetas, respostas rápidas e suporte via WhatsApp — inclusos em todos os planos.'],
-    ['💬 Como aciono o suporte técnico?', 'Via WhatsApp no número +55 21 99677-1552, de segunda a sexta das 9h às 18h. Resposta em até 2h para dúvidas simples.'],
-    ['💰 Existe versão gratuita?', 'Sim. Novas instalações recebem automaticamente uma chave gratuita com recursos limitados e sem prazo de expiração.'],
-    ['❓ Esqueci minha chave. Como recupero?', 'Digite seu número de WhatsApp vinculado no campo de recuperação do portal, ou entre em contato com o suporte para reenvio imediato.'],
-  ];
-  const items = faqs.map(([q,a],i) => `<div style="border-bottom:1px solid rgba(57,255,20,.1)">
-<button onclick="(function(){var b=document.getElementById('b${i}'),a=document.getElementById('a${i}'),o=b.style.display==='none';b.style.display=o?'block':'none';a.textContent=o?'−':'+';a.style.color=o?'var(--g)':'var(--muted)';})()" style="width:100%;text-align:left;padding:15px 0;background:none;border:none;color:var(--text);font:inherit;font-size:.88rem;font-weight:700;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px">
-<span>${q}</span><span id="a${i}" style="color:var(--muted);font-size:1.1rem;flex-shrink:0;transition:color .2s">+</span></button>
-<div id="b${i}" style="display:none;padding:0 0 15px;font-size:.83rem;color:#8ab08c;line-height:1.75">${a}</div>
-</div>`).join('');
-  return pubShell('FAQ — Dúvidas Frequentes', `
-<main style="max-width:720px;margin:0 auto;padding:52px 20px 80px">
-<div style="text-align:center;margin-bottom:40px">
-<p style="font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-weight:700">Central de Ajuda</p>
-<h1 style="font-size:clamp(1.5rem,4vw,2.2rem);font-weight:800;letter-spacing:-.03em">Perguntas <span style="color:var(--g)">Frequentes</span></h1>
-</div>
-<div style="background:rgba(8,14,9,.85);backdrop-filter:blur(12px);border:1px solid rgba(57,255,20,.15);border-radius:16px;padding:6px 28px 6px">${items}</div>
-<div style="margin-top:28px;background:rgba(57,255,20,.04);border:1px solid rgba(57,255,20,.15);border-radius:12px;padding:26px;text-align:center">
-<p style="font-weight:700;margin-bottom:8px">Não encontrou o que procurava?</p>
-<p style="color:var(--muted);font-size:.85rem;margin-bottom:16px">Nossa equipe responde pelo WhatsApp em horário comercial.</p>
-<a class="btn" href="https://wa.me/5521996771552" target="_blank">💬 Falar com Suporte</a>
-</div>
-</main>`, '/faq');
-}
-
-function renderPlanosPage() {
-  const PL = [
-    {d:1, n:'Solo',        p:'24,99', o:null,     ic:'👤', dp:'24,99', hl:false},
-    {d:3, n:'Padrão',      p:'29,99', o:'44,99',  ic:'⚡', dp:'10,00', hl:true },
-    {d:5, n:'Pro',         p:'39,99', o:'79,99',  ic:'🚀', dp:'8,00',  hl:false},
-    {d:10,n:'Empresarial', p:'59,99', o:'149,99', ic:'🏢', dp:'6,00',  hl:false},
-  ];
-  const cards = PL.map(p=>`<div style="background:${p.hl?'linear-gradient(165deg,#0a180a,#0e140e)':'rgba(8,14,9,.85)'};backdrop-filter:blur(10px);border:1px solid ${p.hl?'rgba(57,255,20,.4)':'rgba(57,255,20,.12)'};border-radius:16px;padding:26px 18px 22px;text-align:center;position:relative;display:flex;flex-direction:column;transition:transform .2s,border-color .2s${p.hl?';box-shadow:0 0 32px rgba(57,255,20,.12)':''}">
-${p.hl?'<div style="position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.7rem;font-weight:800;padding:4px 18px;border-radius:20px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap">⚡ Mais popular</div>':''}
-<div style="font-size:2.2rem;margin-bottom:10px">${p.ic}</div>
-<div style="font-weight:800;font-size:1.1rem;margin-bottom:4px;color:${p.hl?'#e8fff3':'#c8e8c8'}">${p.n}</div>
-<div style="font-size:.78rem;color:var(--muted);margin-bottom:18px">${p.d} número${p.d>1?'s':''} de WhatsApp</div>
-${p.o?`<div style="font-size:.78rem;color:var(--muted);text-decoration:line-through;margin-bottom:3px">R$ ${p.o}</div>`:''}
-<div style="display:flex;align-items:baseline;justify-content:center;gap:3px;margin-bottom:5px">
-<span style="font-size:.85rem;color:var(--g);font-weight:700">R$</span>
-<span style="font-size:2.2rem;font-weight:800;color:var(--g);line-height:1">${p.p}</span>
-<span style="font-size:.8rem;color:var(--muted)">/mês</span>
-</div>
-<div style="font-size:.75rem;color:#7ab07c;margin-bottom:18px">R$ ${p.dp} por número</div>
-<div style="height:1px;background:rgba(57,255,20,.1);margin-bottom:16px"></div>
-<ul style="list-style:none;text-align:left;font-size:.78rem;color:#8ab08c;display:flex;flex-direction:column;gap:9px;margin-bottom:20px;flex:1">
-<li>✅ ${p.d} número${p.d>1?'s':''} simultâneo${p.d>1?'s':''}</li>
-<li>✅ 30 dias de acesso completo</li>
-<li>✅ Todos os recursos inclusos</li>
-<li>✅ Portal do cliente incluído</li>
-<li>✅ Suporte via WhatsApp</li>
-<li>✅ Renovação soma ao tempo restante</li>
-</ul>
-<a href="#" onclick="return false" style="display:block;padding:11px;border-radius:9px;font-size:.8rem;font-weight:700;text-align:center;background:${p.hl?'linear-gradient(135deg,#39ff14,#00ff88)':'rgba(57,255,20,.08)'};color:${p.hl?'#020604':'var(--muted)'};border:1px solid ${p.hl?'transparent':'rgba(57,255,20,.15)'};cursor:not-allowed;opacity:${p.hl?.75:.6}">🔒 Em breve</a>
-</div>`).join('');
-
-  const features = [
-    ['Números de WhatsApp','1','3','5','10'],
-    ['Preço mensal','R$ 24,99','R$ 29,99','R$ 39,99','R$ 59,99'],
-    ['Preço por número','R$ 24,99','R$ 10,00','R$ 8,00','R$ 6,00'],
-    ['Disparo em massa','✓','✓','✓','✓'],
-    ['Funis de atendimento','✓','✓','✓','✓'],
-    ['Fluxos automatizados','✓','✓','✓','✓'],
-    ['Agendamento de mensagens','✓','✓','✓','✓'],
-    ['CRM e etiquetas','✓','✓','✓','✓'],
-    ['Respostas rápidas','✓','✓','✓','✓'],
-    ['Suporte WhatsApp','✓','✓','✓','✓'],
-    ['Portal do cliente','✓','✓','✓','✓'],
-    ['Renovação automática','✓','✓','✓','✓'],
-  ];
-
-  return pubShell('Planos e Preços', `
-<main style="max-width:980px;margin:0 auto;padding:52px 20px 80px">
-<div style="text-align:center;margin-bottom:44px">
-<p style="font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-weight:700">💳 Planos e Preços</p>
-<h1 style="font-size:clamp(1.6rem,4vw,2.4rem);font-weight:800;letter-spacing:-.03em;margin-bottom:14px">Simples, <em style="color:var(--g);font-style:normal">transparente</em><br>e sem surpresas</h1>
-<p style="color:var(--muted);font-size:.88rem;margin-bottom:20px">Todos os planos incluem acesso completo por 30 dias. Sem fidelidade.</p>
-<div style="display:inline-flex;align-items:center;gap:18px;background:rgba(8,14,9,.85);border:1px solid rgba(57,255,20,.15);border-radius:30px;padding:9px 22px;font-size:.8rem;color:var(--muted);flex-wrap:wrap;justify-content:center;backdrop-filter:blur(8px)">
-<span>✅ Sem fidelidade</span><span>⚡ Ativação imediata</span><span>💬 Suporte incluso</span><span>🔄 Renovação soma</span>
-</div>
-</div>
-<div style="background:rgba(255,211,42,.04);border:1px solid rgba(255,211,42,.2);border-radius:10px;padding:13px 20px;margin-bottom:36px;display:flex;align-items:center;gap:12px;font-size:.82rem;color:#c9a800">
-<span style="font-size:1.3rem">🚧</span>
-<span><strong>Links de pagamento chegando em breve!</strong> Os planos e preços já estão definidos. Entre em contato pelo suporte para contratar manualmente.</span>
-</div>
-<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:48px">${cards}</div>
-<div style="background:rgba(8,14,9,.85);backdrop-filter:blur(12px);border:1px solid rgba(57,255,20,.15);border-radius:16px;overflow:hidden;margin-bottom:36px">
-<div style="padding:16px 22px;border-bottom:1px solid rgba(57,255,20,.1);font-size:.78rem;font-weight:700;color:var(--g);letter-spacing:.1em;text-transform:uppercase;background:rgba(57,255,20,.03)">📊 Tabela Comparativa Completa de Recursos</div>
-<div style="overflow-x:auto">
-<table style="width:100%;border-collapse:collapse;font-size:.8rem">
-<thead><tr style="background:rgba(57,255,20,.03)">
-<th style="padding:11px 18px;text-align:left;color:var(--muted);font-weight:600;border-bottom:1px solid rgba(57,255,20,.08);white-space:nowrap">Recurso / Limite</th>
-${['👤 Solo','⚡ Padrão','🚀 Pro','🏢 Empresarial'].map(n=>`<th style="padding:11px 14px;text-align:center;color:var(--muted);font-weight:600;border-bottom:1px solid rgba(57,255,20,.08);white-space:nowrap">${n}</th>`).join('')}
-</tr></thead>
-<tbody>
-${features.map((row,ri)=>`<tr style="border-bottom:1px solid rgba(57,255,20,.06)${ri%2===0?';background:rgba(57,255,20,.015)':''}">
-<td style="padding:10px 18px;color:var(--muted);font-size:.78rem">${row[0]}</td>
-${[row[1],row[2],row[3],row[4]].map((v,ci)=>`<td style="padding:10px 14px;text-align:center;color:${ri>=3?'#39ff14':ri<=1?'#c8e8c8':'#7af07a'};font-weight:${ri>=3?'700':'400'}">${v}</td>`).join('')}
-</tr>`).join('')}
-</tbody>
-</table>
-</div>
-</div>
-<div style="background:linear-gradient(135deg,rgba(10,26,10,.9),rgba(14,20,14,.9));backdrop-filter:blur(12px);border:1px solid rgba(57,255,20,.25);border-radius:16px;padding:36px;text-align:center">
-<h3 style="font-weight:800;margin-bottom:10px;font-size:1.2rem">Precisa de ajuda para escolher?</h3>
-<p style="color:var(--muted);font-size:.87rem;margin-bottom:22px;line-height:1.8">Nossa equipe analisa seu volume de mensagens e recomenda o plano ideal gratuitamente.</p>
-<a class="btn" href="https://wa.me/5521996771552" target="_blank">💬 Falar com o Suporte</a>
-</div>
-</main>
-<style>@media(max-width:720px){main>div:nth-child(4){grid-template-columns:1fr 1fr}}@media(max-width:440px){main>div:nth-child(4){grid-template-columns:1fr}}</style>`, '/planos');
-}
-
-function renderPrivacyPage() {
-  const now = new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
-  const sections = [
-    ['📋','1. Visão Geral e Identificação do Controlador',`Esta Política de Privacidade descreve como o <strong>WaSpeed</strong> ("Nós", "Nosso Serviço"), desenvolvido e operado como serviço independente de licenciamento de software, coleta, processa, armazena e protege os dados pessoais dos Usuários ("Você", "Titular") em conformidade com a <strong>Lei Geral de Proteção de Dados Pessoais — LGPD (Lei Federal nº 13.709, de 14 de agosto de 2018)</strong> e demais normas aplicáveis. Ao instalar a extensão WaSpeed, ativar uma chave de licença ou utilizar o portal, você declara ter lido, compreendido e concordado com todos os termos desta Política.`],
-    ['🗂','2. Dados Pessoais Coletados',`Coletamos exclusivamente os dados estritamente necessários para a operação do serviço de licenciamento, com base no princípio da minimização de dados (Art. 6º, III, LGPD):<br><br>
-<strong>2.1 Dados de Identificação da Licença:</strong> chave de ativação (gerada aleatoriamente, não vinculada a CPF ou identidade civil), identificador interno de usuário (numérico, sequencial), nome ou apelido fornecido pelo administrador da licença e endereço de e-mail (opcional, para notificações).<br><br>
-<strong>2.2 Dados Técnicos de Autenticação:</strong> número de telefone do WhatsApp vinculado à licença (no formato internacional, ex: 5521999999999), endereço IP de origem das requisições de autenticação, timestamps de último acesso e data de criação da licença.<br><br>
-<strong>2.3 Dados NÃO Coletados:</strong> Confirmamos expressamente que o WaSpeed <strong>não coleta, não acessa e não armazena</strong> o conteúdo de mensagens, contatos, conversas, mídias, arquivos ou qualquer dado trafegado pelo WhatsApp. A extensão opera no contexto do navegador sem transmitir conteúdo de comunicações ao servidor.`],
-    ['🎯','3. Finalidades e Bases Legais do Tratamento',`O tratamento dos dados pessoais coletados é realizado com as seguintes finalidades e bases legais (Art. 7º, LGPD):<br><br>
-<strong>3.1 Execução do Contrato (Art. 7º, V):</strong> validação e controle de acesso à extensão WaSpeed, autenticação do usuário nas sessões de uso, controle do número de dispositivos simultâneos por licença e verificação de validade e limites do plano contratado.<br><br>
-<strong>3.2 Legítimo Interesse (Art. 7º, IX):</strong> detecção de uso indevido ou compartilhamento não autorizado de chaves de licença, prevenção a fraudes e abuso do serviço, geração de logs de auditoria para resolução de disputas e análise de disponibilidade e performance do sistema.<br><br>
-<strong>3.3 Cumprimento de Obrigação Legal (Art. 7º, II):</strong> quando exigido por autoridade competente, mediante ordem judicial ou administrativa devidamente fundamentada.`],
-    ['⏱','4. Prazo de Retenção dos Dados',`Os dados pessoais são retidos pelo tempo estritamente necessário às finalidades declaradas:<br><br>
-• <strong>Logs de autenticação (IP, timestamps):</strong> retidos por até 90 (noventa) dias corridos, sendo excluídos automaticamente por processo de limpeza periódica do banco de dados.<br>
-• <strong>Dados da licença (chave, número, nome):</strong> mantidos enquanto a licença estiver ativa no sistema ou por até 30 (trinta) dias após o vencimento definitivo, podendo ser antecipados mediante solicitação do titular.<br>
-• <strong>Exclusão imediata:</strong> mediante solicitação formal do titular, todos os dados associados à licença são removidos permanentemente em até 5 (cinco) dias úteis.`],
-    ['🔒','5. Segurança e Medidas Técnicas',`Adotamos medidas técnicas e organizacionais adequadas para proteger os dados pessoais contra acesso não autorizado, destruição, perda, alteração, comunicação ou difusão indevida (Art. 46, LGPD):<br><br>
-• <strong>Armazenamento:</strong> MongoDB Atlas com criptografia AES-256 em repouso (Encryption at Rest) e TLS 1.3 em trânsito, hospedado em infraestrutura certificada ISO/IEC 27001 e SOC 2 Type II.<br>
-• <strong>Autenticação:</strong> senhas administrativas protegidas com PBKDF2-SHA512 (120.000 iterações), cookies de sessão HttpOnly e SameSite=Strict.<br>
-• <strong>Transmissão:</strong> toda comunicação entre a extensão e o servidor utiliza HTTPS/TLS obrigatório em produção.<br>
-• <strong>Controle de acesso:</strong> princípio de menor privilégio; dados são acessados apenas por processos e usuários autorizados com registros de auditoria.`],
-    ['🤝','6. Compartilhamento com Terceiros',`Os dados pessoais <strong>não são vendidos, alugados ou cedidos</strong> a terceiros para fins comerciais, de marketing ou quaisquer outras finalidades não relacionadas à operação do serviço. O compartilhamento ocorre exclusivamente com prestadores de infraestrutura tecnológica essencial:<br><br>
-• <strong>MongoDB, Inc.</strong> — armazenamento de dados em nuvem. DPA disponível em mongodb.com/legal/data-processing-agreement.<br>
-• <strong>Render.com</strong> — hospedagem e execução do servidor de aplicação. DPA disponível em render.com/privacy.<br>
-• <strong>Autoridades públicas:</strong> exclusivamente mediante ordem judicial ou determinação de autoridade competente, nos termos da legislação vigente.`],
-    ['⚖️','7. Direitos do Titular',`Nos termos dos Arts. 17 a 22 da LGPD, você possui os seguintes direitos em relação aos seus dados pessoais, exercíveis mediante solicitação ao DPO (encarregado de dados):<br><br>
-(I) <strong>Confirmação e Acesso</strong> — confirmar a existência e obter cópia dos dados tratados;<br>
-(II) <strong>Correção</strong> — solicitar correção de dados incompletos, inexatos ou desatualizados;<br>
-(III) <strong>Anonimização, Bloqueio ou Eliminação</strong> — de dados desnecessários, excessivos ou tratados em desconformidade com a LGPD;<br>
-(IV) <strong>Portabilidade</strong> — solicitar a portabilidade dos dados a outro fornecedor de serviço;<br>
-(V) <strong>Eliminação</strong> — dos dados pessoais tratados com base no consentimento;<br>
-(VI) <strong>Informação</strong> — sobre entidades públicas e privadas com as quais dados são compartilhados;<br>
-(VII) <strong>Revogação do consentimento</strong> — a qualquer momento.<br><br>
-Para exercer seus direitos, entre em contato via WhatsApp ou e-mail informando sua chave de licença e o direito a ser exercido.`],
-    ['🔔','8. Alterações desta Política',`Esta Política pode ser atualizada periodicamente para refletir mudanças nos processos de tratamento de dados, na legislação aplicável ou nos serviços oferecidos. A data de última atualização é exibida no topo desta página. Alterações materiais serão comunicadas com antecedência mínima de 15 (quinze) dias pelo portal e via notificação na extensão. A continuidade do uso dos serviços após as alterações implica aceitação dos novos termos.`],
-    ['📞','9. Contato e Encarregado de Dados (DPO)',`Para exercício de direitos, dúvidas, solicitações ou reclamações relacionadas ao tratamento de dados pessoais:<br><br>
-<strong>Suporte WaSpeed</strong> — disponível via WhatsApp: <a href="https://wa.me/5521996771552" style="color:var(--g)">+55 21 99677-1552</a><br>
-Horário de atendimento: segunda a sexta, das 9h às 18h (horário de Brasília).<br><br>
-Você também pode registrar reclamações perante a <strong>Autoridade Nacional de Proteção de Dados (ANPD)</strong> pelo portal gov.br/anpd.`],
-  ];
-  return pubShell('Política de Privacidade', `
-<main style="max-width:720px;margin:0 auto;padding:52px 20px 80px">
-<div style="margin-bottom:44px">
-<p style="font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;font-weight:700">Legal</p>
-<h1 style="font-size:clamp(1.5rem,4vw,2.2rem);font-weight:800;letter-spacing:-.03em;margin-bottom:10px">Política de Privacidade</h1>
-<p style="font-size:.8rem;color:var(--muted)">Última atualização: ${now} · Em conformidade com a LGPD — Lei nº 13.709/2018</p>
-</div>
-${sections.map(([ic,t,c])=>`<div style="background:rgba(8,14,9,.85);backdrop-filter:blur(10px);border:1px solid rgba(57,255,20,.12);border-radius:14px;padding:24px 28px;margin-bottom:14px">
-<h2 style="font-size:.82rem;font-weight:700;color:var(--g);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;display:flex;align-items:center;gap:8px">${ic} ${t}</h2>
-<div style="font-size:.83rem;color:#8ab08c;line-height:1.95">${c}</div></div>`).join('')}
-</main>`, '/privacidade');
-}
-
-
-
-
-
-function renderClientAuthPainel(storeId, token, page, rec) {
-  if (!rec) {
-    return clientShell('Sessão inválida', `<div class="card">
-      <div class="alert alert-danger">Token inválido ou sessão expirada. Faça login novamente na extensão WaSpeed.</div>
-      <a class="btn" href="/${esc(storeId)}/login">Instruções de acesso</a>
-    </div>`);
-  }
-  const code      = rec.code || token;
-  const user      = keyToUser(code, rec);
-  const st        = keyStatus(rec);
-  const premium   = buildUserPremium(code, rec);
-  const exp       = rec.expiresAt ? new Date(rec.expiresAt).toLocaleString('pt-BR') : 'Sem vencimento';
-  const liberacao = premium?.data_liberacao || '—';
-  const pageLabel = page ? esc(decodeURIComponent(page)) : '';
-  return clientShell('Minha conta', `
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:22px">
-      <div class="metric" style="padding:28px 20px"><div class="metric-value" style="font-size:1.1rem;margin-bottom:10px">${statusBadgeHtml(st)}</div><div class="metric-label">Status</div></div>
-      <div class="metric" style="padding:28px 20px"><div class="metric-value" style="font-size:1.3rem">${esc(liberacao)}</div><div class="metric-label">Data liberação</div></div>
-      <div class="metric" style="padding:28px 20px"><div class="metric-value" style="font-size:1.1rem">${esc(exp)}</div><div class="metric-label">Validade</div></div>
-    </div>
-    <div class="card" style="padding:28px 30px;margin-bottom:18px">
-      <div class="card-title">Conta</div>
-      <p style="font-size:1.3rem;font-weight:700;margin-bottom:6px">${esc(user.name)}</p>
-      <p style="color:var(--muted);font-size:1rem;margin-bottom:18px">${esc((user.email || '').replace(/@waspeed\.local$/i, ''))}</p>
-      <div class="info-grid" style="gap:14px">
-        <div class="info-row" style="font-size:1rem"><span class="label" style="font-size:.85rem">Chave</span><code class="key-chip" style="font-size:.9rem">${esc(code)}</code></div>
-        ${pageLabel ? `<div class="info-row" style="font-size:1rem"><span class="label" style="font-size:.85rem">Seção</span><span>${pageLabel}</span></div>` : ''}
-      </div>
-    </div>
-    <div class="card" style="padding:28px 30px">
-      <div class="card-title">Informações</div>
-      <div class="info-grid" style="gap:14px">
-        <div class="info-row" style="font-size:1rem"><span class="label" style="font-size:.85rem">Servidor</span><span class="key-chip" style="font-size:.9rem">Servidor de teste ativo</span></div>
-        <div class="info-row" style="font-size:1rem"><span class="label" style="font-size:.85rem">WhatsApp</span><span style="font-size:1rem">${esc(rec.lastPhone || '—')}</span></div>
-        <div class="info-row" style="font-size:1rem"><span class="label" style="font-size:.85rem">Último uso</span><span style="font-size:1rem">${rec.lastUsed ? esc(new Date(rec.lastUsed).toLocaleString('pt-BR')) : '—'}</span></div>
-      </div>
-    </div>`, null, `Olá, ${esc(user.name)}`);
-}
-
-async function handleClientPanel(req, res, pathname, url) {
-  const m = pathname.match(CLIENT_PANEL_RE);
-  if (!m) return false;
-  const storeId = m[1];
-  const route   = m[2].toLowerCase();
-  const token   = sanitizeString(url.searchParams.get('token') || url.searchParams.get('bearer_token') || '');
-  const page    = url.searchParams.get('page') || '';
-
-  if (route === 'auth-painel') {
-    if (!token) { res.writeHead(302, { Location: `/${storeId}/login` }); res.end(); return true; }
-    const rec = await findKeyByBearer(token);
-    sendHtml(res, renderClientAuthPainel(storeId, token, page, rec));
-    return true;
-  }
-  if (route === 'auth-plugin') {
-    const dest = token ? `/${storeId}/auth-painel?token=${encodeURIComponent(token)}` : `/${storeId}/login`;
-    res.writeHead(302, { Location: dest }); res.end(); return true;
-  }
-  if (route === 'redirect-plugin-register' || route === 'register') {
-    sendHtml(res, renderPortal(storeId)); return true;
-  }
-  if (route === 'recovery') { sendHtml(res, renderPortal(storeId)); return true; }
-  if (route === 'login')    { sendHtml(res, renderPortal(storeId)); return true; }
-  return false;
-}
-
-async function handleWaSpeedApi(req, res, pathname, ip) {
-  const chromeId = config.chromeStoreId;
-  const settings = cachedSettings || {};
-  if (pathname === `/api/urls/install/${chromeId}` || pathname.match(/^\/api\/urls\/install\//)) {
-    await addLog('install', 'Redirect install', { ip });
-    return sendJson(res, { success: true, url: settings.installUrl || config.installUrl });
-  }
-  if (pathname.match(/^\/api\/urls\/uninstall\//)) {
-    return sendJson(res, { success: true, url: `${config.baseUrl}/obrigado` });
-  }
-  if (pathname.match(/^\/api\/urls\/active-notes\//)) {
-    return sendJson(res, { success: true, path_note_update: { redirect: config.notesRedirect } });
-  }
-  if (pathname.match(/^\/api\/urls\/notes\//)) {
-    const html = settings.notesHtml || '<h1>WaSpeed</h1>';
-    if (!res.headersSent) { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); res.end(html); }
-    return true;
-  }
-  if (pathname === '/api/urls/update' && (req.method === 'GET' || req.method === 'POST')) {
-    return sendJson(res, wppUpdate());
-  }
-  if (pathname === '/api/services/update' && (req.method === 'GET' || req.method === 'POST')) {
-    return sendJson(res, wppUpdate());
-  }
-  if (pathname === '/api/external/is_instaled') {
-    return sendJson(res, { success: true });
-  }
-  if (pathname === '/api/external/ping') {
-    let keyCount = 0;
-    try { keyCount = await db.collection(COL.licenses).countDocuments(); } catch {}
-    return sendJson(res, { success: true, server: 'waspeed', version: '4.0.0', keys: keyCount, storage: 'mongodb' });
-  }
-  if (pathname === '/api/portal/remove-phone' && req.method === 'POST') {
-    const body = await readJson(req);
-    const raw  = sanitizeString(String(body.key || '').trim());
-    const key  = normKey(raw);
-    const ph   = sanitizeString(String(body.phone || '').trim());
-    if (!key || !ph) { sendJson(res, { success: false, msg_id: 'missing_params' }); return true; }
-    if (detectInjection(key) || detectInjection(ph)) { sendJson(res, { success: false, msg_id: 'invalid_input' }); return true; }
-    const rec = await findKey(key) || await findKeyByBearer(raw);
-    if (!rec) { sendJson(res, { success: false, msg_id: 'not_found' }); return true; }
-    if (!db) { sendJson(res, { success: false, msg_id: 'db_unavailable' }); return true; }
-    await db.collection(COL.licenses).updateOne({ code: normKey(rec.code || key) }, { $pull: { phones: ph } });
-    sendJson(res, { success: true });
-    return true;
-  }
-
-  if (pathname === '/api/auth/validate-portal' && req.method === 'POST') {
-    const body = await readJson(req);
-    const raw  = sanitizeString(String(body.key || '').trim());
-    const key  = normKey(raw);
-    if (!key) { sendJson(res, { success: false, msg_id: 'key_required' }); return true; }
-    if (detectInjection(key)) { sendJson(res, { success: false, msg_id: 'invalid_key' }); return true; }
-    const rec = await findKey(key) || await findKeyByBearer(raw);
-    if (!rec) { sendJson(res, { success: false, msg_id: 'not_found' }); return true; }
-    const st      = keyStatus(rec);
-    const code    = rec.code || key;
-    const maxU    = (rec.maxUses != null) ? rec.maxUses : -1;
-    const isUnlim = maxU <= 0 || maxU === -1;
-    const premium = buildUserPremium(code, rec);
-    sendJson(res, {
-      success    : true,
-      status     : st,
-      code       : code,
-      label      : rec.label || '',
-      expiresAt  : rec.expiresAt || null,
-      createdAt  : rec.createdAt || null,
-      lastUsed   : rec.lastUsed  || null,
-      lastPhone  : rec.lastPhone || null,
-      lastIp     : rec.lastIp    || null,
-      maxUses    : maxU,
-      isUnlimited: isUnlim,
-      phones     : (rec.phones || []).length,
-      phoneList  : (rec.phones || []),
-      premium    : rec.premium || false,
-      liberacao  : premium ? premium.data_liberacao : null,
-    });
-    return true;
-  }
-
-  if (!requireAccessToken(req)) {
-    return sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403);
-  }
-
-  const extId = req.headers['x-extension-id'] || '';
-  if (extId && extId !== config.chromeStoreId) {
-    slog(LOG_LEVELS.SECURITY, 'X-Extension-ID divergente (modo unpacked aceito)', { ip, extId });
-  }
-
-  const resolvedId = extId || chromeId;
-
-  if ((pathname === `/api/auth/login-bearer/${resolvedId}` || pathname === `/api/auth/login-bearer/${chromeId}`) && (req.method === 'GET' || req.method === 'POST')) {
-    if (!checkRate(ip)) return sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
-    const bearer = parseBearer(req);
-    if (detectInjection(bearer)) {
-      slog(LOG_LEVELS.SECURITY, 'Injection em login-bearer', { ip });
-      dispatchWebhookAlert('nosql_injection', { route: 'login-bearer', ip });
-      return sendJson(res, { success: false, msg_id: 'invalid_token' });
-    }
-    const bBody = req.method === 'POST' ? await readJson(req) : {};
-    const bPhone = sanitizeString(String(bBody.whatsapp_plugin || bBody.whatsapp_registro || bBody.phone || '').slice(0, 40));
-    const rec = await findKeyByBearer(bearer);
-    if (!rec) {
-      await addLog('auth_fail', 'Bearer inválido', { ip });
-      return sendJson(res, { success: false, msg_id: 'invalid_token' });
-    }
-    const result = await authSuccess(rec.code || bearer, rec, { phone: bPhone, ip });
-    if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
-    await addLog('auth_ok', `Login bearer ${rec.code}`, { ip, phone: bPhone });
-    return sendJson(res, result.body);
-  }
-
-  if ((pathname === `/api/auth/register-free/${resolvedId}` || pathname === `/api/auth/register-free/${chromeId}`) && req.method === 'POST') {
-    if (!checkRate(ip)) return sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
-    const body  = await readJson(req);
-    const phone = sanitizeString(String(body.whatsapp_plugin || body.whatsapp_registro || body.phone || '').slice(0, 40));
-    const { code, rec } = await getOrCreateFreeKey(body.extension_id || body.device_id, ip);
-    const result = await authSuccess(code, rec, { phone, ip });
-    if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
-    await addLog('free_register', `Login free ${code}`, { ip, phone, extension_id: body.extension_id });
-    return sendJson(res, result.body);
-  }
-
-  if ((pathname === `/api/auth/validation/${resolvedId}` || pathname === `/api/auth/validation/${chromeId}`) && req.method === 'POST') {
-    if (!checkRate(ip)) return sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
-    const body  = await readJson(req);
-    const key   = normKey(body.access_token_plugin || body.chave || body.senha || body.email);
-    const phone = sanitizeString(String(body.whatsapp_plugin || body.whatsapp_registro || body.phone || '').slice(0, 40));
-    if (detectInjection(key)) {
-      slog(LOG_LEVELS.SECURITY, 'Injection em validation', { ip });
-      return sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' });
-    }
-    const rec = await findKey(key);
-    if (!rec) {
-      await addLog('auth_fail', 'Chave inválida validation', { ip, key });
-      return sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' });
-    }
-    const result = await authSuccess(key, rec, { phone, ip });
-    if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
-    await addLog('validation_ok', `Validação ${key}`, { ip, phone });
-    return sendJson(res, result.body);
-  }
-
-  if ((pathname === `/api/auth/login/${resolvedId}` || pathname === `/api/auth/login/${chromeId}`) && req.method === 'POST') {
-    if (!checkRate(ip)) return sendJson(res, { success: false, msg_id: 'rate_limited' }, 429);
-    const body  = await readJson(req);
-    const key   = normKey(body.senha || body.chave || body.email || body.access_token_plugin);
-    const phone = sanitizeString(String(body.whatsapp_plugin || body.whatsapp_registro || body.phone || '').slice(0, 40));
-    const rec   = await findKey(key);
-    if (!rec) {
-      await addLog('auth_fail', 'Login chave inválida', { ip });
-      return sendJson(res, { success: false, msg_id: 'invalid_token' });
-    }
-    const result = await authSuccess(key, rec, { phone, ip });
-    if (!result.ok) return sendJson(res, { success: false, msg_id: result.msg_id });
-    await addLog('auth_ok', `Login ${key}`, { ip, phone });
-    return sendJson(res, result.body);
-  }
-
-  if (pathname === '/api/user/update' && req.method === 'POST') {
-    const body   = await readJson(req);
-    const bearer = parseBearer(req) || body.bearer_token;
-    const rec    = await findKeyByBearer(bearer);
-    if (!rec) return sendJson(res, { success: false, msg_id: 'invalid_token' });
-    const patch  = {};
-    if (body.whatsapp_plugin || body.whatsapp_registro) {
-      patch.lastPhone = sanitizeString(body.whatsapp_plugin || body.whatsapp_registro);
-    }
-    if (body.name) patch.label = sanitizeString(String(body.name).slice(0, 60));
-    if (Object.keys(patch).length) await updateLicense(rec.code, patch);
-    Object.assign(rec, patch);
-    return sendJson(res, { success: true, user: keyToUser(rec.code || bearer, rec) });
-  }
-
-  if (pathname === `/api/services/initial-data/${resolvedId}` || pathname === `/api/services/initial-data/${chromeId}`) {
-    return sendJson(res, {
-      webhooks  : settings.webhooks  || [],
-      meet      : settings.meet      || {},
-      urls      : settings.urls      || {},
-      migration : settings.migration || {},
-      update_path     : `${config.baseUrl}/api/urls/update`,
-      update_path_new : `${config.baseUrl}/api/services/update`,
-      update_path_active: 'true',
-      wpp_mensagens   : { timer: '60000', enable_two_send: false },
-      newModel        : { model: 'taghtml', parm: 'body.color-refresh' },
-    });
-  }
-  if ((pathname === '/api/XLSX/exporttab' || pathname === '/api/XLSX/exportFunil') && req.method === 'POST') {
-    const body   = await readJson(req);
-    const bearer = parseBearer(req) || body.bearer_token;
-    const rec    = await findKeyByBearer(bearer);
-    if (!rec) return sendJson(res, { success: false, msg_id: 'invalid_token' }, 401);
-    const st     = keyStatus(rec);
-    if (st === 'blocked') return sendJson(res, { success: false, msg_id: 'user_blocked' });
-    if (st === 'expired') return sendJson(res, { success: false, msg_id: 'license_expired' });    if (st !== 'active' && Array.isArray(body.contacts) && body.contacts.length > 5) {
-      slog(LOG_LEVELS.INFO, 'Truncamento free-tier aplicado', { code: rec.code, original: body.contacts.length });
-      body.contacts = body.contacts.slice(0, 5);
-    }
-    return sendJson(res, { success: true, contacts: body.contacts || [], truncated: st !== 'active' });
-  }
-
-  if (pathname === '/api/image/url-to-base64' && req.method === 'POST') {
-    return sendJson(res, { success: false, msg_id: 'not_implemented' });
-  }
-  if ((pathname === '/api/XLSX/envioEmMassa' || pathname === '/api/XLSX/gabarito') && req.method === 'POST') {
-    const body   = await readJson(req);
-    const bearer = parseBearer(req) || body.bearer_token;
-    const rec    = await findKeyByBearer(bearer);
-    if (!rec) return sendJson(res, { success: false, msg_id: 'invalid_token' }, 401);
-    const st = keyStatus(rec);
-    if (st === 'blocked' || st === 'expired') return sendJson(res, { success: false, msg_id: 'license_invalid' });
-    return sendJson(res, { success: true, msg_id: 'not_implemented_on_this_server' }, 501);
-  }
-
-  return false;
-}
-
-const PANEL_CSS_ADMIN = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap');
-:root{--bg:#020604;--sf:#070f0a;--sf2:#0a1610;--sfh:#0d1f13;--bdr:#183326;--bdrb:#26543c;--tx:#e8fff3;--mt:#5a8a6e;--mt2:#8ab89a;--ac:#39ff14;--ac2:#00ff88;--ag:linear-gradient(135deg,#39ff14,#00ff88);--ok:#041f10;--wn:#1e1800;--dg:#ff4466;--dgb:#200810;--sh:0 4px 40px rgba(0,0,0,.7);--rg:rgba(57,255,20,.3);--gw:0 0 18px rgba(57,255,20,.22),0 0 36px rgba(0,255,136,.08);--mn:'JetBrains Mono',ui-monospace,monospace}
-*{box-sizing:border-box;margin:0;padding:0}html{font-size:15px;scroll-behavior:smooth}body{font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--tx);line-height:1.6;min-height:100vh}
-a{color:var(--ac);text-decoration:none}.layout{display:flex;min-height:100vh}.sidebar{width:56px;min-height:100vh;background:var(--sf);border-right:1px solid var(--bdr);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden;z-index:20;transition:width .28s cubic-bezier(.4,0,.2,1);flex-shrink:0}.sidebar:hover{width:240px}.sb-brand{display:flex;align-items:center;gap:10px;padding:20px 16px 16px;font-weight:800;font-size:1.05rem;color:var(--ac);border-bottom:1px solid var(--bdr);text-shadow:0 0 18px rgba(57,255,20,.35);white-space:nowrap}.bdot{width:9px;height:9px;border-radius:50%;background:var(--ac);box-shadow:var(--gw);flex-shrink:0;margin-left:5px}.btxt{opacity:0;transition:opacity .2s .05s}.sidebar:hover .btxt{opacity:1}.sbsec{padding:12px 10px 4px;font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--mt);white-space:nowrap;opacity:0;transition:opacity .2s}.sidebar:hover .sbsec{opacity:1}
-.ni{display:flex;align-items:center;gap:10px;padding:10px 14px;margin:2px 6px;border-radius:9px;cursor:pointer;transition:all .2s;font-size:.9rem;font-weight:500;color:var(--mt2);text-decoration:none;border:1px solid transparent;white-space:nowrap;overflow:hidden}.ni:hover,.ni.ac{color:var(--ac);background:rgba(57,255,20,.06);border-color:rgba(57,255,20,.18)}.ni .ic{width:20px;text-align:center;flex-shrink:0}.nl{opacity:0;transition:opacity .15s}.sidebar:hover .nl{opacity:1}.sbft{margin-top:auto;padding:12px 6px;border-top:1px solid var(--bdr)}.main-a{flex:1;min-width:0;display:flex;flex-direction:column}.topbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px 24px;background:var(--sf);border-bottom:1px solid var(--bdr);position:sticky;top:0;z-index:10;backdrop-filter:blur(8px)}.content{padding:20px 24px 48px;flex:1}
-.card{background:var(--sf2);border:1px solid var(--bdr);border-radius:14px;padding:22px 24px;margin-bottom:18px;box-shadow:var(--sh);transition:border-color .25s}.card:hover{border-color:rgba(57,255,20,.22)}.ct{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--mt);margin-bottom:14px}
-.badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:.67rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase}.bok{background:var(--ok);color:var(--ac);border:1px solid rgba(57,255,20,.3)}.boff{background:var(--dgb);color:#ff8899;border:1px solid rgba(255,68,102,.22)}.bfree{background:var(--wn);color:#fde047;border:1px solid rgba(253,224,71,.18)}.bwn{background:rgba(255,180,55,.08);color:#fbbf24;border:1px solid rgba(255,180,55,.22)}.bpd{background:rgba(100,100,255,.1);color:#a0a0ff;border:1px solid rgba(100,100,255,.25)}
-.kc{font-family:var(--mn);font-size:.8rem;background:#040d06;border:1px solid rgba(57,255,20,.22);color:#7fff6e;padding:5px 11px;border-radius:7px;word-break:break-all;display:inline-block}.tbl-w{overflow-x:auto}table{width:100%;border-collapse:collapse;font-size:.88rem}th,td{padding:11px 13px;text-align:left;border-bottom:1px solid var(--bdr)}th{cursor:pointer;color:var(--mt);font-size:.73rem;text-transform:uppercase;user-select:none;white-space:nowrap;position:sticky;top:0;background:var(--sf2)}tr:hover td{background:var(--sfh)}.act{display:flex;flex-wrap:wrap;gap:4px}.bs{padding:5px 9px;border-radius:6px;border:1px solid var(--bdr);background:transparent;color:var(--tx);font-size:.75rem;cursor:pointer;transition:all .2s}.bs:hover{border-color:var(--ac);color:var(--ac)}.bs.bg{border-color:rgba(57,255,20,.28);color:var(--ac)}.bs.bd{border-color:rgba(255,68,102,.25);color:#ff8899}
-label{display:block;font-size:.8rem;font-weight:600;color:var(--mt);margin:0 0 6px}.field{margin-bottom:16px}input,select,textarea{width:100%;padding:10px 13px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font:inherit;font-size:.93rem;transition:border-color .2s,box-shadow .2s}input:focus,select:focus,textarea:focus{outline:none;border-color:var(--ac);box-shadow:0 0 0 3px var(--rg)}.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:9px 18px;border:none;border-radius:8px;font:inherit;font-size:.855rem;font-weight:600;cursor:pointer;text-decoration:none;color:#020604;background:var(--ag);transition:all .2s;box-shadow:0 4px 18px rgba(57,255,20,.3)}.btn:hover{transform:translateY(-1px);box-shadow:0 6px 26px rgba(57,255,20,.48);color:#020604}.btn-gh{background:transparent;border:1px solid var(--bdr);color:var(--tx);box-shadow:none}.btn-gh:hover{border-color:rgba(57,255,20,.3);color:var(--ac)}.btn-sm{padding:5px 11px;font-size:.75rem;border-radius:6px}.btn-p{padding:8px 16px;border-radius:8px;border:none;background:var(--ag);color:#020604;font-size:.82rem;font-weight:600;cursor:pointer}.btn-w{padding:8px 14px;border-radius:8px;border:1px solid var(--bdr);background:transparent;color:var(--tx);font-size:.8rem;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}.btn-w:hover{border-color:rgba(57,255,20,.3);color:var(--ac)}
-.alert{padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:.875rem;background:rgba(57,255,20,.05);color:#7fff6e;border:1px solid rgba(57,255,20,.18)}.alert-d{background:rgba(255,68,102,.07);color:#ff8899;border-color:rgba(255,68,102,.22)}.alert-w{background:rgba(255,180,55,.06);color:#fbbf24;border-color:rgba(255,180,55,.2)}
-.toast{position:fixed;bottom:22px;right:22px;padding:12px 18px;border-radius:10px;background:var(--sf2);border:1px solid var(--ac);color:var(--ac);font-size:.855rem;opacity:0;transition:opacity .3s;z-index:999;pointer-events:none}.toast.show{opacity:1}
-.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.75);display:none;align-items:center;justify-content:center;z-index:50;backdrop-filter:blur(3px)}.modal-bg.open{display:flex}.modal{background:var(--sf2);border:1px solid var(--bdrb);border-radius:14px;padding:24px;max-width:400px;width:90%}.modal h3{margin-bottom:16px;font-size:1.05rem}.modal .field{margin-bottom:12px}.mrow{display:flex;gap:8px;margin-top:16px}
-.login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}.login-inn{width:100%;max-width:420px;display:flex;flex-direction:column;align-items:center;gap:22px}.login-brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:1.3rem;color:var(--ac);text-shadow:0 0 22px rgba(57,255,20,.38)}.login-card{width:100%;background:var(--sf2);border:1px solid var(--bdr);border-radius:16px;padding:34px 30px}.login-card h1{font-size:1.45rem;margin-bottom:4px;text-align:center}.login-card .sub{color:var(--mt);font-size:.875rem;margin-bottom:22px;text-align:center}.login-card .btn{width:100%;margin-top:8px;color:#020604}
-.gen-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;padding:14px 18px;background:#020904;border-top:1px solid var(--bdr)}.gen-form input,.gen-form select{padding:9px 13px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font-size:.9rem}.gen-form input[type=text]{min-width:180px;flex:1}.gen-form input[type=number]{width:80px}.gen-form select{min-width:90px}
-.sec{margin-bottom:20px;background:var(--sf2);border:1px solid var(--bdr);border-radius:14px;overflow:hidden}.sh{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;padding:14px 18px;border-bottom:1px solid var(--bdr)}.sh-t{font-weight:700;font-size:.92rem}.sc-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;padding:16px 0}.sc{background:var(--sf);border:1px solid var(--bdr);border-radius:12px;padding:14px;text-align:center}.sc .n{font-size:1.55rem;font-weight:800}.sc .l{font-size:.65rem;color:var(--mt);text-transform:uppercase;margin-top:4px;letter-spacing:.06em}
-.zvm-row{will-change:transform;transition:background .15s}
-.zvm-row:hover td{background:#0a1610}
-.zvm-td{padding:10px 13px;text-align:left;border-bottom:1px solid #183326;vertical-align:middle}
-.zvm-code{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.72rem;background:#040d06;border:1px solid rgba(57,255,20,.22);color:#7fff6e;padding:3px 8px;border-radius:5px;word-break:break-all;display:inline-block}
-.zvm-badge{display:inline-flex;align-items:center;padding:2px 9px;border-radius:999px;font-size:.66rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
-.zvm-muted{color:#5a8a6e}
-.zvm-acts{display:flex;flex-wrap:wrap;gap:3px}
-.zvm-btn{padding:4px 8px;border-radius:5px;border:1px solid #183326;background:#070f0a;color:#8ab89a;font-size:.72rem;font-weight:600;cursor:pointer;transition:all .18s;letter-spacing:.03em;white-space:nowrap}
-.zvm-btn:hover{border-color:rgba(57,255,20,.3);color:#39ff14;background:#0a1610}
-.zvm-btn-ok{border-color:rgba(57,255,20,.25);color:#39ff14}
-.zvm-btn-ok:hover{background:rgba(57,255,20,.08)}
-.zvm-btn-warn{border-color:rgba(255,180,55,.22);color:#fbbf24}
-.zvm-btn-warn:hover{background:rgba(255,180,55,.07)}
-.zvm-btn-del{border-color:rgba(255,68,102,.22);color:#ff8899}
-.zvm-btn-del:hover{background:rgba(255,68,102,.07)}
-.zvm-btn-note{border-color:rgba(100,180,255,.18);color:#90c8ff}
-.zvm-btn-note:hover{background:rgba(100,180,255,.06)}
-.zvm-gen{display:flex;flex-wrap:wrap;gap:7px;align-items:flex-end;padding:14px 18px;background:#020904;border-top:1px solid #183326}
-.zvm-gen input,.zvm-gen select{padding:8px 12px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.88rem;transition:border-color .2s,box-shadow .2s}
-.zvm-gen input:focus,.zvm-gen select:focus{outline:none;border-color:#39ff14;box-shadow:0 0 0 2px rgba(57,255,20,.15)}
-.zvm-gen input[type=text]{min-width:160px;flex:1}
-.zvm-gen input[type=number]{width:68px}
-.zvm-gen select{min-width:80px}
-.zvm-gen .gen-btn{padding:8px 16px;border-radius:7px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.85rem;font-weight:700;cursor:pointer;transition:all .2s;box-shadow:0 2px 12px rgba(57,255,20,.28)}
-.zvm-gen .gen-btn:hover{transform:translateY(-1px);box-shadow:0 4px 18px rgba(57,255,20,.45)}
-.zvm-search{display:flex;flex-wrap:wrap;gap:8px;padding:12px 18px;border-bottom:1px solid #183326;align-items:center}
-.zvm-search input,.zvm-search select{padding:7px 11px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.83rem;transition:border-color .2s,box-shadow .2s}
-.zvm-search input:focus,.zvm-search select:focus{outline:none;border-color:#39ff14;box-shadow:0 0 0 2px rgba(57,255,20,.15)}
-.zvm-search input[type=text]{flex:1;min-width:160px}
-}
-@media(max-width:768px){.sidebar{width:0;overflow:hidden;position:fixed}.sidebar:hover{width:240px}.layout.sbo .sidebar{width:240px}.main-a{width:100%}}
-`;
-
-const ADMIN_CANVAS = `<canvas id="_cvsa" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas>
-<script>(function(){var c=document.getElementById('_cvsa'),x=c.getContext('2d');function r(){c.width=innerWidth;c.height=innerHeight;}r();addEventListener('resize',r);var p=Array.from({length:45},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.28,vy:(Math.random()-.5)*.28,r:Math.random()*1.6+.4};});function d(){x.clearRect(0,0,c.width,c.height);p.forEach(function(a){a.x+=a.vx;a.y+=a.vy;if(a.x<0||a.x>c.width)a.vx*=-1;if(a.y<0||a.y>c.height)a.vy*=-1;x.beginPath();x.arc(a.x,a.y,a.r,0,Math.PI*2);x.fillStyle='rgba(57,255,20,0.38)';x.fill();});for(var i=0;i<p.length;i++){for(var j=i+1;j<p.length;j++){var dx=p[i].x-p[j].x,dy=p[i].y-p[j].y,dd=Math.sqrt(dx*dx+dy*dy);if(dd<115){x.beginPath();x.moveTo(p[i].x,p[i].y);x.lineTo(p[j].x,p[j].y);x.strokeStyle='rgba(57,255,20,'+(0.08*(1-dd/115))+')';x.lineWidth=.5;x.stroke();}}}requestAnimationFrame(d);}d();})();</script>`;
-
-function adminLoginShell(body) {
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin — WaSpeed</title><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23020604'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2339ff14'%3EWS%3C/text%3E%3C/svg%3E"><style>${PANEL_CSS_ADMIN}</style></head>
-<body class="login-page"><div class="login-inn" style="position:relative;z-index:1"><div class="login-brand"><span class="bdot"></span>WaSpeed</div>${body}</div>${ADMIN_CANVAS}</body></html>`;
-}
-
-function renderAdminLogin(base, role, err) {
-  const body = `<div class="login-card"><h1>Entrar</h1><p class="sub">Painel ${esc(role)}</p>${err ? `<div class="alert alert-d">${esc(err)}</div>` : ''}<form method="post" action="${base}/login"><div class="field"><label>Usuário</label><input name="user" required autocomplete="username" placeholder="Seu usuário"></div><div class="field"><label>Senha</label><input name="pass" type="password" required autocomplete="current-password" placeholder="Sua senha"></div><button class="btn" type="submit">Acessar painel</button></form></div>`;
-  return adminLoginShell(body);
-}
-
-function adminSidebar(active, stats) {
-  stats = stats || {};
-  const item = (href, icon, label, key) => `<a href="${href}" class="ni${active === key ? ' ac' : ''}"><span class="ic">${icon}</span><span class="nl">${label}</span></a>`;
-  return `<aside class="sidebar"><div class="sb-brand"><span class="bdot"></span><span class="btxt">WaSpeed</span></div><div class="sbsec">Principal</div>${item(R_ADMIN,'⚡','Dashboard','dash')}<div class="sbsec">Licenças</div>${item(R_ADMIN+'/keys','🔑','Chaves de Acesso','keys')}<div class="sbsec">Sistema</div>${item(R_ADMIN+'/logs','📋','Logs do Sistema','logs')}${item(R_ADMIN+'/audit','🛡️','Auditoria de Segurança','audit')}<div class="sbft">${item(R_ADMIN+'/logout','→','Sair','out')}</div></aside>`;
-}
-
-function spaShell(title, sidebar, topTitle, body) {
-  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)} — WaSpeed</title><link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23020604'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2339ff14'%3EWS%3C/text%3E%3C/svg%3E"><style>${PANEL_CSS_ADMIN}</style></head>
-<body><div class="layout" id="layout">${sidebar}<div class="main-a"><div class="topbar" style="position:sticky;top:0;z-index:10"><span style="font-size:1.05rem;font-weight:700">${esc(topTitle)}</span></div><div class="content" style="position:relative;z-index:1">${body}</div></div></div>
-<div id="toast" class="toast"></div><div id="modal-bg" class="modal-bg" onclick="if(event.target===this)closeModal()"><div class="modal" id="modal-box"></div></div>
-<script>function toast(m,ok){var t=document.getElementById('toast');t.textContent=m;t.style.borderColor=ok===false?'var(--dg)':'var(--ac)';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500);}function closeModal(){document.getElementById('modal-bg').classList.remove('open');}</script>
-${ADMIN_CANVAS}</body></html>`;
-}
-
-function fmtDate(iso) {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR');
+  const [label, col] = map[st] || ['?', '#888'];
+  return `<span style="font-size:.7rem;font-weight:700;color:${col};background:${col}15;border:1px solid ${col}28;padding:2px 8px;border-radius:4px">${label}</span>`;
 }
 
 function panelStatusKey(rec) {
-  if (!rec.active) return 'bloqueado';
-  if (rec.expiresAt && new Date(rec.expiresAt).getTime() < Date.now()) return 'expirada';
-  if (rec.premium) return 'ativo';
-  return 'free';
+  if (!rec.active)              return 'blocked';
+  if (isKeyExpiredWs(rec))      return 'expired';
+  if (!rec.premium)             return 'free';
+  if (rec.ativarNoPrimeiroUso && !rec.primeiroUsoAt) return 'pending';
+  return 'active';
 }
 
 function buildLicenseRows(licenses) {
-  return licenses.map(function(k) {
-    var code      = k.code;
-    var st        = panelStatusKey(k);
-    var maxU      = (k.maxUses != null) ? k.maxUses : -1;
-    var isUnlim   = maxU <= 0 || maxU === -1;
-    var isPending = keyStatus(k) === 'pending';
-    var uses      = (k.phones || []).length;
-    var maxDisp   = isUnlim ? '\u221e' : String(maxU);
-    var isExpd    = k.expiresAt && new Date(k.expiresAt).getTime() < Date.now();
-    var valHtml   = !k.expiresAt
-      ? '<span class="zvm-muted">Sem limite</span>'
-      : '<span' + (isExpd ? ' style="color:#ff8899"' : '') + '>' + esc(new Date(k.expiresAt).toLocaleString('pt-BR')) + '</span>';
-    var stBadge   = isPending
-      ? '<span class="zvm-badge" style="background:rgba(100,100,255,.12);color:#a0a0ff;border-color:rgba(100,100,255,.28)">PENDENTE</span>'
-      : statusBadgeHtml(keyStatus(k));
-    var rawNote   = k.note || '';
-    var noteShort = rawNote.length > 22 ? rawNote.slice(0, 22) + '\u2026' : rawNote;
-    var phonesAttr = JSON.stringify(k.phones || []).replace(/'/g, '&#39;');
-    var actBtns   =
-      (isPending ? '<button class="zvm-btn zvm-btn-ok" onclick="apiActivate(\'' + esc(code) + '\')">✓ Ativar</button>' : '') +
-      '<button class="zvm-btn' + (k.active ? ' zvm-btn-warn' : ' zvm-btn-ok') + '" onclick="apiToggle(\'' + esc(code) + '\')">' + (k.active ? 'Bloq' : 'Liber') + '</button>' +
-      '<button class="zvm-btn" onclick="openRenew(\'' + esc(code) + '\')">+Dias</button>' +
-      '<button class="zvm-btn" onclick="openUses(\'' + esc(code) + '\',' + maxU + ')">Usos</button>' +
-      '<button class="zvm-btn zvm-btn-ok" onclick="openRename(\'' + esc(code) + '\',\'' + esc((k.label||'').replace(/'/g,"\\'")) + '\')">Renomear</button>' +
-      '<button class="zvm-btn" onclick="openNumbers(this.closest(\'tr\'))">N\u00fameros</button>' +
-      '<button class="zvm-btn zvm-btn-del" onclick="apiDelete(\'' + esc(code) + '\')">✕ Del</button>';
-    var noteTd = '<td class="zvm-td zvm-note-cell" style="min-width:70px;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.74rem;cursor:pointer" title="' + esc(rawNote) + '" onclick="openNote(\'' + esc(code) + '\',\'' + esc(rawNote.replace(/'/g,"\\'")) + '\')">' + (esc(noteShort) || '<span class="zvm-muted">—</span>') + '</td>';
-    return '<tr class="zvm-row" data-code="' + esc(code) + '" data-label="' + esc((k.label||'').toLowerCase()) + '" data-status="' + (isPending?'pendente':st) + '" data-phone="' + esc(k.lastPhone||'') + '" data-lastused="' + (k.lastUsed||'') + '" data-created="' + (k.createdAt||'') + '" data-phones=\'' + phonesAttr + '\'' + '>' +
-      '<td class="zvm-td" style="min-width:160px"><code class="zvm-code">' + esc(code) + '</code></td>' +
-      '<td class="zvm-td" style="min-width:90px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(k.label||'—') + '</td>' +
-      '<td class="zvm-td" style="min-width:80px">' + stBadge + '</td>' +
-      '<td class="zvm-td" style="min-width:100px;font-size:.78rem">' + valHtml + '</td>' +
-      '<td class="zvm-td" style="min-width:48px;text-align:center;font-size:.82rem">' + uses + '/' + maxDisp + '</td>' +
-      '<td class="zvm-td zvm-muted" style="min-width:90px;font-size:.78rem">' + esc(k.lastPhone||'—') + '</td>' +
-      '<td class="zvm-td zvm-muted" style="min-width:86px;font-size:.75rem">' + esc(k.lastIp||'—') + '</td>' +
-      '<td class="zvm-td zvm-muted" style="min-width:100px;font-size:.75rem">' + fmtDate(k.lastUsed) + '</td>' +
-      '<td class="zvm-td zvm-muted" style="min-width:100px;font-size:.75rem">' + fmtDate(k.createdAt) + '</td>' +
-      noteTd +
-      '<td class="zvm-td" style="min-width:220px"><div class="zvm-acts">' + actBtns + '</div></td></tr>';
+  if (!licenses || !licenses.length) return '<tr><td colspan="11" style="padding:18px;text-align:center;color:#5a8a6e">Nenhuma chave</td></tr>';
+  return licenses.map(rec => {
+    const st    = panelStatusKey(rec);
+    const badge = statusBadgeHtml(st);
+    const exp   = rec.expiresAt ? fmtDate(rec.expiresAt) : (rec.ativarNoPrimeiroUso ? 'Ao 1º uso' : '∞');
+    const uses  = (rec.phones || []).length;
+    const maxU  = rec.maxUses != null ? (rec.maxUses === -1 ? '∞' : rec.maxUses) : '∞';
+    const code  = rec.code || '';
+    const safe  = code.split('"').join('&quot;');
+    const slbl  = (rec.label||'').split('"').join('&quot;').split('&').join('&amp;').split('<').join('&lt;');
+    const snote = (rec.note||'').split('"').join('&quot;').split('&').join('&amp;').split('<').join('&lt;');
+    const phones = JSON.stringify(rec.phones || []).split('"').join('&quot;');
+    return `<tr data-code="${safe}" data-label="${slbl}" data-phone="${esc(rec.lastPhone||'')}" data-status="${st}" data-phones="${phones}">
+      <td class="zvm-td"><code style="font-size:.72rem;word-break:break-all">${esc(code)}</code></td>
+      <td class="zvm-td" style="font-size:.8rem">${esc(rec.label||'')}</td>
+      <td class="zvm-td">${badge}</td>
+      <td class="zvm-td" style="font-size:.75rem">${esc(exp)}</td>
+      <td class="zvm-td" style="font-size:.78rem">${uses}/${maxU}</td>
+      <td class="zvm-td zvm-muted" style="font-size:.75rem">${esc(rec.lastPhone||'')}</td>
+      <td class="zvm-td zvm-muted" style="font-size:.75rem">${esc(rec.lastIp||'')}</td>
+      <td class="zvm-td zvm-muted" style="font-size:.73rem">${esc(fmtDate(rec.lastUsed))}</td>
+      <td class="zvm-td zvm-muted" style="font-size:.73rem">${esc(fmtDate(rec.createdAt))}</td>
+      <td class="zvm-td zvm-muted" style="font-size:.73rem">${esc(rec.note||'')}</td>
+      <td class="zvm-td">
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          ${st === 'pending' ? `<button class="zvm-btn" onclick="apiActivate('${safe}')">Ativar</button>` : ''}
+          <button class="zvm-btn" onclick="apiToggle('${safe}')">${rec.active ? 'Bloquear' : 'Ativar'}</button>
+          <button class="zvm-btn" onclick="openRenew('${safe}')">Renovar</button>
+          <button class="zvm-btn" onclick="openUses('${safe}',${rec.maxUses != null ? rec.maxUses : -1})">Usos</button>
+          <button class="zvm-btn" onclick="openNote('${safe}','${snote}')">Nota</button>
+          <button class="zvm-btn" onclick="openRename('${safe}','${slbl}')">Renomear</button>
+          <button class="zvm-btn" onclick="openNumbers(this.closest('tr'))">Números</button>
+          <button class="zvm-btn zvm-btn-del" onclick="deleteKey('${safe}')">×</button>
+        </div>
+      </td>
+    </tr>`;
   }).join('');
-}
-
-const LOG_LABELS = Object.freeze({
-  validation_ok        : 'LOGIN OK',
-  auth_ok              : 'LOGIN OK',
-  auth_fail            : 'FALHA AO LOGAR',
-  admin_login_fail     : 'FALHA ADMIN',
-  key_create           : 'CHAVE CRIADA',
-  key_delete           : 'CHAVE EXCLUÍDA',
-  key_activated        : 'CHAVE ATIVADA',
-  free_register        : 'CADASTRO FREE',
-  install              : 'INSTALAÇÃO',
-  license_expired      : 'CHAVE EXPIRADA',
-  key_expired          : 'CHAVE EXPIRADA',
-  user_blocked         : 'USU\u00c1RIO BLOQUEADO',
-  max_devices_reached  : 'LIMITE DE TELAS',
-  nosql_injection      : 'ATAQUE BLOQUEADO',
-  rate_limited         : 'RATE LIMIT',
-  circuit_breaker_open : 'FALHA NO BANCO',
-  internal_error       : 'ERRO INTERNO',
-  unhandled_rejection  : 'ERRO INTERNO',
-});
-
-function humanizeLogType(type) {
-  return LOG_LABELS[type] || String(type).toUpperCase().replace(/_/g, ' ');
 }
 
 function buildLogRows(logs) {
-  return logs.map(function(l) {
-    var d     = new Date(l.at);
-    var dt    = d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR');
-    var lbl   = humanizeLogType(l.type);
-    var isOk  = /ok|create|activated|install|free_register/.test(l.type);
-    var isBad = /fail|expired|blocked|injection|error|limited/.test(l.type);
-    var color = isOk ? '#39ff14' : isBad ? '#ff8899' : '#fbbf24';
-    var meta  = l.meta || {};
-    var chave = esc(meta.code || meta.key || '');
-    var phone = esc(meta.phone || '');
-    var ip    = esc(meta.ip    || '');
-    return '<tr class="zvm-row" data-log="' + esc((lbl + ' ' + (l.message||'')).toLowerCase()) + '" data-logtype="' + esc(lbl) + '">' +
-      '<td class="zvm-td zvm-muted" style="white-space:nowrap;min-width:110px;font-size:.78rem">' + esc(dt) + '</td>' +
-      '<td class="zvm-td" style="min-width:110px"><span style="font-family:var(--mn,monospace);font-size:.68rem;font-weight:700;color:' + color + ';background:' + color + '15;border:1px solid ' + color + '28;padding:2px 8px;border-radius:4px;letter-spacing:.05em;white-space:nowrap">' + esc(lbl) + '</span></td>' +
-      '<td class="zvm-td" style="min-width:90px">' + (chave ? '<code class="zvm-code" style="font-size:.72rem">' + chave + '</code>' : '<span class="zvm-muted">—</span>') + '</td>' +
-      '<td class="zvm-td zvm-muted" style="min-width:90px;font-size:.78rem">' + (phone || '—') + '</td>' +
-      '<td class="zvm-td zvm-muted" style="min-width:80px;font-size:.75rem">' + (ip || '—') + '</td>' +
-      '<td class="zvm-td" style="font-size:.8rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(l.message || '') + '</td>' +
-      '</tr>';
+  if (!logs || !logs.length) return '<tr><td colspan="6" style="padding:18px;text-align:center;color:#5a8a6e">Nenhum log</td></tr>';
+  return logs.map(l => {
+    const ev  = String(l.event || '').toUpperCase();
+    const col = ev.includes('FAIL') || ev.includes('DEL') || ev.includes('BLOCK') ? '#ff8899' : ev.includes('OK') || ev.includes('CREAT') ? '#39ff14' : '#8ab89a';
+    return `<tr>
+      <td class="zvm-td" style="font-size:.72rem;color:#5a8a6e">${esc(fmtDate(l.createdAt))}</td>
+      <td class="zvm-td"><span style="font-size:.7rem;font-weight:700;color:${col};background:${col}15;border:1px solid ${col}28;padding:2px 8px;border-radius:4px">${esc(ev)}</span></td>
+      <td class="zvm-td zvm-muted" style="font-size:.75rem">${esc((l.meta && l.meta.code) || '')}</td>
+      <td class="zvm-td zvm-muted" style="font-size:.75rem">${esc((l.meta && l.meta.phone) || '')}</td>
+      <td class="zvm-td zvm-muted" style="font-size:.75rem">${esc((l.meta && l.meta.ip) || '')}</td>
+      <td class="zvm-td zvm-muted" style="font-size:.75rem">${esc(l.message||'')}</td>
+    </tr>`;
   }).join('');
+}
+
+const CANVAS_BG = `<canvas id="bg-canvas" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none"></canvas>
+<scr`+`ipt>(function(){var c=document.getElementById('bg-canvas'),ctx=c.getContext('2d'),W,H,pts=[];function resize(){W=c.width=window.innerWidth;H=c.height=window.innerHeight;}resize();window.addEventListener('resize',resize);for(var i=0;i<60;i++)pts.push({x:Math.random()*9999,y:Math.random()*9999,vx:(Math.random()-.5)*.3,vy:(Math.random()-.5)*.3,r:Math.random()*1.5+.5});function frame(){ctx.clearRect(0,0,W,H);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0)p.x=W;if(p.x>W)p.x=0;if(p.y<0)p.y=H;if(p.y>H)p.y=0;ctx.beginPath();ctx.arc(p.x%W,p.y%H,p.r,0,6.28);ctx.fillStyle='rgba(57,255,20,.18)';ctx.fill();});pts.forEach(function(a,i){pts.slice(i+1).forEach(function(b){var dx=a.x-b.x,dy=a.y-b.y,d=Math.sqrt(dx*dx+dy*dy);if(d<120){ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle='rgba(57,255,20,'+(1-d/120)*.08+')';ctx.stroke();}});});requestAnimationFrame(frame);}frame();})();</scr`+`ipt>`;
+
+const PANEL_CSS = `*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#020904;color:#e8fff3;min-height:100vh;display:flex;flex-direction:column}:root{--ac:#39ff14;--dg:#ff4466;--bg:#020904;--bg2:#070f0a;--bdr:#183326;--tx:#e8fff3;--mt:#5a8a6e}.layout{display:flex;min-height:100vh}.sidebar{width:200px;background:#040d06;border-right:1px solid var(--bdr);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;z-index:10}.sb-brand{padding:18px 16px 12px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;gap:8px}.bdot{width:10px;height:10px;border-radius:50%;background:var(--ac);box-shadow:0 0 8px var(--ac);display:inline-block}.btxt{font-size:.85rem;font-weight:800;color:var(--ac);letter-spacing:.05em}.sbsec{padding:8px 14px 4px;font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.12em;color:#2d5c3e}.ni{display:flex;align-items:center;gap:8px;padding:8px 14px;color:var(--mt);text-decoration:none;font-size:.8rem;border-left:2px solid transparent;transition:all .15s}.ni:hover,.ni.ac{color:var(--ac);background:#0a1f0f;border-left-color:var(--ac)}.ic{font-size:.95rem;width:16px;text-align:center}.nl{font-size:.8rem}.sbft{margin-top:auto;border-top:1px solid var(--bdr)}.main{flex:1;overflow:auto;display:flex;flex-direction:column}.topbar{padding:12px 18px;border-bottom:1px solid var(--bdr);background:#040d06;display:flex;align-items:center;justify-content:space-between}.tb-t{font-size:.95rem;font-weight:700;color:var(--ac)}.sec{background:var(--bg2);border:1px solid var(--bdr);border-radius:10px;margin:14px;overflow:hidden}.sh{padding:12px 18px;border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}.sh-t{font-size:.8rem;font-weight:700;color:var(--ac)}.sc-row{display:flex;flex-wrap:wrap;gap:10px;padding:14px 18px}.sc{background:#040d06;border:1px solid var(--bdr);border-radius:8px;padding:10px 16px;min-width:80px;text-align:center}.sc .n{font-size:1.5rem;font-weight:800;color:var(--ac)}.sc .l{font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;color:var(--mt);margin-top:3px}.tbl-w table{width:100%;border-collapse:collapse}.zvm-td{padding:7px 10px;border-bottom:1px solid #0d1f12;vertical-align:middle}.zvm-td:last-child{padding:6px 10px}.zvm-muted{color:#5a8a6e}.zvm-btn{padding:3px 8px;border-radius:4px;border:1px solid rgba(57,255,20,.3);background:rgba(57,255,20,.07);color:#a8e8b8;font-size:.7rem;cursor:pointer;transition:all .12s;white-space:nowrap}.zvm-btn:hover{background:rgba(57,255,20,.16);color:var(--ac)}.zvm-btn-del{border-color:rgba(255,68,102,.3);background:rgba(255,68,102,.07);color:#ff8899}.zvm-btn-del:hover{background:rgba(255,68,102,.18)}.btn-p{padding:8px 16px;border-radius:6px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-weight:700;cursor:pointer;font-size:.82rem}.btn-w{padding:8px 16px;border-radius:6px;border:1px solid var(--bdr);background:transparent;color:var(--mt);cursor:pointer;font-size:.82rem}.field{margin-bottom:12px}.field label{display:block;font-size:.75rem;color:var(--mt);margin-bottom:5px}.field input,.field textarea,.field select{width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font:inherit;font-size:.82rem}.mrow{display:flex;gap:8px;margin-top:14px;justify-content:flex-end}#modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:100;align-items:center;justify-content:center}#modal-bg.open{display:flex}#modal-box{background:#070f0a;border:1px solid var(--bdr);border-radius:12px;padding:20px 22px;min-width:280px;max-width:480px;width:90%;max-height:80vh;overflow-y:auto}#modal-box h3{font-size:.95rem;font-weight:700;color:var(--ac);margin-bottom:14px}#toast{position:fixed;bottom:20px;right:20px;background:#0d1f12;border:1px solid var(--ac);border-radius:8px;padding:10px 16px;font-size:.8rem;color:var(--tx);opacity:0;transform:translateY(8px);transition:all .25s;z-index:200;pointer-events:none}#toast.show{opacity:1;transform:translateY(0)}`;
+
+function spaShell(title, sidebar, heading, body) {
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${PANEL_CSS}</style></head><body>
+${CANVAS_BG}
+<div class="layout" style="position:relative;z-index:1">
+${sidebar}
+<div class="main">
+<div class="topbar"><span class="tb-t">${esc(heading)}</span></div>
+${body}
+</div>
+</div>
+<div id="modal-bg" onclick="if(event.target===this)closeModal()"><div id="modal-box"></div></div>
+<div id="toast"></div>
+</body></html>`;
+}
+
+function renderLoginShell(title, action, labelUser, extra) {
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#020904;color:#e8fff3;min-height:100vh;display:flex;align-items:center;justify-content:center}:root{--ac:#39ff14;--dg:#ff4466;--bg:#020904;--bg2:#070f0a;--bdr:#183326;--tx:#e8fff3;--mt:#5a8a6e}.card{background:#070f0a;border:1px solid #183326;border-radius:14px;padding:32px 28px;width:100%;max-width:360px;position:relative;z-index:1}.logo{font-size:1.5rem;font-weight:900;color:var(--ac);letter-spacing:.05em;margin-bottom:6px}.sub{font-size:.75rem;color:var(--mt);margin-bottom:22px}.field{margin-bottom:13px}.field label{display:block;font-size:.73rem;color:var(--mt);margin-bottom:5px}.field input{width:100%;padding:9px 11px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.84rem}.field input:focus{outline:none;border-color:var(--ac)}.btn{width:100%;padding:11px;border-radius:8px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.88rem;font-weight:800;cursor:pointer;margin-top:6px}.err{color:#ff8899;font-size:.76rem;margin-bottom:12px;background:rgba(255,68,102,.09);border:1px solid rgba(255,68,102,.2);border-radius:6px;padding:7px 11px}</style></head><body>
+${CANVAS_BG}
+<div class="card">
+<div class="logo">${esc(title)}</div>
+<div class="sub">Acesso restrito</div>
+${extra ? `<div class="err">${esc(extra)}</div>` : ''}
+<form method="POST" action="${esc(action)}">
+<div class="field"><label>${labelUser || 'Usuário'}</label><input name="user" autocomplete="username" required></div>
+<div class="field"><label>Senha</label><input name="pass" type="password" autocomplete="current-password" required></div>
+<div class="field"><label>Código 2FA</label><input name="totp" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" placeholder="000000"></div>
+<button class="btn" type="submit">Entrar</button>
+</form>
+</div></body></html>`;
+}
+
+function renderAdminLogin(path, role, extra) {
+  const action = (path || R_WS_ADMIN) + '/login';
+  return renderLoginShell((role || 'Admin') + ' — WaSpeed', action, 'Usuário', extra);
 }
 
 
 const ADMIN_JS_SAFE = (function() {
-  var RA = R_ADMIN;
+  var RA = R_WS_ADMIN;
   return [
     'var _RA=' + JSON.stringify(RA) + ';',
     'function toast(m,ok){var t=document.getElementById(\'toast\');t.textContent=m;t.style.borderColor=(ok===false)?\'var(--dg)\':\'var(--ac)\';t.classList.add(\'show\');setTimeout(function(){t.classList.remove(\'show\');},3500);}',
     'function closeModal(){document.getElementById(\'modal-bg\').classList.remove(\'open\');}',
     'function filterKeys(){var q=(document.getElementById(\'search-input\').value||\'\').toLowerCase();var st=document.getElementById(\'filter-status\').value;document.querySelectorAll(\'#kb tr\').forEach(function(r){var row=(r.dataset.code+r.dataset.label+r.dataset.phone).toLowerCase();r.style.display=((!q||row.includes(q))&&(!st||r.dataset.status===st))?\'\':\'none\';});}',
-    'function filterLog(){var q=(document.getElementById(\'logSearch\').value||\'\').toLowerCase();var t=(document.getElementById(\'logTypeFilter\')||{}).value||\'\';document.querySelectorAll(\'#logb tr\').forEach(function(r){r.style.display=((!q||(r.dataset.log||\'\').includes(q))&&(!t||(r.dataset.logtype||\'\')===t))?\'\':\'none\';});}',
-    'async function generateKey(){var btn=document.querySelector(\'button[onclick="generateKey()"]\');if(btn){btn.disabled=true;btn.textContent=\'Gerando...\';}var label=document.getElementById(\'nlabel\').value.trim();if(!label){toast(\'Informe o nome do cliente\',false);if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}return;}if(label.length>60){toast(\'M\\u00e1x 60 caracteres\',false);if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}return;}var body={label:label};var dv=+(document.getElementById(\'ndays\').value)||0,h=+(document.getElementById(\'nhours\').value)||0,m=+(document.getElementById(\'nmins\').value)||0;if(dv)body.expireDays=dv;if(h)body.expireHours=h;if(m)body.expireMinutes=m;var u=document.getElementById(\'nuses\').value.trim();if(u!==\'\')body.maxUses=parseInt(u);if(document.getElementById(\'nfirstuse\').checked)body.ativarNoPrimeiroUso=true;try{var r=await fetch(_RA+\'/api/keys\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify(body)});if(r.status===401){location.href=_RA+\'/login\';return;}var j=await r.json();if(j.ok){toast(\'Chave gerada: \'+j.key);[\'nlabel\',\'ndays\',\'nhours\',\'nmins\',\'nuses\'].forEach(function(id){document.getElementById(id).value=\'\';});document.getElementById(\'nfirstuse\').checked=false;doRefresh();}else{toast(\'Erro: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}finally{if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}}}'  ,
-    'async function clearLogs(){if(!confirm(\'Limpar todos os logs?\'))return;try{var r=await fetch(_RA+\'/api/logs/clear\',{method:\'POST\'});var j=await r.json();if(j.ok){toast(\'Logs limpos\');doRefresh();}else{toast(\'Falha ao limpar\',false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}}',
-    'async function apiActivate(code){var btns=document.querySelectorAll(\'[onclick*="apiActivate"]\');btns.forEach(function(b){b.disabled=true;});try{var r=await fetch(_RA+\'/api/keys/\'+encodeURIComponent(code)+\'/activate\',{method:\'POST\'});var j=await r.json();if(j.ok){toast(\'Chave ativada\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}finally{btns.forEach(function(b){b.disabled=false;});}}',
-    'async function doRefresh(manual){var lr=document.getElementById(\'last-r\');if(lr)lr.textContent=\'Atualizando...\';try{var r=await fetch(_RA+\'/api/data\');if(r.status===401){if(manual)location.href=_RA+\'/login\';return;}if(!r.ok){var et=await r.text();if(manual)toast(\'Erro \'+ r.status,false);return;}var d=await r.json();if(!d.ok)return;document.getElementById(\'s-total\').textContent=d.totalKeys;document.getElementById(\'s-active\').textContent=d.activeKeys;document.getElementById(\'s-free\').textContent=d.freeKeys;document.getElementById(\'s-expired\').textContent=d.expiredKeys;document.getElementById(\'s-logs\').textContent=d.totalLogs;document.getElementById(\'kb\').innerHTML=d.keysHtml;document.getElementById(\'logb\').innerHTML=d.logsHtml;if(lr)lr.textContent=new Date().toLocaleTimeString(\'pt-BR\');filterKeys();}catch(e){if(lr)lr.textContent=\'Erro\';if(manual)toast(\'Erro ao atualizar\',false);}}',
-    'async function apiToggle(code){try{var r=await fetch(_RA+\'/api/keys/\'+encodeURIComponent(code)+\'/toggle\',{method:\'POST\'});var j=await r.json();if(j.ok){toast(\'Status alterado\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}}',
-    'async function apiDelete(code){if(!confirm(\'Excluir chave \'+code+\'?\'))return;try{var r=await fetch(_RA+\'/api/keys/\'+encodeURIComponent(code),{method:\'DELETE\'});var j=await r.json();if(j.ok){toast(\'Chave removida\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}}',
-    'function openRenew(code){var b=document.getElementById(\'modal-box\');var sc=code.split(\'"\').join(\'&quot;\');b.innerHTML=\'<h3>Renovar \'+code+\'</h3><div class="field"><label>Dias</label><input id="rd" type="number" min="0" value="30"></div><div class="field"><label>Horas</label><input id="rh" type="number" min="0" value="0"></div><div class="mrow"><button class="btn-p" id="renew-confirm-btn" onclick="submitRenew(this.dataset.code)" data-code="\'+sc+\'">Confirmar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');}',
-    'async function submitRenew(code){var btn=document.getElementById(\'renew-confirm-btn\');if(btn){btn.disabled=true;btn.textContent=\'Salvando...\';}var days=+(document.getElementById(\'rd\').value)||0,hours=+(document.getElementById(\'rh\').value)||0;try{var r=await fetch(_RA+\'/api/keys/\'+encodeURIComponent(code)+\'/renew\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({days:days,hours:hours})});var j=await r.json();closeModal();if(j.ok){toast(\'Renovada\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){closeModal();toast(\'Erro de conex\\u00e3o\',false);}}',
-    'function openUses(code,cur){var b=document.getElementById(\'modal-box\');var sc=code.split(\'"\').join(\'&quot;\');b.innerHTML=\'<h3>Limite de usos</h3><div class="field"><label>M\\u00e1x (-1=\\u221e)</label><input id="mu" type="number" value="\'+cur+\'"></div><div class="mrow"><button class="btn-p" id="uses-confirm-btn" onclick="submitUses(this.dataset.code)" data-code="\'+sc+\'">Confirmar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');}',
-    'async function submitUses(code){var btn=document.getElementById(\'uses-confirm-btn\');if(btn){btn.disabled=true;btn.textContent=\'Salvando...\';}var maxUses=parseInt(document.getElementById(\'mu\').value);try{var r=await fetch(_RA+\'/api/keys/\'+encodeURIComponent(code)+\'/max-uses\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({maxUses:maxUses})});var j=await r.json();closeModal();if(j.ok){toast(\'Atualizado\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){closeModal();toast(\'Erro de conex\\u00e3o\',false);}}',
-    'function openNote(code,cur){var b=document.getElementById(\'modal-box\');var safe=cur.split(\'&\').join(\'&amp;\').split(\'<\').join(\'&lt;\').split(\'>\').join(\'&gt;\');var sc=code.split(\'"\').join(\'&quot;\');b.innerHTML=\'<h3>Nota</h3><div class="field"><textarea id="nt" rows="4" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font:inherit;resize:vertical">\'+safe+\'</textarea></div><div class="mrow"><button class="btn-p" id="note-confirm-btn" onclick="submitNote(this.dataset.code)" data-code="\'+sc+\'">Salvar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');setTimeout(function(){var t=document.getElementById(\'nt\');if(t)t.focus();},60);}',
-    'async function submitNote(code){var btn=document.getElementById(\'note-confirm-btn\');if(btn){btn.disabled=true;btn.textContent=\'Salvando...\';}var note=document.getElementById(\'nt\').value;try{var r=await fetch(_RA+\'/api/keys/\'+encodeURIComponent(code)+\'/note\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({note:note})});var j=await r.json();closeModal();if(j.ok){toast(\'Nota salva\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){closeModal();toast(\'Erro de conex\\u00e3o\',false);}}',
-    'function openRename(code,cur){var b=document.getElementById(\'modal-box\');var sc=code.split(\'"\').join(\'&quot;\');var sv=cur.split(\'&\').join(\'&amp;\').split(\'<\').join(\'&lt;\').split(\'>\').join(\'&gt;\').split(\'"\').join(\'&quot;\');b.innerHTML=\'<h3>Renomear</h3><div class="field"><label>Novo nome</label><input id="rn" type="text" maxlength="60" value="\'+sv+\'"></div><div class="mrow"><button class="btn-p" id="rename-confirm-btn" onclick="submitRename(this.dataset.code)" data-code="\'+sc+\'">Salvar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');setTimeout(function(){var t=document.getElementById(\'rn\');if(t){t.focus();t.select();}},60);}',
-    'async function submitRename(code){var label=document.getElementById(\'rn\').value.trim();if(!label){toast(\'Informe um nome.\',false);return;}var btn=document.getElementById(\'rename-confirm-btn\');if(btn){btn.disabled=true;btn.textContent=\'Salvando...\';}try{var r=await fetch(_RA+\'/api/keys/\'+encodeURIComponent(code)+\'/rename\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({label:label})});var j=await r.json();closeModal();if(j.ok){toast(\'Renomeado\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){closeModal();toast(\'Erro de conex\\u00e3o\',false);}}',
-    'function openNumbers(tr){var code=tr.dataset.code;var phones;try{phones=JSON.parse(tr.dataset.phones||\'[]\');}catch(e){phones=[];}var sc=code.split(\'"\').join(\'&quot;\');var b=document.getElementById(\'modal-box\');var rows=phones&&phones.length?phones.map(function(p){var sp=p.split(\'"\').join(\'&quot;\');return\'<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:6px;border:1px solid rgba(57,255,20,.12);background:#040d06;margin-bottom:5px"><span style="font-family:monospace;font-size:.82rem;color:#c8e8c8">\'+p+\'</span><button class="zvm-btn zvm-btn-del" data-code="\'+sc+\'" data-phone="\'+sp+\'" onclick="apiRemovePhone(this)">&times;</button></div>\';}).join(\'\'):\'<p style="color:#5a8a6e;font-size:.85rem;padding:8px 0">Nenhum n\\u00famero.</p>\';b.innerHTML=\'<h3 style="margin-bottom:12px">N\\u00fameros &mdash; \'+code+\'</h3><div style="max-height:260px;overflow-y:auto">\'+rows+\'</div><div class="mrow"><button class="zvm-btn zvm-btn-del" data-code="\'+sc+\'" onclick="apiRemoveAllPhones(this)">&times; Remover Todos</button><button class="btn-w" onclick="closeModal()">Fechar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');}',
-    'async function apiRemovePhone(btn){var code=btn.dataset.code;var phone=btn.dataset.phone;btn.disabled=true;btn.textContent=\'...\';try{var r=await fetch(_RA+\'/api/keys/\'+encodeURIComponent(code)+\'/remove-phone\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({phone:phone})});var j=await r.json();if(j.ok){var row=btn.parentElement;if(row)row.remove();toast(\'N\\u00famero removido\');doRefresh();}else{btn.disabled=false;btn.textContent=\'\\u00d7\';toast(\'Falha\',false);}}catch(e){btn.disabled=false;btn.textContent=\'\\u00d7\';toast(\'Erro de conex\\u00e3o\',false);}}',
-    'async function apiRemoveAllPhones(btn){var code=btn.dataset.code;if(!confirm(\'Remover todos os n\\u00fameros de \'+code+\'?\'))return;btn.disabled=true;btn.textContent=\'Removendo...\';try{var r=await fetch(_RA+\'/api/keys/\'+encodeURIComponent(code)+\'/remove-all-phones\',{method:\'POST\'});var j=await r.json();if(j.ok){closeModal();toast(\'Todos removidos\');doRefresh();}else{btn.disabled=false;btn.textContent=\'\\u00d7 Remover Todos\';toast(\'Falha\',false);}}catch(e){btn.disabled=false;btn.textContent=\'\\u00d7 Remover Todos\';toast(\'Erro de conex\\u00e3o\',false);}}',
-    'function exportCsv(){window.location.href=_RA+\'/api/export/csv\';}',
-    'setInterval(doRefresh,60000);',
-    'doRefresh();'
+    'function filterLog(){var q=(document.getElementById(\'logSearch\').value||\'\').toLowerCase();var tp=document.getElementById(\'logTypeFilter\').value.toLowerCase();document.querySelectorAll(\'#logb tr\').forEach(function(r){var txt=r.textContent.toLowerCase();r.style.display=((!q||txt.includes(q))&&(!tp||txt.includes(tp)))?\'\':\'none\';});}',
+    'function exportCsv(){window.location=_RA+\'/api/export/csv\';}',
+    'function clearLogs(){if(!confirm(\'Limpar todos os logs?\'))return;fetch(_RA+\'/api/logs/clear\',{method:\'POST\'}).then(function(){toast(\'Logs limpos\');doRefresh();}).catch(function(){toast(\'Erro\',false);});}',
+    'async function generateKey(){var btn=document.querySelector(\'button[onclick="generateKey()"]\');if(btn){btn.disabled=true;btn.textContent=\'Gerando...\';}var label=(document.getElementById(\'nlabel\').value||\'\').trim();if(!label){toast(\'Informe o nome do cliente\',false);if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}return;}if(label.length>60){toast(\'Máx 60 caracteres\',false);if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}return;}var body={label:label,premium:true};var d=+(document.getElementById(\'ndays\').value)||0,h=+(document.getElementById(\'nhours\').value)||0;if(d)body.expireDays=d;if(h)body.expireHours=h;var u=document.getElementById(\'nuses\').value.trim();if(u!==\'\')body.maxUses=parseInt(u);if(document.getElementById(\'nfirstuse\').checked)body.ativarNoPrimeiroUso=true;try{var r=await fetch(_RA+\'/api/keys\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify(body)});if(r.status===401){location.href=_RA+\'/login\';return;}var j=await r.json();if(j.ok){toast(\'Chave gerada: \'+j.key);[\'nlabel\',\'ndays\',\'nhours\',\'nuses\'].forEach(function(id){document.getElementById(id).value=\'\';});document.getElementById(\'nfirstuse\').checked=false;doRefresh();}else{toast(\'Erro: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conexão\',false);}finally{if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}}}',
+    'async function apiActivate(code){try{var r=await fetch(_RA+\'/api/activate/\'+encodeURIComponent(code),{method:\'POST\'});var j=await r.json();if(j.ok){toast(\'Chave ativada\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conexão\',false);}}',
+    'async function apiToggle(code){try{var r=await fetch(_RA+\'/api/toggle/\'+encodeURIComponent(code),{method:\'POST\'});var j=await r.json();if(j.ok){toast(\'Status alterado\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conexão\',false);}}',
+    'async function deleteKey(code){if(!confirm(\'Excluir chave \'+code+\'?\'))return;try{var r=await fetch(_RA+\'/api/keys/\'+encodeURIComponent(code),{method:\'DELETE\'});var j=await r.json();if(j.ok){toast(\'Excluída\');doRefresh();}else{toast(\'Falha\',false);}}catch(e){toast(\'Erro de conexão\',false);}}',
+    'function openRenew(code){var b=document.getElementById(\'modal-box\');var sc=code.split(\'"\').join(\'&quot;\');b.innerHTML=\'<h3>Renovar \'+code+\'</h3><div class="field"><label>Dias</label><input id="rd" type="number" min="0" value="30"></div><div class="field"><label>Horas</label><input id="rh" type="number" min="0" value="0"></div><div class="mrow"><button class="btn-p" id="renew-btn" onclick="submitRenew(this.dataset.code)" data-code="\'+sc+\'">Confirmar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');}',
+    'async function submitRenew(code){var btn=document.getElementById(\'renew-btn\');if(btn){btn.disabled=true;btn.textContent=\'Salvando...\';}var days=+(document.getElementById(\'rd\').value)||0,hours=+(document.getElementById(\'rh\').value)||0;try{var r=await fetch(_RA+\'/api/renew/\'+encodeURIComponent(code),{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({days:days,hours:hours})});var j=await r.json();closeModal();if(j.ok){toast(\'Renovada\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){closeModal();toast(\'Erro de conexão\',false);}}',
+    'function openUses(code,cur){var b=document.getElementById(\'modal-box\');var sc=code.split(\'"\').join(\'&quot;\');b.innerHTML=\'<h3>Limite de usos</h3><div class="field"><label>Máx (-1=∞)</label><input id="mu" type="number" value="\'+cur+\'"></div><div class="mrow"><button class="btn-p" id="uses-btn" onclick="submitUses(this.dataset.code)" data-code="\'+sc+\'">Confirmar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');}',
+    'async function submitUses(code){var btn=document.getElementById(\'uses-btn\');if(btn){btn.disabled=true;btn.textContent=\'Salvando...\';}var maxUses=parseInt(document.getElementById(\'mu\').value);try{var r=await fetch(_RA+\'/api/max-uses/\'+encodeURIComponent(code),{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({maxUses:maxUses})});var j=await r.json();closeModal();if(j.ok){toast(\'Atualizado\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){closeModal();toast(\'Erro de conexão\',false);}}',
+    'function openNote(code,cur){var b=document.getElementById(\'modal-box\');var safe=cur.split(\'&\').join(\'&amp;\').split(\'<\').join(\'&lt;\').split(\'>\').join(\'&gt;\');var sc=code.split(\'"\').join(\'&quot;\');b.innerHTML=\'<h3>Nota</h3><div class="field"><textarea id="nt" rows="4" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font:inherit;resize:vertical">\'+safe+\'</textarea></div><div class="mrow"><button class="btn-p" id="note-btn" onclick="submitNote(this.dataset.code)" data-code="\'+sc+\'">Salvar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');setTimeout(function(){var t=document.getElementById(\'nt\');if(t)t.focus();},60);}',
+    'async function submitNote(code){var btn=document.getElementById(\'note-btn\');if(btn){btn.disabled=true;btn.textContent=\'Salvando...\';}var note=document.getElementById(\'nt\').value;try{var r=await fetch(_RA+\'/api/note/\'+encodeURIComponent(code),{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({note:note})});var j=await r.json();closeModal();if(j.ok){toast(\'Nota salva\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){closeModal();toast(\'Erro de conexão\',false);}}',
+    'function openRename(code,cur){var b=document.getElementById(\'modal-box\');var sc=code.split(\'"\').join(\'&quot;\');var sv=cur.split(\'&\').join(\'&amp;\').split(\'<\').join(\'&lt;\').split(\'>\').join(\'&gt;\').split(\'"\').join(\'&quot;\');b.innerHTML=\'<h3>Renomear</h3><div class="field"><label>Novo nome</label><input id="rn" type="text" maxlength="60" value="\'+sv+\'"></div><div class="mrow"><button class="btn-p" id="rename-btn" onclick="submitRename(this.dataset.code)" data-code="\'+sc+\'">Salvar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');setTimeout(function(){var t=document.getElementById(\'rn\');if(t){t.focus();t.select();}},60);}',
+    'async function submitRename(code){var label=document.getElementById(\'rn\').value.trim();if(!label){toast(\'Informe um nome.\',false);return;}var btn=document.getElementById(\'rename-btn\');if(btn){btn.disabled=true;btn.textContent=\'Salvando...\';}try{var r=await fetch(_RA+\'/api/rename/\'+encodeURIComponent(code),{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({label:label})});var j=await r.json();closeModal();if(j.ok){toast(\'Renomeado\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){closeModal();toast(\'Erro de conexão\',false);}}',
+    'function openNumbers(tr){var code=tr.dataset.code;var phones;try{phones=JSON.parse(tr.dataset.phones||\'[]\');}catch(e){phones=[];}var sc=code.split(\'"\').join(\'&quot;\');var b=document.getElementById(\'modal-box\');var rows=phones&&phones.length?phones.map(function(p){var sp=p.split(\'"\').join(\'&quot;\');return\'<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:6px;border:1px solid rgba(57,255,20,.12);background:#040d06;margin-bottom:5px"><span style="font-family:monospace;font-size:.82rem;color:#c8e8c8">\'+p+\'</span><button class="zvm-btn zvm-btn-del" data-code="\'+sc+\'" data-phone="\'+sp+\'" onclick="apiRemovePhone(this)">&times;</button></div>\';}).join(\'\'):\'<p style="color:#5a8a6e;font-size:.85rem;padding:8px 0">Nenhum número.</p>\';b.innerHTML=\'<h3 style="margin-bottom:12px">Números — \'+code+\'</h3><div style="max-height:260px;overflow-y:auto">\'+rows+\'</div><div class="mrow"><button class="zvm-btn zvm-btn-del" data-code="\'+sc+\'" onclick="apiRemoveAllPhones(this)">&times; Remover Todos</button><button class="btn-w" onclick="closeModal()">Fechar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');}',
+    'async function apiRemovePhone(btn){var code=btn.dataset.code;var phone=btn.dataset.phone;btn.disabled=true;btn.textContent=\'...\';try{var r=await fetch(_RA+\'/api/remove-phone/\'+encodeURIComponent(code),{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({phone:phone})});var j=await r.json();if(j.ok){var row=btn.parentElement;if(row)row.remove();toast(\'Número removido\');doRefresh();}else{btn.disabled=false;btn.textContent=\'×\';toast(\'Falha\',false);}}catch(e){btn.disabled=false;btn.textContent=\'×\';toast(\'Erro de conexão\',false);}}',
+    'async function apiRemoveAllPhones(btn){var code=btn.dataset.code;if(!confirm(\'Remover todos os números de \'+code+\'?\'))return;btn.disabled=true;btn.textContent=\'Removendo...\';try{var r=await fetch(_RA+\'/api/remove-all-phones/\'+encodeURIComponent(code),{method:\'POST\'});var j=await r.json();if(j.ok){closeModal();toast(\'Todos removidos\');doRefresh();}else{btn.disabled=false;btn.textContent=\'× Remover Todos\';toast(\'Falha\',false);}}catch(e){btn.disabled=false;btn.textContent=\'× Remover Todos\';toast(\'Erro de conexão\',false);}}',
+    'async function doRefresh(manual){var lr=document.getElementById(\'last-r\');if(lr)lr.textContent=\'Atualizando...\';try{var r=await fetch(_RA+\'/api/data\');if(r.status===401){if(manual)location.href=_RA+\'/login\';return;}if(!r.ok){if(manual)toast(\'Erro \'+r.status,false);return;}var d=await r.json();if(!d.ok)return;if(document.getElementById(\'s-total\'))document.getElementById(\'s-total\').textContent=d.totalKeys;if(document.getElementById(\'s-active\'))document.getElementById(\'s-active\').textContent=d.activeKeys;if(document.getElementById(\'s-free\'))document.getElementById(\'s-free\').textContent=d.freeKeys;if(document.getElementById(\'s-expired\'))document.getElementById(\'s-expired\').textContent=d.expiredKeys;if(document.getElementById(\'s-logs\'))document.getElementById(\'s-logs\').textContent=d.totalLogs||0;if(document.getElementById(\'kb\'))document.getElementById(\'kb\').innerHTML=d.keysHtml;if(document.getElementById(\'logb\')&&d.logsHtml)document.getElementById(\'logb\').innerHTML=d.logsHtml;if(lr)lr.textContent=new Date().toLocaleTimeString(\'pt-BR\');filterKeys();}catch(e){if(lr)lr.textContent=\'Erro\';if(manual)toast(\'Erro ao atualizar\',false);}}',
+    'setInterval(doRefresh,60000);doRefresh();'
   ].join('\n');
 })();
 
-let _keysCache = null;
-let _keysCacheTs = 0;
-const KEYS_CACHE_MS = 15000;
-
-function invalidateKeysCache() { _keysCache = null; _keysCacheTs = 0; }
-
-async function getKeysCached() {
-  const now = Date.now();
-  if (_keysCache && now - _keysCacheTs < KEYS_CACHE_MS) return _keysCache;
-  const lic = await listLicenses();
-  _keysCache = lic;
-  _keysCacheTs = now;
-  return lic;
+function adminSidebar(active) {
+  const item = (href, icon, label, key) =>
+    `<a href="${href}" class="ni${active === key ? ' ac' : ''}"><span class="ic">${icon}</span><span class="nl">${label}</span></a>`;
+  return `<aside class="sidebar"><div class="sb-brand"><span class="bdot"></span><span class="btxt">WaSpeed</span></div><div class="sbsec">Painel</div>${item(R_WS_ADMIN,'🏠','Dashboard','dash')}${item(R_WS_ADMIN+'/keys','🔑','Licenças','keys')}${item(R_WS_ADMIN+'/logs','📋','Logs','logs')}${item(R_WS_ADMIN+'/audit','🛡️','Auditoria','audit')}<div class="sbft">${item(R_WS_ADMIN+'/logout','→','Sair','out')}</div></aside>`;
 }
-
-async function getKeyStats() {
-  const lic = await getKeysCached();
-  let active = 0, free = 0, blocked = 0, expired = 0;
-  for (const k of lic) {
-    const st = keyStatus(k);
-    if (st === 'active') active++;
-    else if (st === 'free') free++;
-    else if (st === 'blocked') blocked++;
-    else if (st === 'expired') expired++;
-  }
-  const totalLogs = db ? await db.collection(COL.logs).countDocuments() : 0;
-  return { totalKeys: lic.length, activeKeys: active, freeKeys: free, blockedKeys: blocked, expiredKeys: expired, totalLogs };
-}
-
-function parseLicenseExpiry(body) {
-  const days  = parseInt(body.expireDays   || 0, 10) || 0;
-  const hours = parseInt(body.expireHours  || 0, 10) || 0;
-  const mins  = parseInt(body.expireMinutes || 0, 10) || 0;
-  if (!days && !hours && !mins) return { expiresAt: null, expireDays: 0 };
-  return { expiresAt: new Date(Date.now() + ((days * 1440) + (hours * 60) + mins) * 60000).toISOString(), expireDays: days };
-}
-
-function adminApiRe(suffix) {
-  suffix = suffix || '';
-  const base = R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, ch => '\\' + ch);
-  return new RegExp('^' + base + '/api/keys/([^/]+)' + suffix + '$');
-}
-
-function requireAdminSession(req, res) {
-  return validateSession(parseCookies(req)[config.cookieName]).then(sess => {
-    if (!sess || sess.role !== 'admin') { res.writeHead(302, { Location: R_ADMIN + '/login' }); res.end(); return null; }
-    return sess;
-  });
-}
-
-async function handleAdminApi(req, res, pathname) {
-  if (pathname === R_ADMIN + '/api/data' && req.method === 'GET') {
-    const stats    = await getKeyStats();
-    const licenses = await getKeysCached();
-    const logs     = await getRecentLogs(150);
-    sendJsonGzip(req, res, { ok: true, ...stats, keysHtml: buildLicenseRows(licenses), logsHtml: buildLogRows(logs) });
-    return true;
-  }
-  if (pathname === R_ADMIN + '/api/keys' && req.method === 'POST') {
-    const body    = await readJson(req);
-    const rawLabel = String(body.label || '').trim();
-    if (!rawLabel) { sendJson(res, { error: 'label_required' }, 400); return true; }
-    if (rawLabel.length > 60) { sendJson(res, { error: 'label_too_long' }, 400); return true; }
-    if (detectInjection(rawLabel)) { sendJson(res, { error: 'invalid_input' }, 400); return true; }
-    const { expiresAt, expireDays } = parseLicenseExpiry(body);
-    const maxUses = body.maxUses !== undefined ? parseInt(body.maxUses, 10) : -1;
-    if (!Number.isNaN(maxUses) && (maxUses < -1 || maxUses > 9999)) { sendJson(res, { error: 'maxUses_out_of_range' }, 400); return true; }
-    try {
-      const rec = await createKey({ label: sanitizeString(rawLabel), premium: true, expiresAt, expireDays, maxUses: Number.isNaN(maxUses) ? -1 : maxUses, note: sanitizeString(String(body.note || '').slice(0, 500)), ativarNoPrimeiroUso: body.ativarNoPrimeiroUso === true });
-      invalidateKeysCache();
-      sendJson(res, { ok: true, key: rec.code });
-    } catch (e) {
-      if (!res.headersSent) sendJson(res, { error: e.message }, 500);
-    }
-    return true;
-  }
-  if (pathname === R_ADMIN + '/api/logs/clear' && req.method === 'POST') {
-    if (db) await db.collection(COL.logs).deleteMany({});
-    sendJson(res, { ok: true });
-    return true;
-  }
-  if (pathname === R_ADMIN + '/api/export/csv' && req.method === 'GET') {
-    const licenses = await listLicenses();
-    const csvLines = ['code,label,premium,active,expiresAt,uses,maxUses,lastPhone,lastIp,createdAt,note'];
-    for (const k of licenses) {
-      csvLines.push([k.code, k.label, k.premium, k.active, k.expiresAt || '', (k.phones || []).length, k.maxUses != null ? k.maxUses : -1, k.lastPhone || '', k.lastIp || '', k.createdAt || '', (k.note || '').replace(/,/g, ';')].map(function(v) { return '"' + String(v).replace(/"/g, '""') + '"'; }).join(','));
-    }
-    if (!res.headersSent) {
-      res.writeHead(200, { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="wspeed-licenses.csv"' });
-      res.end('\ufeff' + csvLines.join('\n'));
-    }
-    return true;
-  }
-  const codeAct = pathname.match(adminApiRe('/activate'));
-  if (codeAct && req.method === 'POST') {
-    const rec = await findKey(decodeURIComponent(codeAct[1]));
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    await updateLicense(rec.code, { ativarNoPrimeiroUso: false, primeiroUsoAt: new Date().toISOString(), active: true });
-    await addLog('key_activated', 'Chave ' + rec.code + ' ativada manualmente', { code: rec.code });
-    invalidateKeysCache();
-    sendJson(res, { ok: true });
-    return true;
-  }
-  const codeToggle = pathname.match(adminApiRe('/toggle'));
-  if (codeToggle && req.method === 'POST') {
-    const rec = await findKey(decodeURIComponent(codeToggle[1]));
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    await updateLicense(rec.code, { active: !rec.active });
-    invalidateKeysCache();
-    sendJson(res, { ok: true, active: !rec.active });
-    return true;
-  }
-  const codeRenew = pathname.match(adminApiRe('/renew'));
-  if (codeRenew && req.method === 'POST') {
-    const rec = await findKey(decodeURIComponent(codeRenew[1]));
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    const rbody  = await readJson(req);
-    const addMs  = ((parseInt(rbody.days || 0, 10) * 1440) + (parseInt(rbody.hours || 0, 10) * 60)) * 60000;
-    if (!addMs) { sendJson(res, { error: 'informe tempo' }, 400); return true; }
-    const baseTs = (rec.expiresAt && new Date(rec.expiresAt).getTime() > Date.now()) ? new Date(rec.expiresAt).getTime() : Date.now();
-    await updateLicense(rec.code, { expiresAt: new Date(baseTs + addMs).toISOString(), active: true });
-    invalidateKeysCache();
-    sendJson(res, { ok: true });
-    return true;
-  }
-  const codeMu = pathname.match(adminApiRe('/max-uses'));
-  if (codeMu && req.method === 'POST') {
-    const rec     = await findKey(decodeURIComponent(codeMu[1]));
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    const mbody   = await readJson(req);
-    const maxUses = parseInt(mbody.maxUses, 10);
-    if (Number.isNaN(maxUses) || maxUses < -1) { sendJson(res, { error: 'invalid' }, 400); return true; }
-    await updateLicense(rec.code, { maxUses });
-    invalidateKeysCache();
-    sendJson(res, { ok: true, maxUses });
-    return true;
-  }
-  const codeNote = pathname.match(adminApiRe('/note'));
-  if (codeNote && req.method === 'POST') {
-    const rawCode = decodeURIComponent(codeNote[1]);
-    const rec     = await findKey(rawCode);
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    const nbody   = await readJson(req);
-    const note    = sanitizeString(String(nbody.note != null ? nbody.note : '').slice(0, 500));
-    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
-    try {
-      await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $set: { note } });
-    } catch (e) {
-      slog(LOG_LEVELS.WARN, 'codeNote update', { err: e.message });
-      if (!res.headersSent) sendJson(res, { error: 'update_failed' }, 500);
-      return true;
-    }
-    invalidateKeysCache();
-    sendJson(res, { ok: true, note });
-    return true;
-  }
-  const codeDel = pathname.match(adminApiRe());
-  if (codeDel && req.method === 'DELETE' && !/\/(toggle|renew|max-uses|activate|note|remove-phone|remove-all-phones|rename)$/.test(pathname)) {
-    const code = decodeURIComponent(codeDel[1]);
-    await deleteLicense(code);
-    await addLog('key_delete', 'Chave ' + code + ' excluida', { code });
-    invalidateKeysCache();
-    sendJson(res, { ok: true });
-    return true;
-  }
-  const codeRemPhone = pathname.match(adminApiRe('/remove-phone'));
-  if (codeRemPhone && req.method === 'POST') {
-    const rawCode = decodeURIComponent(codeRemPhone[1]);
-    const rec     = await findKey(rawCode);
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    const pb = await readJson(req);
-    const ph = sanitizeString(String(pb.phone || '').trim());
-    if (!ph) { sendJson(res, { error: 'phone required' }, 400); return true; }
-    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
-    await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $pull: { phones: ph } });
-    invalidateKeysCache();
-    sendJson(res, { ok: true });
-    return true;
-  }
-  const codeRemAll = pathname.match(adminApiRe('/remove-all-phones'));
-  if (codeRemAll && req.method === 'POST') {
-    const rawCode = decodeURIComponent(codeRemAll[1]);
-    const rec     = await findKey(rawCode);
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
-    await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $set: { phones: [], uses: 0 } });
-    invalidateKeysCache();
-    sendJson(res, { ok: true });
-    return true;
-  }
-  const codeRename = pathname.match(adminApiRe('/rename'));
-  if (codeRename && req.method === 'POST') {
-    const rawCode = decodeURIComponent(codeRename[1]);
-    const rec     = await findKey(rawCode);
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    const rb   = await readJson(req);
-    const lbl  = sanitizeString(String(rb.label || '').trim().slice(0, 60));
-    if (!lbl) { sendJson(res, { error: 'label required' }, 400); return true; }
-    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
-    await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $set: { label: lbl } });
-    invalidateKeysCache();
-    sendJson(res, { ok: true, label: lbl });
-    return true;
-  }
-  return false;
-}
-
-
-function renderAdminDash(keysHtml, logsHtml, stats) {
-  var sc = function(id, val, lbl, style) {
-    return '<div class="sc"><div class="n" id="' + id + '"' + (style ? ' style="' + style + '"' : '') + '>' + String(val) + '</div><div class="l">' + lbl + '</div></div>';
-  };
-  var statsRow = '<div class="sc-row" style="margin-bottom:18px">' +
-    sc('s-total',   stats.totalKeys,   'Total',     '') +
-    sc('s-active',  stats.activeKeys,  'PRO Ativas', 'color:var(--ac)') +
-    sc('s-free',    stats.freeKeys,    'Free',      '') +
-    sc('s-expired', stats.expiredKeys, 'Expiradas',  stats.expiredKeys ? 'color:var(--dg)' : '') +
-    sc('s-logs',    stats.totalLogs,   'Logs',      '') +
-    '</div>';
-  var logTypeOpts =
-    '<option value="">Todos os eventos</option>' +
-    '<option value="LOGIN OK">LOGIN OK</option>' +
-    '<option value="FALHA AO LOGAR">FALHA AO LOGAR</option>' +
-    '<option value="CHAVE CRIADA">CHAVE CRIADA</option>' +
-    '<option value="CHAVE EXCLU\u00cdDA">CHAVE EXCLU\u00cdDA</option>' +
-    '<option value="CHAVE ATIVADA">CHAVE ATIVADA</option>' +
-    '<option value="CADASTRO FREE">CADASTRO FREE</option>' +
-    '<option value="FALHA ADMIN">FALHA ADMIN</option>' +
-    '<option value="LIMITE DE TELAS">LIMITE DE TELAS</option>' +
-    '<option value="ATAQUE BLOQUEADO">ATAQUE BLOQUEADO</option>';
-  var genForm =
-    '<div style="padding:16px 18px;background:#020904;border-bottom:1px solid #183326">' +
-    '<div style="max-width:450px;background:#070f0a;border:1px solid #183326;border-radius:12px;padding:16px 18px">' +
-    '<div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#5a8a6e;margin-bottom:12px">Nova Chave PRO</div>' +
-    '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
-    '<input type="text" id="nlabel" placeholder="Nome do cliente" maxlength="60" style="flex:1;min-width:140px;padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="ndays" placeholder="Dias" min="0" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="nhours" placeholder="H" min="0" max="23" style="width:46px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="nmins" placeholder="Min" min="0" max="59" style="width:50px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="nuses" placeholder="Usos" title="-1=\u221e" min="-1" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<label style="display:flex;align-items:center;gap:4px;font-size:.76rem;color:var(--mt);cursor:pointer;white-space:nowrap"><input type="checkbox" id="nfirstuse" style="margin:0;width:auto;padding:0"> 1\u00ba uso</label>' +
-    '<button onclick="generateKey()" style="padding:7px 14px;border-radius:5px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap">+ Gerar</button>' +
-    '</div></div>' +
-    '</div>';
-  var searchBar =
-    '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid #183326;align-items:center">' +
-    '<input type="text" id="search-input" placeholder="\uD83D\uDD0D Buscar chave, cliente, telefone..." oninput="filterKeys()" style="flex:1;min-width:180px;padding:7px 11px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<select id="filter-status" onchange="filterKeys()" style="padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<option value="">Todos</option><option value="ativo">PRO</option><option value="free">Free</option><option value="pendente">Pendentes</option><option value="expirada">Expiradas</option><option value="bloqueado">Bloqueadas</option>' +
-    '</select>' +
-    '<button onclick="doRefresh(true)" style="padding:7px 12px;border-radius:5px;border:1px solid #26543c;background:transparent;color:#39ff14;font-size:.8rem;cursor:pointer">\u21bb Atualizar</button>' +
-    '<button onclick="exportCsv()" style="padding:7px 12px;border-radius:5px;border:1px solid #183326;background:transparent;color:#8ab89a;font-size:.8rem;cursor:pointer">\u2b07 CSV</button>' +
-    '<span id="last-r" style="font-size:.7rem;color:#5a8a6e">&mdash;</span>' +
-    '</div>';
-  var keysSection =
-    '<div class="sec">' +
-    '<div class="sh"><span class="sh-t">\uD83D\uDD11 Licen\u00e7as WaSpeed</span></div>' +
-    genForm +
-    searchBar +
-    '<div class="tbl-w" style="overflow-x:auto">' +
-    '<table style="min-width:920px"><thead><tr style="background:#070f0a">' +
-    '<th style="min-width:160px">Chave</th><th style="min-width:90px">Cliente</th><th style="min-width:80px">Status</th><th style="min-width:100px">Validade</th><th style="min-width:48px">Usos</th><th style="min-width:90px">Telefone</th><th style="min-width:86px">IP</th><th style="min-width:100px">\u00dalt. acesso</th><th style="min-width:100px">Criada</th><th style="min-width:80px">Nota</th><th style="min-width:220px">A\u00e7\u00f5es</th>' +
-    '</tr></thead><tbody id="kb">' + keysHtml + '</tbody></table>' +
-    '</div></div>';
-  var logsSection =
-    '<div class="sec">' +
-    '<div class="sh"><span class="sh-t">\uD83D\uDCCB Logs do Sistema &mdash; WaSpeed</span>' +
-    '<button onclick="clearLogs()" style="padding:5px 12px;border-radius:5px;border:1px solid rgba(255,68,102,.3);background:transparent;color:#ff8899;font-size:.78rem;cursor:pointer">\uD83D\uDDD1 Limpar logs</button></div>' +
-    '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid #183326;align-items:center">' +
-    '<input type="text" id="logSearch" placeholder="Filtrar logs..." oninput="filterLog()" style="flex:1;min-width:180px;padding:7px 11px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<select id="logTypeFilter" onchange="filterLog()" style="padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' + logTypeOpts + '</select>' +
-    '</div>' +
-    '<div class="tbl-w" style="max-height:52vh;overflow-y:auto;overflow-x:auto">' +
-    '<table style="min-width:720px"><thead><tr style="background:#070f0a">' +
-    '<th style="min-width:110px">Data/Hora</th><th style="min-width:110px">Evento</th><th style="min-width:90px">Chave</th><th style="min-width:90px">Telefone</th><th style="min-width:80px">IP</th><th style="min-width:180px">Mensagem</th>' +
-    '</tr></thead><tbody id="logb">' + logsHtml + '</tbody></table>' +
-    '</div></div>';
-  var scriptTag = '<scr' + 'ipt>' + ADMIN_JS_SAFE + '</scr' + 'ipt>';
-  var body = statsRow + keysSection + logsSection + scriptTag;
-  return spaShell('Admin WaSpeed', adminSidebar('dash'), 'WaSpeed Admin', body);
-}
-
 
 function modSidebar(active) {
   const item = (href, icon, label, key) =>
     `<a href="${href}" class="ni${active === key ? ' ac' : ''}"><span class="ic">${icon}</span><span class="nl">${label}</span></a>`;
-  return `<aside class="sidebar"><div class="sb-brand"><span class="bdot"></span><span class="btxt">Moderador</span></div><div class="sbsec">Chaves</div>${item(R_MOD,'🔑','Chaves','keys')}<div class="sbft">${item(R_MOD+'/logout','→','Sair','out')}</div></aside>`;
+  return `<aside class="sidebar"><div class="sb-brand"><span class="bdot"></span><span class="btxt">Moderador</span></div><div class="sbsec">Chaves</div>${item(R_WS_MOD,'🔑','Chaves','keys')}<div class="sbft">${item(R_WS_MOD+'/logout','→','Sair','out')}</div></aside>`;
 }
 
-const MOD_JS_SAFE = (function() {
-  var RM = R_MOD;
-  return [
-    'var _RM=' + JSON.stringify(RM) + ';',
-    'function toast(m,ok){var t=document.getElementById(\'toast\');t.textContent=m;t.style.borderColor=(ok===false)?\'var(--dg)\':\'var(--ac)\';t.classList.add(\'show\');setTimeout(function(){t.classList.remove(\'show\');},3500);}',
-    'function closeModal(){document.getElementById(\'modal-bg\').classList.remove(\'open\');}',
-    'function filterKeys(){var q=(document.getElementById(\'search-input\').value||\'\').toLowerCase();var st=document.getElementById(\'filter-status\').value;document.querySelectorAll(\'#kb tr\').forEach(function(r){var row=(r.dataset.code+r.dataset.label+r.dataset.phone).toLowerCase();r.style.display=((!q||row.includes(q))&&(!st||r.dataset.status===st))?\'\':\'none\';});}',
-    'async function generateKey(){var btn=document.querySelector(\'button[onclick="generateKey()"]\');if(btn){btn.disabled=true;btn.textContent=\'Gerando...\';}var label=document.getElementById(\'nlabel\').value.trim();if(!label){toast(\'Informe o nome do cliente\',false);if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}return;}if(label.length>60){toast(\'M\\u00e1x 60 caracteres\',false);if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}return;}var body={label:label};var dv=+(document.getElementById(\'ndays\').value)||0,h=+(document.getElementById(\'nhours\').value)||0,m=+(document.getElementById(\'nmins\').value)||0;if(dv)body.expireDays=dv;if(h)body.expireHours=h;if(m)body.expireMinutes=m;var u=document.getElementById(\'nuses\').value.trim();if(u!==\'\')body.maxUses=parseInt(u);if(document.getElementById(\'nfirstuse\').checked)body.ativarNoPrimeiroUso=true;try{var r=await fetch(_RM+\'/api/keys\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify(body)});if(r.status===401){location.href=_RM+\'/login\';return;}var j=await r.json();if(j.ok){toast(\'Chave gerada: \'+j.key);[\'nlabel\',\'ndays\',\'nhours\',\'nmins\',\'nuses\'].forEach(function(id){document.getElementById(id).value=\'\';});document.getElementById(\'nfirstuse\').checked=false;doRefresh();}else{toast(\'Erro: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}finally{if(btn){btn.disabled=false;btn.textContent=\'+ Gerar\';}}}'  ,
-    'async function apiActivate(code){try{var r=await fetch(_RM+\'/api/keys/\'+encodeURIComponent(code)+\'/activate\',{method:\'POST\'});var j=await r.json();if(j.ok){toast(\'Chave ativada\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}}',
-    'async function doRefresh(manual){var lr=document.getElementById(\'last-r\');if(lr)lr.textContent=\'Atualizando...\';try{var r=await fetch(_RM+\'/api/data\');if(r.status===401){if(manual)location.href=_RM+\'/login\';return;}if(!r.ok){if(manual)toast(\'Erro \'+ r.status,false);return;}var d=await r.json();if(!d.ok)return;document.getElementById(\'s-total\').textContent=d.totalKeys;document.getElementById(\'s-active\').textContent=d.activeKeys;document.getElementById(\'s-free\').textContent=d.freeKeys;document.getElementById(\'s-expired\').textContent=d.expiredKeys;document.getElementById(\'kb\').innerHTML=d.keysHtml;if(lr)lr.textContent=new Date().toLocaleTimeString(\'pt-BR\');filterKeys();}catch(e){if(lr)lr.textContent=\'Erro\';if(manual)toast(\'Erro ao atualizar\',false);}}',
-    'async function apiToggle(code){try{var r=await fetch(_RM+\'/api/keys/\'+encodeURIComponent(code)+\'/toggle\',{method:\'POST\'});var j=await r.json();if(j.ok){toast(\'Status alterado\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){toast(\'Erro de conex\\u00e3o\',false);}}',
-    'function openRenew(code){var b=document.getElementById(\'modal-box\');var sc=code.split(\'"\').join(\'&quot;\');b.innerHTML=\'<h3>Renovar \'+code+\'</h3><div class="field"><label>Dias</label><input id="rd" type="number" min="0" value="30"></div><div class="field"><label>Horas</label><input id="rh" type="number" min="0" value="0"></div><div class="mrow"><button class="btn-p" id="renew-confirm-btn" onclick="submitRenew(this.dataset.code)" data-code="\'+sc+\'">Confirmar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');}',
-    'async function submitRenew(code){var btn=document.getElementById(\'renew-confirm-btn\');if(btn){btn.disabled=true;btn.textContent=\'Salvando...\';}var days=+(document.getElementById(\'rd\').value)||0,hours=+(document.getElementById(\'rh\').value)||0;try{var r=await fetch(_RM+\'/api/keys/\'+encodeURIComponent(code)+\'/renew\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({days:days,hours:hours})});var j=await r.json();closeModal();if(j.ok){toast(\'Renovada\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){closeModal();toast(\'Erro de conex\\u00e3o\',false);}}',
-    'function openUses(code,cur){var b=document.getElementById(\'modal-box\');var sc=code.split(\'"\').join(\'&quot;\');b.innerHTML=\'<h3>Limite de usos</h3><div class="field"><label>M\\u00e1x (-1=\\u221e)</label><input id="mu" type="number" value="\'+cur+\'"></div><div class="mrow"><button class="btn-p" id="uses-confirm-btn" onclick="submitUses(this.dataset.code)" data-code="\'+sc+\'">Confirmar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');}',
-    'async function submitUses(code){var btn=document.getElementById(\'uses-confirm-btn\');if(btn){btn.disabled=true;btn.textContent=\'Salvando...\';}var maxUses=parseInt(document.getElementById(\'mu\').value);try{var r=await fetch(_RM+\'/api/keys/\'+encodeURIComponent(code)+\'/max-uses\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({maxUses:maxUses})});var j=await r.json();closeModal();if(j.ok){toast(\'Atualizado\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){closeModal();toast(\'Erro de conex\\u00e3o\',false);}}',
-    'function openNote(code,cur){var b=document.getElementById(\'modal-box\');var safe=cur.split(\'&\').join(\'&amp;\').split(\'<\').join(\'&lt;\').split(\'>\').join(\'&gt;\');var sc=code.split(\'"\').join(\'&quot;\');b.innerHTML=\'<h3>Nota</h3><div class="field"><textarea id="nt" rows="4" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font:inherit;resize:vertical">\'+safe+\'</textarea></div><div class="mrow"><button class="btn-p" id="note-confirm-btn" onclick="submitNote(this.dataset.code)" data-code="\'+sc+\'">Salvar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');setTimeout(function(){var t=document.getElementById(\'nt\');if(t)t.focus();},60);}',
-    'async function submitNote(code){var btn=document.getElementById(\'note-confirm-btn\');if(btn){btn.disabled=true;btn.textContent=\'Salvando...\';}var note=document.getElementById(\'nt\').value;try{var r=await fetch(_RM+\'/api/keys/\'+encodeURIComponent(code)+\'/note\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({note:note})});var j=await r.json();closeModal();if(j.ok){toast(\'Nota salva\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){closeModal();toast(\'Erro de conex\\u00e3o\',false);}}',
-    'function openRename(code,cur){var b=document.getElementById(\'modal-box\');var sc=code.split(\'"\').join(\'&quot;\');var sv=cur.split(\'&\').join(\'&amp;\').split(\'<\').join(\'&lt;\').split(\'>\').join(\'&gt;\').split(\'"\').join(\'&quot;\');b.innerHTML=\'<h3>Renomear</h3><div class="field"><label>Novo nome</label><input id="rn" type="text" maxlength="60" value="\'+sv+\'"></div><div class="mrow"><button class="btn-p" id="rename-confirm-btn" onclick="submitRename(this.dataset.code)" data-code="\'+sc+\'">Salvar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');setTimeout(function(){var t=document.getElementById(\'rn\');if(t){t.focus();t.select();}},60);}',
-    'async function submitRename(code){var label=document.getElementById(\'rn\').value.trim();if(!label){toast(\'Informe um nome.\',false);return;}var btn=document.getElementById(\'rename-confirm-btn\');if(btn){btn.disabled=true;btn.textContent=\'Salvando...\';}try{var r=await fetch(_RM+\'/api/keys/\'+encodeURIComponent(code)+\'/rename\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({label:label})});var j=await r.json();closeModal();if(j.ok){toast(\'Renomeado\');doRefresh();}else{toast(\'Falha: \'+(j.error||\'?\'),false);}}catch(e){closeModal();toast(\'Erro de conex\\u00e3o\',false);}}',
-    'function openNumbers(tr){var code=tr.dataset.code;var phones;try{phones=JSON.parse(tr.dataset.phones||\'[]\');}catch(e){phones=[];}var sc=code.split(\'"\').join(\'&quot;\');var b=document.getElementById(\'modal-box\');var rows=phones&&phones.length?phones.map(function(p){var sp=p.split(\'"\').join(\'&quot;\');return\'<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;border-radius:6px;border:1px solid rgba(57,255,20,.12);background:#040d06;margin-bottom:5px"><span style="font-family:monospace;font-size:.82rem;color:#c8e8c8">\'+p+\'</span><button class="zvm-btn zvm-btn-del" data-code="\'+sc+\'" data-phone="\'+sp+\'" onclick="apiRemovePhone(this)">&times;</button></div>\';}).join(\'\'):\'<p style="color:#5a8a6e;font-size:.85rem;padding:8px 0">Nenhum n\\u00famero.</p>\';b.innerHTML=\'<h3 style="margin-bottom:12px">N\\u00fameros &mdash; \'+code+\'</h3><div style="max-height:260px;overflow-y:auto">\'+rows+\'</div><div class="mrow"><button class="zvm-btn zvm-btn-del" data-code="\'+sc+\'" onclick="apiRemoveAllPhones(this)">&times; Remover Todos</button><button class="btn-w" onclick="closeModal()">Fechar</button></div>\';document.getElementById(\'modal-bg\').classList.add(\'open\');}',
-    'async function apiRemovePhone(btn){var code=btn.dataset.code;var phone=btn.dataset.phone;btn.disabled=true;btn.textContent=\'...\';try{var r=await fetch(_RM+\'/api/keys/\'+encodeURIComponent(code)+\'/remove-phone\',{method:\'POST\',headers:{\'Content-Type\':\'application/json\'},body:JSON.stringify({phone:phone})});var j=await r.json();if(j.ok){var row=btn.parentElement;if(row)row.remove();toast(\'N\\u00famero removido\');doRefresh();}else{btn.disabled=false;btn.textContent=\'\\u00d7\';toast(\'Falha\',false);}}catch(e){btn.disabled=false;btn.textContent=\'\\u00d7\';toast(\'Erro de conex\\u00e3o\',false);}}',
-    'async function apiRemoveAllPhones(btn){var code=btn.dataset.code;if(!confirm(\'Remover todos os n\\u00fameros de \'+code+\'?\'))return;btn.disabled=true;btn.textContent=\'Removendo...\';try{var r=await fetch(_RM+\'/api/keys/\'+encodeURIComponent(code)+\'/remove-all-phones\',{method:\'POST\'});var j=await r.json();if(j.ok){closeModal();toast(\'Todos removidos\');doRefresh();}else{btn.disabled=false;btn.textContent=\'\\u00d7 Remover Todos\';toast(\'Falha\',false);}}catch(e){btn.disabled=false;btn.textContent=\'\\u00d7 Remover Todos\';toast(\'Erro de conex\\u00e3o\',false);}}',
-    'setInterval(doRefresh,60000);',
-    'doRefresh();'
-  ].join('\n');
-})();
+function renderAdminDash(keysHtml, logsHtml, stats) {
+  const sc = (id, val, lbl, style) => `<div class="sc"><div class="n" id="${id}"${style?' style="'+style+'"':''}>${String(val)}</div><div class="l">${lbl}</div></div>`;
+  const statsRow = `<div class="sc-row" style="margin-bottom:18px">${sc('s-total',stats.totalKeys,'Total','')}${sc('s-active',stats.activeKeys,'PRO Ativas','color:var(--ac)')}${sc('s-free',stats.freeKeys,'Free','')}${sc('s-expired',stats.expiredKeys,'Expiradas',stats.expiredKeys?'color:var(--dg)':'')}${sc('s-logs',stats.totalLogs||0,'Logs','')}</div>`;
+  const genForm = `<div style="padding:16px 18px;background:#020904;border-bottom:1px solid #183326"><div style="max-width:450px;background:#070f0a;border:1px solid #183326;border-radius:12px;padding:16px 18px"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#5a8a6e;margin-bottom:12px">Nova Chave PRO</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><input type="text" id="nlabel" placeholder="Nome do cliente" maxlength="60" style="flex:1;min-width:140px;padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="ndays" placeholder="Dias" min="0" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="nhours" placeholder="H" min="0" max="23" style="width:46px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="nuses" placeholder="Usos" title="-1=∞" min="-1" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><label style="display:flex;align-items:center;gap:4px;font-size:.76rem;color:var(--mt);cursor:pointer;white-space:nowrap"><input type="checkbox" id="nfirstuse" style="margin:0;width:auto;padding:0"> 1º uso</label><button onclick="generateKey()" style="padding:7px 14px;border-radius:5px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap">+ Gerar</button></div></div></div>`;
+  const searchBar = `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid #183326;align-items:center"><input type="text" id="search-input" placeholder="🔍 Buscar chave, cliente, telefone..." oninput="filterKeys()" style="flex:1;min-width:180px;padding:7px 11px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><select id="filter-status" onchange="filterKeys()" style="padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><option value="">Todos</option><option value="active">PRO</option><option value="free">Free</option><option value="pending">Pendentes</option><option value="expired">Expiradas</option><option value="blocked">Bloqueadas</option></select><button onclick="doRefresh(true)" style="padding:7px 12px;border-radius:5px;border:1px solid #26543c;background:transparent;color:#39ff14;font-size:.8rem;cursor:pointer">↻ Atualizar</button><button onclick="exportCsv()" style="padding:7px 12px;border-radius:5px;border:1px solid #183326;background:transparent;color:#8ab89a;font-size:.8rem;cursor:pointer">↓ CSV</button><span id="last-r" style="font-size:.7rem;color:#5a8a6e">—</span></div>`;
+  const keysSection = `<div class="sec"><div class="sh"><span class="sh-t">🔑 Licenças WaSpeed</span></div>${genForm}${searchBar}<div class="tbl-w" style="overflow-x:auto"><table style="min-width:920px"><thead><tr style="background:#070f0a"><th style="min-width:160px">Chave</th><th style="min-width:90px">Cliente</th><th style="min-width:80px">Status</th><th style="min-width:100px">Validade</th><th style="min-width:48px">Usos</th><th style="min-width:90px">Telefone</th><th style="min-width:86px">IP</th><th style="min-width:100px">Últ. acesso</th><th style="min-width:100px">Criada</th><th style="min-width:80px">Nota</th><th style="min-width:240px">Ações</th></tr></thead><tbody id="kb">${keysHtml}</tbody></table></div></div>`;
+  const logTypeOpts = '<option value="">Todos os eventos</option><option value="key_created">CHAVE CRIADA</option><option value="key_delete">CHAVE EXCLUÍDA</option><option value="key_activated">CHAVE ATIVADA</option><option value="admin_login_fail">FALHA ADMIN</option>';
+  const logsSection = `<div class="sec"><div class="sh"><span class="sh-t">📋 Logs do Sistema</span><button onclick="clearLogs()" style="padding:5px 12px;border-radius:5px;border:1px solid rgba(255,68,102,.3);background:transparent;color:#ff8899;font-size:.78rem;cursor:pointer">🗑 Limpar</button></div><div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid #183326;align-items:center"><input type="text" id="logSearch" placeholder="Filtrar logs..." oninput="filterLog()" style="flex:1;min-width:180px;padding:7px 11px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><select id="logTypeFilter" onchange="filterLog()" style="padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">${logTypeOpts}</select></div><div class="tbl-w" style="max-height:52vh;overflow-y:auto;overflow-x:auto"><table style="min-width:600px"><thead><tr style="background:#070f0a"><th style="min-width:120px">Data/Hora</th><th style="min-width:110px">Evento</th><th style="min-width:90px">Chave</th><th style="min-width:90px">Telefone</th><th style="min-width:80px">IP</th><th style="min-width:180px">Mensagem</th></tr></thead><tbody id="logb">${logsHtml}</tbody></table></div></div>`;
+  return spaShell('Admin WaSpeed', adminSidebar('dash'), 'WaSpeed Admin', statsRow + keysSection + logsSection + `<scr`+`ipt>${ADMIN_JS_SAFE}</scr`+`ipt>`);
+}
 
 function renderModDash(keysHtml, stats, modName) {
-  var sc = function(id, val, lbl, style) {
-    return '<div class="sc"><div class="n" id="' + id + '"' + (style ? ' style="' + style + '"' : '') + '>' + String(val) + '</div><div class="l">' + lbl + '</div></div>';
-  };
-  var statsRow = '<div class="sc-row" style="margin-bottom:18px">' +
-    sc('s-total',   stats.totalKeys,   'Total',     '') +
-    sc('s-active',  stats.activeKeys,  'PRO Ativas', 'color:var(--ac)') +
-    sc('s-free',    stats.freeKeys,    'Free',      '') +
-    sc('s-expired', stats.expiredKeys, 'Expiradas',  stats.expiredKeys ? 'color:var(--dg)' : '') +
-    '</div>';
-  var genForm =
-    '<div style="padding:16px 18px;background:#020904;border-bottom:1px solid #183326">' +
-    '<div style="max-width:450px;background:#070f0a;border:1px solid #183326;border-radius:12px;padding:16px 18px">' +
-    '<div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#5a8a6e;margin-bottom:12px">Nova Chave PRO</div>' +
-    '<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">' +
-    '<input type="text" id="nlabel" placeholder="Nome do cliente" maxlength="60" style="flex:1;min-width:140px;padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="ndays" placeholder="Dias" min="0" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="nhours" placeholder="H" min="0" max="23" style="width:46px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="nmins" placeholder="Min" min="0" max="59" style="width:50px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<input type="number" id="nuses" placeholder="Usos" title="-1=∞" min="-1" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<label style="display:flex;align-items:center;gap:4px;font-size:.76rem;color:var(--mt);cursor:pointer;white-space:nowrap"><input type="checkbox" id="nfirstuse" style="margin:0;width:auto;padding:0"> 1º uso</label>' +
-    '<button onclick="generateKey()" style="padding:7px 14px;border-radius:5px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap">+ Gerar</button>' +
-    '</div></div>' +
-    '</div>';
-  var searchBar =
-    '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid #183326;align-items:center">' +
-    '<input type="text" id="search-input" placeholder="🔍 Buscar chave, cliente, telefone..." oninput="filterKeys()" style="flex:1;min-width:180px;padding:7px 11px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<select id="filter-status" onchange="filterKeys()" style="padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem">' +
-    '<option value="">Todos</option><option value="ativo">PRO</option><option value="free">Free</option><option value="pendente">Pendentes</option><option value="expirada">Expiradas</option><option value="bloqueado">Bloqueadas</option>' +
-    '</select>' +
-    '<button onclick="doRefresh(true)" style="padding:7px 12px;border-radius:5px;border:1px solid #26543c;background:transparent;color:#39ff14;font-size:.8rem;cursor:pointer">↻ Atualizar</button>' +
-    '<span id="last-r" style="font-size:.7rem;color:#5a8a6e">&mdash;</span>' +
-    '</div>';
-  var keysSection =
-    '<div class="sec">' +
-    '<div class="sh"><span class="sh-t">🔑 Licenças WaSpeed</span>' +
-    (modName ? '<span style="font-size:.75rem;color:var(--mt)">Moderador: ' + esc(modName) + '</span>' : '') +
-    '</div>' +
-    genForm + searchBar +
-    '<div class="tbl-w" style="overflow-x:auto">' +
-    '<table style="min-width:920px"><thead><tr style="background:#070f0a">' +
-    '<th style="min-width:160px">Chave</th><th style="min-width:90px">Cliente</th><th style="min-width:80px">Status</th><th style="min-width:100px">Validade</th><th style="min-width:48px">Usos</th><th style="min-width:90px">Telefone</th><th style="min-width:86px">IP</th><th style="min-width:100px">Últ. acesso</th><th style="min-width:100px">Criada</th><th style="min-width:80px">Nota</th><th style="min-width:220px">Ações</th>' +
-    '</tr></thead><tbody id="kb">' + keysHtml + '</tbody></table>' +
-    '</div></div>';
-  var scriptTag = '<scr' + 'ipt>' + MOD_JS_SAFE + '</scr' + 'ipt>';
-  return spaShell('Mod WaSpeed', modSidebar('keys'), 'WaSpeed Moderador', statsRow + keysSection + scriptTag);
+  const sc = (id, val, lbl, style) => `<div class="sc"><div class="n" id="${id}"${style?' style="'+style+'"':''}>${String(val)}</div><div class="l">${lbl}</div></div>`;
+  const statsRow = `<div class="sc-row" style="margin-bottom:18px">${sc('s-total',stats.totalKeys,'Total','')}${sc('s-active',stats.activeKeys,'PRO Ativas','color:var(--ac)')}${sc('s-free',stats.freeKeys,'Free','')}${sc('s-expired',stats.expiredKeys,'Expiradas',stats.expiredKeys?'color:var(--dg)':'')}</div>`;
+  const genForm = `<div style="padding:16px 18px;background:#020904;border-bottom:1px solid #183326"><div style="max-width:450px;background:#070f0a;border:1px solid #183326;border-radius:12px;padding:16px 18px"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#5a8a6e;margin-bottom:12px">Nova Chave PRO</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><input type="text" id="nlabel" placeholder="Nome do cliente" maxlength="60" style="flex:1;min-width:140px;padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="ndays" placeholder="Dias" min="0" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="nhours" placeholder="H" min="0" max="23" style="width:46px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="nuses" placeholder="Usos" title="-1=∞" min="-1" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><label style="display:flex;align-items:center;gap:4px;font-size:.76rem;color:var(--mt);cursor:pointer;white-space:nowrap"><input type="checkbox" id="nfirstuse" style="margin:0;width:auto;padding:0"> 1º uso</label><button onclick="generateKey()" style="padding:7px 14px;border-radius:5px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap">+ Gerar</button></div></div></div>`;
+  const searchBar = `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid #183326;align-items:center"><input type="text" id="search-input" placeholder="🔍 Buscar chave, cliente, telefone..." oninput="filterKeys()" style="flex:1;min-width:180px;padding:7px 11px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><select id="filter-status" onchange="filterKeys()" style="padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><option value="">Todos</option><option value="active">PRO</option><option value="pending">Pendentes</option><option value="expired">Expiradas</option></select><button onclick="doRefresh(true)" style="padding:7px 12px;border-radius:5px;border:1px solid #26543c;background:transparent;color:#39ff14;font-size:.8rem;cursor:pointer">↻ Atualizar</button><span id="last-r" style="font-size:.7rem;color:#5a8a6e">—</span></div>`;
+  const MOD_JS = ADMIN_JS_SAFE.replace(/var _RA=/,'var _RA=').replace(JSON.stringify(R_WS_ADMIN), JSON.stringify(R_WS_MOD));
+  const keysSection = `<div class="sec"><div class="sh"><span class="sh-t">🔑 Licenças WaSpeed</span>${modName?`<span style="font-size:.75rem;color:var(--mt)">Moderador: ${esc(modName)}</span>`:''}</div>${genForm}${searchBar}<div class="tbl-w" style="overflow-x:auto"><table style="min-width:920px"><thead><tr style="background:#070f0a"><th>Chave</th><th>Cliente</th><th>Status</th><th>Validade</th><th>Usos</th><th>Telefone</th><th>IP</th><th>Últ. acesso</th><th>Criada</th><th>Nota</th><th>Ações</th></tr></thead><tbody id="kb">${keysHtml}</tbody></table></div></div>`;
+  return spaShell('Mod WaSpeed', modSidebar('keys'), 'WaSpeed Moderador', statsRow + keysSection + `<scr`+`ipt>${MOD_JS}</scr`+`ipt>`);
+}
+
+function renderSecurityAudit(base) {
+  const auditJs = [
+    'var _BASE=' + JSON.stringify(base) + ';',
+    'var _TESTS=[',
+    '{id:"json404",label:"API /unknown retorna JSON",run:async function(){var r=await fetch(_BASE+"/api/__nonexistent_route__");var ct=r.headers.get("content-type")||"";if(!ct.includes("json")){return{pass:false,detail:"Content-Type: "+ct};}try{var j=await r.json();return{pass:true,detail:"status "+r.status};}catch(e){return{pass:false,detail:"SyntaxError: "+e.message};}}},',
+    '{id:"injectLabel",label:"Injeção NoSQL em label rejeitada (400)",run:async function(){var r=await fetch(_BASE+"/api/keys",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:"{$gt:null}"})});var j=await r.json();return{pass:r.status===400,detail:"status "+r.status+" error="+j.error};}},',
+    '{id:"labelLen",label:"Label > 60 chars rejeitada (400)",run:async function(){var r=await fetch(_BASE+"/api/keys",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:"A".repeat(61)})});var j=await r.json();return{pass:r.status===400,detail:"status "+r.status};}},',
+    '{id:"noToken",label:"POST /api/auth sem access-token retorna 403",run:async function(){var r=await fetch(_BASE+"/api/auth/login/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({senha:"hack"})});var j=await r.json();return{pass:r.status===403||j.msg_id==="invalid_access_token",detail:"status "+r.status};}},',
+    '{id:"healthJson",label:"/health retorna JSON",run:async function(){var r=await fetch(_BASE+"/health");var ct=r.headers.get("content-type")||"";return{pass:ct.includes("json"),detail:"Content-Type: "+ct};}},',
+    '{id:"xframe",label:"X-Frame-Options: DENY presente",run:async function(){var r=await fetch(_BASE+"/health");var h=r.headers.get("x-frame-options")||"";return{pass:h.toUpperCase()==="DENY",detail:"X-Frame-Options: "+h};}},',
+    '];',
+    'async function runAudit(){var tbody=document.getElementById("audit-body");tbody.innerHTML="<tr><td colspan=3 style=\\"padding:18px;text-align:center;color:#5a8a6e\\">Executando testes...</td></tr>";var rows=[];for(var t of _TESTS){var res;try{res=await t.run();}catch(e){res={pass:false,detail:e.message};}var col=res.pass?"#39ff14":"#ff8899";var lbl=res.pass?"PASS":"FAIL";rows.push("<tr><td class=\\"zvm-td\\" style=\\"font-size:.82rem\\">"+t.label+"</td><td class=\\"zvm-td\\"><span style=\\"font-family:monospace;font-size:.72rem;font-weight:700;color:"+col+";background:"+col+"15;border:1px solid "+col+"28;padding:2px 9px;border-radius:4px\\">"+lbl+"</span></td><td class=\\"zvm-td zvm-muted\\" style=\\"font-size:.75rem\\">"+res.detail+"</td></tr>");}tbody.innerHTML=rows.join("");}',
+    'runAudit();',
+  ].join('\n');
+  const body = `<div class="sec"><div class="sh"><span class="sh-t">🛡️ Auditoria de Segurança</span><button onclick="runAudit()" style="padding:5px 12px;border-radius:5px;border:1px solid #26543c;background:transparent;color:#39ff14;font-size:.78rem;cursor:pointer">↻ Re-executar</button></div><div style="padding:14px 18px;font-size:.8rem;color:#5a8a6e;border-bottom:1px solid #183326">Testes automatizados contra as rotas do servidor.</div><div class="tbl-w"><table style="min-width:600px"><thead><tr style="background:#070f0a"><th style="min-width:260px">Teste</th><th style="min-width:80px">Status</th><th style="min-width:220px">Detalhe</th></tr></thead><tbody id="audit-body"><tr><td colspan="3" style="padding:18px;text-align:center;color:#5a8a6e">Carregando...</td></tr></tbody></table></div></div><scr`+`ipt>${auditJs}</scr`+`ipt>`;
+  return spaShell('Auditoria — WaSpeed', adminSidebar('audit'), 'Auditoria de Segurança', body);
+}
+
+const PUB_CSS = `*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#020904;color:#e8fff3;min-height:100vh}:root{--ac:#39ff14;--dg:#ff4466;--bg:#020904;--bg2:#070f0a;--bdr:#183326;--tx:#e8fff3;--mt:#5a8a6e}.container{max-width:900px;margin:0 auto;padding:32px 16px}.card{background:#070f0a;border:1px solid #183326;border-radius:14px;padding:28px;margin-bottom:18px}.btn{display:inline-block;padding:10px 20px;border-radius:8px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.88rem;font-weight:800;cursor:pointer;text-decoration:none}.btn-ghost{background:transparent;border:1px solid #183326;color:#8ab89a}.muted{color:#5a8a6e}nav{display:flex;align-items:center;padding:14px 20px;border-bottom:1px solid #183326;background:#040d06}.nav-logo{font-size:1rem;font-weight:900;color:#39ff14;text-decoration:none;letter-spacing:.05em}`;
+
+function pubShell(title, body) {
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${PUB_CSS}</style></head><body>${CANVAS_BG}<nav><a href="/" class="nav-logo">WaSpeed</a></nav><div class="container" style="position:relative;z-index:1">${body}</div></body></html>`;
+}
+
+function renderPortal(chromeId) {
+  return pubShell('WaSpeed — Extensão WhatsApp', `
+<div class="card" style="text-align:center;padding:48px 28px">
+<h1 style="font-size:2rem;font-weight:900;color:#39ff14;margin-bottom:10px">WaSpeed</h1>
+<p style="color:#5a8a6e;margin-bottom:24px">Extensão profissional para WhatsApp Web</p>
+<div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+${chromeId ? `<a class="btn" href="https://chromewebstore.google.com/detail/${esc(chromeId)}" target="_blank" rel="noopener">Instalar extensão</a>` : ''}
+<a class="btn btn-ghost" href="/${esc(chromeId)}/auth-painel">Minha conta</a>
+</div>
+</div>`);
+}
+
+function clientShell(title, body) {
+  return pubShell(title, body);
+}
+
+const CLIENT_PANEL_RE = WS_CHROME_ID ? new RegExp('^/' + WS_CHROME_ID.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '(/|$)') : null;
+
+function renderClientAuthPainel(msg) {
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>WaSpeed — Minha Conta</title><style>${PUB_CSS}input{width:100%;padding:9px 11px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.84rem;margin-top:5px}.lbl{font-size:.73rem;color:#5a8a6e;display:block;margin-bottom:2px}.err{color:#ff8899;font-size:.78rem;background:rgba(255,68,102,.09);border:1px solid rgba(255,68,102,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}.ok{color:#39ff14;font-size:.78rem;background:rgba(57,255,20,.09);border:1px solid rgba(57,255,20,.2);border-radius:6px;padding:8px 12px;margin-bottom:12px}</style></head><body>
+${CANVAS_BG}<nav><a href="/" class="nav-logo">WaSpeed</a></nav>
+<div class="container" style="position:relative;z-index:1;max-width:460px">
+<div class="card">
+<h2 style="font-size:1.1rem;font-weight:800;color:#39ff14;margin-bottom:16px">🔑 Minha Conta</h2>
+${msg ? `<div class="${msg.startsWith('✅')?'ok':'err'}">${esc(msg)}</div>` : ''}
+<div id="portal-content">
+<form id="login-form">
+<div class="lbl">Chave de acesso</div><input id="key-input" placeholder="ws-xxxxxxxx-xxxxxxxx-xxxxxxxx"><br><br>
+<button class="btn" type="submit" id="login-btn" style="width:100%">Entrar</button>
+</form>
+</div>
+</div></div>
+<scr`+`ipt>
+var _pc=document.getElementById('portal-content');
+document.getElementById('login-form').addEventListener('submit',async function(e){
+  e.preventDefault();
+  var btn=document.getElementById('login-btn');
+  btn.disabled=true;btn.textContent='Verificando...';
+  var key=(document.getElementById('key-input').value||'').trim();
+  if(!key){btn.disabled=false;btn.textContent='Entrar';return;}
+  try{
+    var r=await fetch('/api/auth/validate-portal',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:key})});
+    var j=await r.json();
+    if(j.ok){
+      _pc.innerHTML='<div class="ok">✅ Chave válida!</div><p style="color:#5a8a6e;font-size:.85rem;margin-top:8px">Chave: <code style="color:#39ff14">'+key+'</code></p><p style="margin-top:12px;font-size:.85rem">Expira: '+( j.expiresAt?new Date(j.expiresAt).toLocaleDateString('pt-BR'):'Sem expiração')+'</p><p style="margin-top:8px;font-size:.85rem">Dispositivos: '+j.phones+'/'+j.maxUses+'</p>';
+    }else{
+      _pc.innerHTML='<div class="err">❌ '+(j.msg||'Chave inválida')+'</div><button class="btn btn-ghost" onclick="location.reload()" style="margin-top:12px">Tentar novamente</button>';
+    }
+  }catch(e){btn.disabled=false;btn.textContent='Entrar';}
+});
+</scr`+`ipt></body></html>`;
+}
+
+async function handleClientPanel(req, res, pathname) {
+  if (!CLIENT_PANEL_RE) return false;
+  if (!CLIENT_PANEL_RE.test(pathname)) return false;
+  const sub = pathname.replace(CLIENT_PANEL_RE, '/') || '/';
+  if (sub === '/auth-painel' || sub === '/auth-painel/') {
+    sendHtml(res, renderClientAuthPainel(''));
+    return true;
+  }
+  if (sub === '/portal' && req.method === 'POST') {
+    const body = await readJson(req);
+    const phone = sanitizeInput(String(body.phone || ''), 20);
+    if (!phone) { sendJson(res, { ok: false, msg: 'Informe o número' }); return true; }
+    const code = await findKeyCodeByPhone(phone);
+    if (!code) { sendJson(res, { ok: false, msg: 'Número não encontrado' }); return true; }
+    const rec  = await findKey(code);
+    if (!rec)  { sendJson(res, { ok: false, msg: 'Chave não encontrada' }); return true; }
+    const st   = keyStatus(rec);
+    sendJson(res, { ok: true, status: st, expiresAt: rec.expiresAt, code: code.replace(/.(?=.{4})/g, '*') });
+    return true;
+  }
+  if (sub === '/remove-phone' && req.method === 'POST') {
+    if (!checkRateLimit(req.socket?.remoteAddress || '', 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return true; }
+    const body = await readJson(req);
+    const code = normKey(String(body.key || ''));
+    const ph   = sanitizeInput(String(body.phone || ''), 20);
+    if (!code || !ph) { sendJson(res, { ok: false }); return true; }
+    const rec  = await findKey(code);
+    if (!rec)  { sendJson(res, { ok: false }); return true; }
+    await dbWS.collection(COL.licenses).updateOne({ code: normKey(code) }, { $pull: { phones: ph } });
+    invalidateKeysCache();
+    sendJson(res, { ok: true });
+    return true;
+  }
+  sendHtml(res, renderClientAuthPainel(''));
+  return true;
+}
+
+async function handleWaSpeedApi(req, res, pathname, ip) {
+  if (pathname.startsWith('/api/urls/')) {
+    const parts = pathname.split('/');
+    const action = parts[3];
+    const extId  = parts[4] || '';
+    if (action === 'install') {
+      sendJson(res, { url: WS_BASE_URL, extensionId: extId });
+      return;
+    }
+    if (action === 'uninstall') {
+      sendJson(res, { url: WS_BASE_URL + '/obrigado', extensionId: extId });
+      return;
+    }
+    if (action === 'active-notes' || action === 'notes') {
+      sendJson(res, { notes: [] });
+      return;
+    }
+    sendJson(res, {}, 404);
+    return;
+  }
+
+  if (pathname === '/api/services/update') {
+    sendJson(res, { update: false, version: '5.0.0' });
+    return;
+  }
+
+  if (!requireAccessToken(req)) {
+    sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403);
+    return;
+  }
+
+  if (pathname === '/api/auth/validate-portal' && req.method === 'POST') {
+    const body = await readJson(req);
+    const code = normKey(String(body.key || ''));
+    if (!code) { sendJson(res, { ok: false, msg: 'Chave inválida' }); return; }
+    const rec  = await findKey(code);
+    if (!rec || !rec.active) { sendJson(res, { ok: false, msg: 'Chave não encontrada ou bloqueada' }); return; }
+    if (isKeyExpiredWs(rec)) { sendJson(res, { ok: false, msg: 'Chave expirada' }); return; }
+    sendJson(res, {
+      ok: true,
+      expiresAt: rec.expiresAt || null,
+      phones:    (rec.phones || []).length,
+      maxUses:   rec.maxUses != null ? rec.maxUses : -1,
+    });
+    return;
+  }
+
+  if (pathname.startsWith('/api/auth/login/') && req.method === 'POST') {
+    const extId = pathname.slice('/api/auth/login/'.length);
+    if (!extId) { sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403); return; }
+    if (!checkRateLimit(ip, 'login')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
+    const body  = await readJson(req);
+    const code  = normKey(sanitizeInput(String(body.key || body.codigo || body.senha || ''), 60));
+    if (!code) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
+    const rec   = await findKey(code);
+    if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 401); return; }
+    const phone = sanitizeInput(String(body.phone || body.whatsapp || ''), 20);
+    const result = await authSuccess(code, rec, { phone, ip });
+    if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }, 401); return; }
+    await addLog('login_ok', 'Login: ' + code, { code, ip, phone });
+    sendJson(res, { success: true, ...keyToUser(code, rec) });
+    return;
+  }
+
+  if (pathname === '/api/auth/login-bearer' && req.method === 'POST') {
+    const bearer = parseBearer(req);
+    if (!bearer) { sendJson(res, { success: false, msg_id: 'missing_bearer' }, 401); return; }
+    const rec = await findKeyByBearer(bearer);
+    if (!rec)  { sendJson(res, { success: false, msg_id: 'invalid_bearer' }, 401); return; }
+    const result = await authSuccess(rec.code, rec, { ip });
+    if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }, 401); return; }
+    sendJson(res, { success: true, ...keyToUser(rec.code, rec) });
+    return;
+  }
+
+  if (pathname === '/api/auth/register-free' && req.method === 'POST') {
+    const body = await readJson(req);
+    const phone = sanitizeInput(String(body.phone || ''), 20);
+    sendJson(res, { success: true, user_id: 'free_' + (phone || ip), plan: 'free' });
+    return;
+  }
+
+  if (pathname === '/api/auth/validation' && req.method === 'POST') {
+    const bearer = parseBearer(req);
+    if (!bearer) { sendJson(res, { success: false, msg_id: 'missing_bearer' }, 401); return; }
+    const rec = await findKeyByBearer(bearer);
+    if (!rec)  { sendJson(res, { success: false, msg_id: 'invalid_bearer' }, 401); return; }
+    const st = keyStatus(rec);
+    sendJson(res, { success: st === 'active', user_premium: buildUserPremium(rec.code, rec) });
+    return;
+  }
+
+  if (pathname === '/api/user/update' && req.method === 'POST') {
+    const bearer = parseBearer(req);
+    if (!bearer) { sendJson(res, { success: false }, 401); return; }
+    const rec = await findKeyByBearer(bearer);
+    if (!rec)  { sendJson(res, { success: false }, 401); return; }
+    sendJson(res, { success: true });
+    return;
+  }
+
+  if (pathname === '/api/initial-data' && req.method === 'GET') {
+    const bearer = parseBearer(req);
+    const rec    = bearer ? await findKeyByBearer(bearer) : null;
+    sendJson(res, {
+      success: true,
+      user:    rec ? keyToUser(rec.code, rec) : EMPTY_AUTH_GOOGLE,
+      config:  buildConfigJson(await getSettingsAdmin()),
+    });
+    return;
+  }
+
+  if (pathname.startsWith('/api/XLSX/') || pathname.startsWith('/api/audio/')) {
+    sendJson(res, { success: false, msg_id: 'not_configured' }, 501);
+    return;
+  }
+
+  sendJson(res, { success: false, msg_id: 'not_found' }, 404);
+}
+
+function adminApiRe(suffix) {
+  suffix = suffix || '';
+  const base = R_WS_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, ch => '\\' + ch);
+  return new RegExp('^' + base + '/api/(?:keys/)?([^/]+)' + suffix + '$');
+}
+
+async function requireAdminSession(req, res) {
+  const sess = await validateSession(parseCookies(req)[WS_COOKIE_NAME]);
+  if (!sess || sess.role !== 'admin') {
+    res.writeHead(302, { Location: R_WS_ADMIN + '/login' });
+    res.end();
+    return null;
+  }
+  return sess;
+}
+
+async function handleAdminApi(req, res, pathname) {
+  if (pathname === R_WS_ADMIN + '/api/data' && req.method === 'GET') {
+    const stats    = await getKeyStats();
+    const licenses = await getKeysCached();
+    const logsList = await getRecentLogs(100);
+    sendJsonGzip(req, res, { ok: true, ...stats, keysHtml: buildLicenseRows(licenses), logsHtml: buildLogRows(logsList) });
+    return true;
+  }
+  if (pathname === R_WS_ADMIN + '/api/keys' && req.method === 'POST') {
+    const body     = await readJson(req);
+    const rawLabel = sanitizeInput(String(body.label || '').trim(), 60);
+    if (!rawLabel) { sendJson(res, { error: 'label_required' }, 400); return true; }
+    if (rawLabel.length > 60) { sendJson(res, { error: 'label_too_long' }, 400); return true; }
+    if (detectInjection(rawLabel)) { sendJson(res, { error: 'invalid_input' }, 400); return true; }
+    const { expiresAt } = parseLicenseExpiry(body);
+    const maxUses = body.maxUses !== undefined ? parseInt(body.maxUses, 10) : -1;
+    try {
+      const rec = await createKey({ label: rawLabel, premium: true, expiresAt, maxUses: isNaN(maxUses) ? -1 : maxUses, note: sanitizeInput(String(body.note || ''), 500), ativarNoPrimeiroUso: body.ativarNoPrimeiroUso === true });
+      sendJson(res, { ok: true, key: rec.code });
+    } catch (e) { if (!res.headersSent) sendJson(res, { error: e.message }, 500); }
+    return true;
+  }
+  if (pathname === R_WS_ADMIN + '/api/logs/clear' && req.method === 'POST') {
+    if (dbWS) await dbWS.collection(COL.logs).deleteMany({});
+    sendJson(res, { ok: true });
+    return true;
+  }
+  if (pathname === R_WS_ADMIN + '/api/export/csv' && req.method === 'GET') {
+    const licenses = await listLicenses();
+    const lines = ['code,label,premium,active,expiresAt,uses,maxUses,lastPhone,lastIp,createdAt,note'];
+    for (const k of licenses) lines.push([k.code,k.label,k.premium,k.active,k.expiresAt||'',(k.phones||[]).length,k.maxUses!=null?k.maxUses:-1,k.lastPhone||'',k.lastIp||'',k.createdAt||'',(k.note||'').replace(/,/g,';')].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','));
+    res.writeHead(200,{'Content-Type':'text/csv; charset=utf-8','Content-Disposition':'attachment; filename="waspeed-licenses.csv"'});
+    res.end('﻿' + lines.join('\n'));
+    return true;
+  }
+  const extractCodeFrom = (re) => { const m = pathname.match(re); return m ? decodeURIComponent(m[1]) : null; };
+  const codeActivate = extractCodeFrom(new RegExp('^' + R_WS_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,ch=>'\\'+ch) + '/api/activate/([^/]+)$'));
+  if (codeActivate && req.method === 'POST') {
+    const rec = await findKey(codeActivate);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    await updateLicense(rec.code, { ativarNoPrimeiroUso: false, primeiroUsoAt: new Date().toISOString(), active: true });
+    sendJson(res, { ok: true }); return true;
+  }
+  const codeToggle = extractCodeFrom(new RegExp('^' + R_WS_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,ch=>'\\'+ch) + '/api/toggle/([^/]+)$'));
+  if (codeToggle && req.method === 'POST') {
+    const rec = await findKey(codeToggle);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    await updateLicense(rec.code, { active: !rec.active });
+    sendJson(res, { ok: true, active: !rec.active }); return true;
+  }
+  const codeRenew = extractCodeFrom(new RegExp('^' + R_WS_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,ch=>'\\'+ch) + '/api/renew/([^/]+)$'));
+  if (codeRenew && req.method === 'POST') {
+    const rec   = await findKey(codeRenew);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const rb    = await readJson(req);
+    const addMs = ((parseInt(rb.days||0,10)*1440)+(parseInt(rb.hours||0,10)*60))*60000;
+    if (!addMs) { sendJson(res, { error: 'informe tempo' }, 400); return true; }
+    const base  = (rec.expiresAt && new Date(rec.expiresAt).getTime()>Date.now()) ? new Date(rec.expiresAt).getTime() : Date.now();
+    await updateLicense(rec.code, { expiresAt: new Date(base+addMs).toISOString(), active: true });
+    sendJson(res, { ok: true }); return true;
+  }
+  const codeMaxUses = extractCodeFrom(new RegExp('^' + R_WS_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,ch=>'\\'+ch) + '/api/max-uses/([^/]+)$'));
+  if (codeMaxUses && req.method === 'POST') {
+    const rec  = await findKey(codeMaxUses);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const mb   = await readJson(req);
+    const mu   = parseInt(mb.maxUses,10);
+    if (isNaN(mu)||mu<-1) { sendJson(res, { error: 'invalid' }, 400); return true; }
+    await updateLicense(rec.code, { maxUses: mu });
+    sendJson(res, { ok: true, maxUses: mu }); return true;
+  }
+  const codeNote = extractCodeFrom(new RegExp('^' + R_WS_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,ch=>'\\'+ch) + '/api/note/([^/]+)$'));
+  if (codeNote && req.method === 'POST') {
+    const rec  = await findKey(codeNote);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const nb   = await readJson(req);
+    const note = sanitizeInput(String(nb.note!=null?nb.note:''), 500);
+    await dbWS.collection(COL.licenses).updateOne({ code: normKey(codeNote) }, { $set: { note } });
+    invalidateKeysCache(); sendJson(res, { ok: true, note }); return true;
+  }
+  const codeRename = extractCodeFrom(new RegExp('^' + R_WS_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,ch=>'\\'+ch) + '/api/rename/([^/]+)$'));
+  if (codeRename && req.method === 'POST') {
+    const rec  = await findKey(codeRename);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const rb   = await readJson(req);
+    const lbl  = sanitizeInput(String(rb.label||'').trim(), 60);
+    if (!lbl) { sendJson(res, { error: 'label required' }, 400); return true; }
+    await dbWS.collection(COL.licenses).updateOne({ code: normKey(codeRename) }, { $set: { label: lbl } });
+    invalidateKeysCache(); sendJson(res, { ok: true, label: lbl }); return true;
+  }
+  const codeRemPhone = extractCodeFrom(new RegExp('^' + R_WS_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,ch=>'\\'+ch) + '/api/remove-phone/([^/]+)$'));
+  if (codeRemPhone && req.method === 'POST') {
+    const rec  = await findKey(codeRemPhone);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    const pb   = await readJson(req);
+    const ph   = sanitizeInput(String(pb.phone||'').trim(), 20);
+    if (!ph) { sendJson(res, { error: 'phone required' }, 400); return true; }
+    await dbWS.collection(COL.licenses).updateOne({ code: normKey(codeRemPhone) }, { $pull: { phones: ph } });
+    invalidateKeysCache(); sendJson(res, { ok: true }); return true;
+  }
+  const codeRemAll = extractCodeFrom(new RegExp('^' + R_WS_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,ch=>'\\'+ch) + '/api/remove-all-phones/([^/]+)$'));
+  if (codeRemAll && req.method === 'POST') {
+    const rec  = await findKey(codeRemAll);
+    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+    await dbWS.collection(COL.licenses).updateOne({ code: normKey(codeRemAll) }, { $set: { phones: [], uses: 0 } });
+    invalidateKeysCache(); sendJson(res, { ok: true }); return true;
+  }
+  const codeDel = extractCodeFrom(new RegExp('^' + R_WS_ADMIN.replace(/[.*+?^${}()|[\]\\]/g,ch=>'\\'+ch) + '/api/keys/([^/]+)$'));
+  if (codeDel && req.method === 'DELETE') {
+    await deleteLicense(codeDel);
+    await addLog('key_delete', 'Chave ' + codeDel + ' excluída', { code: codeDel });
+    sendJson(res, { ok: true }); return true;
+  }
+  return false;
+}
+
+async function requireModSession(req, res) {
+  const sess = await validateSession(parseCookies(req)[WS_COOKIE_NAME]);
+  if (!sess || (sess.role !== 'mod' && sess.role !== 'admin')) {
+    res.writeHead(302, { Location: R_WS_MOD + '/login' });
+    res.end();
+    return null;
+  }
+  return sess;
 }
 
 function modApiRe(suffix) {
   suffix = suffix || '';
-  const base = R_MOD.replace(/[.*+?^${}()|[\]\\]/g, ch => '\\' + ch);
-  return new RegExp('^' + base + '/api/keys/([^/]+)' + suffix + '$');
+  const base = R_WS_MOD.replace(/[.*+?^${}()|[\]\\]/g, ch => '\\' + ch);
+  return new RegExp('^' + base + '/api/(?:keys/)?([^/]+)' + suffix + '$');
 }
 
-function requireModSession(req, res) {
-  return validateSession(parseCookies(req)[config.cookieName]).then(sess => {
-    if (!sess || (sess.role !== 'mod' && sess.role !== 'admin')) {
-      res.writeHead(302, { Location: R_MOD + '/login' });
-      res.end();
-      return null;
-    }
-    return sess;
-  });
-}
-
-async function handleModApi(req, res, pathname) {
-  if (pathname === R_MOD + '/api/data' && req.method === 'GET') {
+async function handleModApi(req, res, pathname, sess) {
+  if (pathname === R_WS_MOD + '/api/data' && req.method === 'GET') {
     const stats    = await getKeyStats();
     const licenses = await getKeysCached();
     sendJsonGzip(req, res, { ok: true, ...stats, keysHtml: buildLicenseRows(licenses) });
     return true;
   }
-  if (pathname === R_MOD + '/api/keys' && req.method === 'POST') {
-    const body    = await readJson(req);
-    const rawLabel = String(body.label || '').trim();
-    if (!rawLabel) { sendJson(res, { error: 'label_required' }, 400); return true; }
-    if (rawLabel.length > 60) { sendJson(res, { error: 'label_too_long' }, 400); return true; }
+  if (pathname === R_WS_MOD + '/api/keys' && req.method === 'POST') {
+    const body     = await readJson(req);
+    const rawLabel = sanitizeInput(String(body.label||'').trim(), 60);
+    if (!rawLabel)          { sendJson(res, { error: 'label_required' }, 400); return true; }
+    if (rawLabel.length>60) { sendJson(res, { error: 'label_too_long' }, 400); return true; }
     if (detectInjection(rawLabel)) { sendJson(res, { error: 'invalid_input' }, 400); return true; }
-    const { expiresAt, expireDays } = parseLicenseExpiry(body);
-    const maxUses = body.maxUses !== undefined ? parseInt(body.maxUses, 10) : -1;
-    if (!Number.isNaN(maxUses) && (maxUses < -1 || maxUses > 9999)) { sendJson(res, { error: 'maxUses_out_of_range' }, 400); return true; }
-    const sess    = await validateSession(parseCookies(req)[config.cookieName]);
+    const { expiresAt } = parseLicenseExpiry(body);
+    const maxUses = body.maxUses !== undefined ? parseInt(body.maxUses,10) : -1;
     try {
-      const rec = await createKey({ label: sanitizeString(rawLabel), premium: true, expiresAt, expireDays, maxUses: Number.isNaN(maxUses) ? -1 : maxUses, note: sanitizeString(String(body.note || '').slice(0, 500)), ativarNoPrimeiroUso: body.ativarNoPrimeiroUso === true, modName: sess && sess.modName ? sess.modName : null });
-      invalidateKeysCache();
+      const rec = await createKey({ label: rawLabel, premium: true, expiresAt, maxUses: isNaN(maxUses)?-1:maxUses, note: sanitizeInput(String(body.note||''),500), ativarNoPrimeiroUso: body.ativarNoPrimeiroUso===true, modName: sess&&sess.modName?sess.modName:null });
       sendJson(res, { ok: true, key: rec.code });
-    } catch (e) {
-      if (!res.headersSent) sendJson(res, { error: e.message }, 500);
-    }
+    } catch(e) { if (!res.headersSent) sendJson(res, { error: e.message }, 500); }
     return true;
   }
-  const codeAct = pathname.match(modApiRe('/activate'));
-  if (codeAct && req.method === 'POST') {
-    const rec = await findKey(decodeURIComponent(codeAct[1]));
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    await updateLicense(rec.code, { ativarNoPrimeiroUso: false, primeiroUsoAt: new Date().toISOString(), active: true });
-    await addLog('key_activated', 'Chave ' + rec.code + ' ativada pelo mod', { code: rec.code });
-    invalidateKeysCache(); sendJson(res, { ok: true }); return true;
+  const extractCode = (re) => { const m = pathname.match(re); return m ? decodeURIComponent(m[1]) : null; };
+  const base = R_WS_MOD.replace(/[.*+?^${}()|[\]\\]/g,ch=>'\\'+ch);
+  const codeActivate = extractCode(new RegExp('^'+base+'/api/activate/([^/]+)$'));
+  if (codeActivate && req.method==='POST') {
+    const rec = await findKey(codeActivate); if (!rec){sendJson(res,{error:'not found'},404);return true;}
+    await updateLicense(rec.code,{ativarNoPrimeiroUso:false,primeiroUsoAt:new Date().toISOString(),active:true});
+    sendJson(res,{ok:true});return true;
   }
-  const codeToggle = pathname.match(modApiRe('/toggle'));
-  if (codeToggle && req.method === 'POST') {
-    const rec = await findKey(decodeURIComponent(codeToggle[1]));
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    await updateLicense(rec.code, { active: !rec.active });
-    invalidateKeysCache(); sendJson(res, { ok: true, active: !rec.active }); return true;
+  const codeToggle = extractCode(new RegExp('^'+base+'/api/toggle/([^/]+)$'));
+  if (codeToggle && req.method==='POST') {
+    const rec = await findKey(codeToggle); if (!rec){sendJson(res,{error:'not found'},404);return true;}
+    await updateLicense(rec.code,{active:!rec.active});sendJson(res,{ok:true,active:!rec.active});return true;
   }
-  const codeRenew = pathname.match(modApiRe('/renew'));
-  if (codeRenew && req.method === 'POST') {
-    const rec   = await findKey(decodeURIComponent(codeRenew[1]));
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    const rb    = await readJson(req);
-    const addMs = ((parseInt(rb.days || 0, 10) * 1440) + (parseInt(rb.hours || 0, 10) * 60)) * 60000;
-    if (!addMs) { sendJson(res, { error: 'informe tempo' }, 400); return true; }
-    const baseTs = (rec.expiresAt && new Date(rec.expiresAt).getTime() > Date.now()) ? new Date(rec.expiresAt).getTime() : Date.now();
-    await updateLicense(rec.code, { expiresAt: new Date(baseTs + addMs).toISOString(), active: true });
-    invalidateKeysCache(); sendJson(res, { ok: true }); return true;
-  }
-  const codeMu = pathname.match(modApiRe('/max-uses'));
-  if (codeMu && req.method === 'POST') {
-    const rec     = await findKey(decodeURIComponent(codeMu[1]));
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    const mb      = await readJson(req);
-    const maxUses = parseInt(mb.maxUses, 10);
-    if (Number.isNaN(maxUses) || maxUses < -1) { sendJson(res, { error: 'invalid' }, 400); return true; }
-    await updateLicense(rec.code, { maxUses });
-    invalidateKeysCache(); sendJson(res, { ok: true, maxUses }); return true;
-  }
-  const codeNote = pathname.match(modApiRe('/note'));
-  if (codeNote && req.method === 'POST') {
-    const rawCode = decodeURIComponent(codeNote[1]);
-    const rec     = await findKey(rawCode);
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    const nb   = await readJson(req);
-    const note = sanitizeString(String(nb.note != null ? nb.note : '').slice(0, 500));
-    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
-    await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $set: { note } });
-    invalidateKeysCache(); sendJson(res, { ok: true, note }); return true;
-  }
-  const codeRename = pathname.match(modApiRe('/rename'));
-  if (codeRename && req.method === 'POST') {
-    const rawCode = decodeURIComponent(codeRename[1]);
-    const rec     = await findKey(rawCode);
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
+  const codeRenew = extractCode(new RegExp('^'+base+'/api/renew/([^/]+)$'));
+  if (codeRenew && req.method==='POST') {
+    const rec = await findKey(codeRenew); if (!rec){sendJson(res,{error:'not found'},404);return true;}
     const rb  = await readJson(req);
-    const lbl = sanitizeString(String(rb.label || '').trim().slice(0, 60));
-    if (!lbl) { sendJson(res, { error: 'label required' }, 400); return true; }
-    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
-    await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $set: { label: lbl } });
-    invalidateKeysCache(); sendJson(res, { ok: true, label: lbl }); return true;
+    const addMs = ((parseInt(rb.days||0,10)*1440)+(parseInt(rb.hours||0,10)*60))*60000;
+    if (!addMs){sendJson(res,{error:'informe tempo'},400);return true;}
+    const base2 = (rec.expiresAt&&new Date(rec.expiresAt).getTime()>Date.now())?new Date(rec.expiresAt).getTime():Date.now();
+    await updateLicense(rec.code,{expiresAt:new Date(base2+addMs).toISOString(),active:true});
+    sendJson(res,{ok:true});return true;
   }
-  const codeRemPhone = pathname.match(modApiRe('/remove-phone'));
-  if (codeRemPhone && req.method === 'POST') {
-    const rawCode = decodeURIComponent(codeRemPhone[1]);
-    const rec     = await findKey(rawCode);
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    const pb = await readJson(req);
-    const ph = sanitizeString(String(pb.phone || '').trim());
-    if (!ph) { sendJson(res, { error: 'phone required' }, 400); return true; }
-    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
-    await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $pull: { phones: ph } });
-    invalidateKeysCache(); sendJson(res, { ok: true }); return true;
+  const codeNote = extractCode(new RegExp('^'+base+'/api/note/([^/]+)$'));
+  if (codeNote && req.method==='POST') {
+    const rec = await findKey(codeNote); if (!rec){sendJson(res,{error:'not found'},404);return true;}
+    const nb  = await readJson(req);
+    const note = sanitizeInput(String(nb.note!=null?nb.note:''),500);
+    await dbWS.collection(COL.licenses).updateOne({code:normKey(codeNote)},{$set:{note}});
+    invalidateKeysCache();sendJson(res,{ok:true,note});return true;
   }
-  const codeRemAll = pathname.match(modApiRe('/remove-all-phones'));
-  if (codeRemAll && req.method === 'POST') {
-    const rawCode = decodeURIComponent(codeRemAll[1]);
-    const rec     = await findKey(rawCode);
-    if (!rec) { sendJson(res, { error: 'not found' }, 404); return true; }
-    if (!db) { sendJson(res, { error: 'db_unavailable' }, 503); return true; }
-    await db.collection(COL.licenses).updateOne({ code: normKey(rawCode) }, { $set: { phones: [], uses: 0 } });
-    invalidateKeysCache(); sendJson(res, { ok: true }); return true;
+  const codeRename = extractCode(new RegExp('^'+base+'/api/rename/([^/]+)$'));
+  if (codeRename && req.method==='POST') {
+    const rec = await findKey(codeRename); if (!rec){sendJson(res,{error:'not found'},404);return true;}
+    const rb  = await readJson(req);
+    const lbl = sanitizeInput(String(rb.label||'').trim(),60);
+    if (!lbl){sendJson(res,{error:'label required'},400);return true;}
+    await dbWS.collection(COL.licenses).updateOne({code:normKey(codeRename)},{$set:{label:lbl}});
+    invalidateKeysCache();sendJson(res,{ok:true,label:lbl});return true;
+  }
+  const codeRemPhone = extractCode(new RegExp('^'+base+'/api/remove-phone/([^/]+)$'));
+  if (codeRemPhone && req.method==='POST') {
+    const rec = await findKey(codeRemPhone); if (!rec){sendJson(res,{error:'not found'},404);return true;}
+    const pb  = await readJson(req);
+    const ph  = sanitizeInput(String(pb.phone||'').trim(),20);
+    if (!ph){sendJson(res,{error:'phone required'},400);return true;}
+    await dbWS.collection(COL.licenses).updateOne({code:normKey(codeRemPhone)},{$pull:{phones:ph}});
+    invalidateKeysCache();sendJson(res,{ok:true});return true;
+  }
+  const codeRemAll = extractCode(new RegExp('^'+base+'/api/remove-all-phones/([^/]+)$'));
+  if (codeRemAll && req.method==='POST') {
+    const rec = await findKey(codeRemAll); if (!rec){sendJson(res,{error:'not found'},404);return true;}
+    await dbWS.collection(COL.licenses).updateOne({code:normKey(codeRemAll)},{$set:{phones:[],uses:0}});
+    invalidateKeysCache();sendJson(res,{ok:true});return true;
   }
   return false;
 }
 
+
 async function handleMod(req, res, pathname, ip) {
-  if (pathname === R_MOD + '/login') {
-    if (req.method === 'GET') { sendHtml(res, renderAdminLogin(R_MOD, 'Moderador')); return; }
-    if (!checkRate(ip)) { sendHtml(res, renderAdminLogin(R_MOD, 'Moderador', 'Muitas tentativas. Aguarde.'), 429); return; }
-    const body   = await readBody(req);
-    const params = new URLSearchParams(body);
-    const user   = sanitizeString(params.get('user') || '');
+  if (pathname === R_WS_MOD + '/login') {
+    if (req.method === 'GET') { sendHtml(res, renderAdminLogin(R_WS_MOD, 'Moderador')); return; }
+    if (!checkRate(ip)) { sendHtml(res, renderAdminLogin(R_WS_MOD, 'Moderador', 'Muitas tentativas. Aguarde.'), 429); return; }
+    const raw    = await readBody(req);
+    const params = new URLSearchParams(raw);
+    const user   = sanitizeInput(params.get('user') || '', 60);
     const pass   = params.get('pass') || '';
     const mod    = await verifyModCredentials(user, pass);
     if (mod) {
-      const session = await createSession('mod', { user: user.trim(), modName: mod.name, modId: mod.modId });
-      if (!session) { sendHtml(res, renderAdminLogin(R_MOD, 'Moderador', 'Erro ao criar sessao'), 500); return; }
+      const session = await createSession('mod', { user: user.trim(), modName: mod.name, modId: mod.modId || mod.user });
+      if (!session) { sendHtml(res, renderAdminLogin(R_WS_MOD, 'Moderador', 'Erro ao criar sessao'), 500); return; }
       setSessionCookie(res, session.token);
-      res.writeHead(302, { Location: R_MOD });
-      res.end();
-      return;
+      res.writeHead(302, { Location: R_WS_MOD }); res.end(); return;
     }
     await addLog('admin_login_fail', 'Tentativa mod invalida', { ip });
-    sendHtml(res, renderAdminLogin(R_MOD, 'Moderador', 'Credenciais invalidas'), 401);
+    sendHtml(res, renderAdminLogin(R_WS_MOD, 'Moderador', 'Credenciais invalidas'), 401);
     return;
   }
-  if (pathname === R_MOD + '/logout') {
-    const token = parseCookies(req)[config.cookieName];
-    await destroySession(token);
+  if (pathname === R_WS_MOD + '/logout') {
+    await destroySession(parseCookies(req)[WS_COOKIE_NAME]);
     clearSessionCookie(res);
-    res.writeHead(302, { Location: R_MOD + '/login' });
-    res.end();
-    return;
+    res.writeHead(302, { Location: R_WS_MOD + '/login' }); res.end(); return;
   }
   const sess = await requireModSession(req, res);
   if (!sess) return;
-  const apiHandled = await handleModApi(req, res, pathname);
-  if (apiHandled) return;
-  if (pathname === R_MOD || pathname === R_MOD + '/' || pathname === R_MOD + '/keys') {
+  const handled = await handleModApi(req, res, pathname, sess);
+  if (handled) return;
+  if (pathname === R_WS_MOD || pathname === R_WS_MOD + '/' || pathname === R_WS_MOD + '/keys') {
     const stats    = await getKeyStats();
     const licenses = await listLicenses();
     sendHtml(res, renderModDash(buildLicenseRows(licenses), stats, sess.modName || null));
@@ -2657,262 +1915,751 @@ async function handleMod(req, res, pathname, ip) {
   sendJson(res, { success: false, error: 'not_found' }, 404);
 }
 
-
-function renderSecurityAudit(base) {
-  const auditJs = [
-    'var _BASE=' + JSON.stringify(base) + ';',
-    'var _TESTS=[',
-    '  {id:"json404",label:"API /unknown retorna JSON",run:async function(){var r=await fetch(_BASE+"/api/__nonexistent_route__");var ct=r.headers.get("content-type")||"";if(!ct.includes("json")){return{pass:false,detail:"Content-Type: "+ct};}try{var j=await r.json();return{pass:true,detail:"status "+r.status+", ok="+j.ok+", error="+j.error};}catch(e){return{pass:false,detail:"SyntaxError: "+e.message};}}},',
-    '  {id:"injectLabel",label:"Injeção NoSQL em label rejeitada (400)",run:async function(){var r=await fetch(_BASE+"/api/keys",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:"{$gt:null}"})});var j=await r.json();return{pass:r.status===400&&(j.error==="label_required"||j.error==="invalid_input"),detail:"status "+r.status+" error="+j.error};}},',
-    '  {id:"labelLen",label:"Label > 60 chars rejeitada (400)",run:async function(){var r=await fetch(_BASE+"/api/keys",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:"A".repeat(61)})});var j=await r.json();return{pass:r.status===400,detail:"status "+r.status+" error="+j.error};}},',
-    '  {id:"noToken",label:"POST /api/auth/login sem access-token retorna 403",run:async function(){var r=await fetch(_BASE+"/api/auth/login/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({senha:"hack"})});var j=await r.json();return{pass:r.status===403||j.msg_id==="invalid_access_token",detail:"status "+r.status+" msg_id="+j.msg_id};}},',
-    '  {id:"healthJson",label:"/health retorna JSON",run:async function(){var r=await fetch(_BASE+"/health");var ct=r.headers.get("content-type")||"";return{pass:ct.includes("json"),detail:"Content-Type: "+ct};}},',
-    '  {id:"jsonOnly",label:"Nenhuma rota retorna text/plain",run:async function(){var urls=[_BASE+"/api/noop",_BASE+"/api/keys/__fake__"];var fails=[];for(var u of urls){var r=await fetch(u,{method:"GET"});var ct=r.headers.get("content-type")||"";if(ct.includes("text/plain"))fails.push(u);}return{pass:fails.length===0,detail:fails.length===0?"OK":"text/plain em: "+fails.join(", ")};}}',
-    '];',
-    'async function runAudit(){',
-    '  var tbody=document.getElementById("audit-body");',
-    '  tbody.innerHTML="<tr><td colspan=3 style=\\"padding:18px;text-align:center;color:#5a8a6e\\">Executando testes...</td></tr>";',
-    '  var rows=[];',
-    '  for(var t of _TESTS){',
-    '    var res;try{res=await t.run();}catch(e){res={pass:false,detail:e.message};}',
-    '    var col=res.pass?"#39ff14":"#ff8899";',
-    '    var lbl=res.pass?"PASS":"FAIL";',
-    '    rows.push("<tr><td class=\\"zvm-td\\" style=\\"font-size:.82rem\\">"+t.label+"</td><td class=\\"zvm-td\\"><span style=\\"font-family:monospace;font-size:.72rem;font-weight:700;color:"+col+";background:"+col+"15;border:1px solid "+col+"28;padding:2px 9px;border-radius:4px\\">"+lbl+"</span></td><td class=\\"zvm-td zvm-muted\\" style=\\"font-size:.75rem\\">"+res.detail+"</td></tr>");',
-    '  }',
-    '  tbody.innerHTML=rows.join("");',
-    '}',
-    'runAudit();',
-  ].join('\n');
-  const body =
-    '<div class="sec">' +
-    '<div class="sh"><span class="sh-t">🛡️ Auditoria de Segurança — WaSpeed</span>' +
-    '<button onclick="runAudit()" style="padding:5px 12px;border-radius:5px;border:1px solid #26543c;background:transparent;color:#39ff14;font-size:.78rem;cursor:pointer">↻ Re-executar</button></div>' +
-    '<div style="padding:14px 18px;font-size:.8rem;color:#5a8a6e;border-bottom:1px solid #183326">Testes automatizados contra as rotas do servidor. PASS = seguro. FAIL = vulnerabilidade detectada.</div>' +
-    '<div class="tbl-w"><table style="min-width:600px"><thead><tr style="background:#070f0a">' +
-    '<th style="min-width:260px">Teste</th><th style="min-width:80px">Status</th><th style="min-width:220px">Detalhe</th>' +
-    '</tr></thead><tbody id="audit-body"><tr><td colspan="3" style="padding:18px;text-align:center;color:#5a8a6e">Carregando...</td></tr></tbody></table></div></div>' +
-    '<scr' + 'ipt>' + auditJs + '</scr' + 'ipt>';
-  return spaShell('Auditoria — WaSpeed', adminSidebar('audit'), 'Auditoria de Segurança', body);
-}
-
 async function handleAdmin(req, res, pathname, ip) {
-  if (pathname === R_ADMIN + '/login') {
-    if (req.method === 'GET') { sendHtml(res, renderAdminLogin(R_ADMIN, 'Admin')); return; }
-    if (!checkRate(ip)) { sendHtml(res, renderAdminLogin(R_ADMIN, 'Admin', 'Muitas tentativas. Aguarde.'), 429); return; }
-    const body   = await readBody(req);
-    const params = new URLSearchParams(body);
-    const user   = sanitizeString(params.get('user') || '');
+  if (pathname === R_WS_ADMIN + '/login') {
+    if (req.method === 'GET') { sendHtml(res, renderAdminLogin(R_WS_ADMIN, 'Admin')); return; }
+    if (!checkRate(ip)) { sendHtml(res, renderAdminLogin(R_WS_ADMIN, 'Admin', 'Muitas tentativas. Aguarde.'), 429); return; }
+    const raw    = await readBody(req);
+    const params = new URLSearchParams(raw);
+    const user   = sanitizeInput(params.get('user') || '', 60);
     const pass   = params.get('pass') || '';
     if (await verifyAdminCredentials(user, pass)) {
       const session = await createSession('admin', { user: user.trim() });
-      if (!session) { sendHtml(res, renderAdminLogin(R_ADMIN, 'Admin', 'Erro ao criar sessao'), 500); return; }
+      if (!session) { sendHtml(res, renderAdminLogin(R_WS_ADMIN, 'Admin', 'Erro ao criar sessao'), 500); return; }
       setSessionCookie(res, session.token);
-      res.writeHead(302, { Location: R_ADMIN });
-      res.end();
-      return;
+      res.writeHead(302, { Location: R_WS_ADMIN }); res.end(); return;
     }
     await addLog('admin_login_fail', 'Tentativa invalida', { ip });
-    sendHtml(res, renderAdminLogin(R_ADMIN, 'Admin', 'Credenciais invalidas'), 401);
+    sendHtml(res, renderAdminLogin(R_WS_ADMIN, 'Admin', 'Credenciais invalidas'), 401);
     return;
   }
-  if (pathname === R_ADMIN + '/logout') {
-    const token = parseCookies(req)[config.cookieName];
-    await destroySession(token);
+  if (pathname === R_WS_ADMIN + '/logout') {
+    await destroySession(parseCookies(req)[WS_COOKIE_NAME]);
     clearSessionCookie(res);
-    res.writeHead(302, { Location: R_ADMIN + '/login' });
-    res.end();
-    return;
+    res.writeHead(302, { Location: R_WS_ADMIN + '/login' }); res.end(); return;
   }
   const sess = await requireAdminSession(req, res);
   if (!sess) return;
-  const apiHandled = await handleAdminApi(req, res, pathname);
-  if (apiHandled) return;
-  if (pathname === R_ADMIN || pathname === R_ADMIN + '/' || pathname === R_ADMIN + '/keys') {
+  const handled = await handleAdminApi(req, res, pathname);
+  if (handled) return;
+  if (pathname === R_WS_ADMIN || pathname === R_WS_ADMIN + '/' || pathname === R_WS_ADMIN + '/keys') {
     const stats    = await getKeyStats();
     const licenses = await listLicenses();
-    const logs     = await getRecentLogs(150);
-    sendHtml(res, renderAdminDash(buildLicenseRows(licenses), buildLogRows(logs), stats));
+    const logsList = await getRecentLogs(150);
+    sendHtml(res, renderAdminDash(buildLicenseRows(licenses), buildLogRows(logsList), stats));
     return;
   }
-  if (pathname === R_ADMIN + '/logs') {
-    const logs     = await getRecentLogs(300);
+  if (pathname === R_WS_ADMIN + '/logs') {
     const stats    = await getKeyStats();
+    const logsList = await getRecentLogs(300);
     const licenses = await getKeysCached();
-    sendHtml(res, renderAdminDash(buildLicenseRows(licenses), buildLogRows(logs), stats));
+    sendHtml(res, renderAdminDash(buildLicenseRows(licenses), buildLogRows(logsList), stats));
     return;
   }
-  if (pathname === R_ADMIN + '/audit') {
-    sendHtml(res, renderSecurityAudit(config.baseUrl));
+  if (pathname === R_WS_ADMIN + '/audit') {
+    sendHtml(res, renderSecurityAudit(WS_BASE_URL));
     return;
   }
   sendJson(res, { success: false, error: 'not_found' }, 404);
 }
 
+function renderZvmAdminLogin(msg) {
+  return renderLoginShell('ZapVoice Admin', R_ZVM_ADMIN + '/login', 'Usuário', msg);
+}
 
-const _REQ_SHAPE = { pathname: '', ip: '', method: '' };
+function renderZvmModLogin(msg) {
+  return renderLoginShell('ZapVoice Mod', R_ZVM_MOD + '/login', 'Usuário', msg);
+}
+
+function renderZvmAnalyticsLogin(msg) {
+  return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Analytics — ZVM</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#020904;color:#e8fff3;min-height:100vh;display:flex;align-items:center;justify-content:center}:root{--ac:#39ff14;--bdr:#183326}.card{background:#070f0a;border:1px solid var(--bdr);border-radius:14px;padding:32px 28px;width:100%;max-width:340px;position:relative;z-index:1}.logo{font-size:1.3rem;font-weight:900;color:var(--ac);margin-bottom:18px}.field{margin-bottom:13px}.field label{display:block;font-size:.73rem;color:#5a8a6e;margin-bottom:5px}.field input{width:100%;padding:9px 11px;border-radius:7px;border:1px solid var(--bdr);background:#040d06;color:#e8fff3;font:inherit;font-size:.84rem}.btn{width:100%;padding:11px;border-radius:8px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.88rem;font-weight:800;cursor:pointer;margin-top:6px}.err{color:#ff8899;font-size:.76rem;margin-bottom:12px;background:rgba(255,68,102,.09);border:1px solid rgba(255,68,102,.2);border-radius:6px;padding:7px 11px}</style></head><body>
+${CANVAS_BG}
+<div class="card"><div class="logo">📊 Analytics</div>
+${msg ? `<div class="err">${esc(msg)}</div>` : ''}
+<form method="POST" action="${esc(R_ANALYTICS)}/login">
+<div class="field"><label>Senha</label><input name="pass" type="password" required></div>
+<button class="btn" type="submit">Entrar</button>
+</form></div></body></html>`;
+}
+
+function zvmAdminSidebar(active) {
+  const item = (href, icon, label, key) => `<a href="${href}" class="ni${active===key?' ac':''}"><span class="ic">${icon}</span><span class="nl">${label}</span></a>`;
+  return `<aside class="sidebar"><div class="sb-brand"><span class="bdot"></span><span class="btxt">ZapVoice</span></div><div class="sbsec">Painel</div>${item(R_ZVM_ADMIN,'🏠','Dashboard','dash')}${item(R_ZVM_ADMIN+'/api/data','📊','Stats','stats')}<div class="sbft">${item(R_ZVM_ADMIN+'/logout','→','Sair','out')}</div></aside>`;
+}
+
+function zvmModSidebar(active) {
+  const item = (href, icon, label, key) => `<a href="${href}" class="ni${active===key?' ac':''}"><span class="ic">${icon}</span><span class="nl">${label}</span></a>`;
+  return `<aside class="sidebar"><div class="sb-brand"><span class="bdot"></span><span class="btxt">ZVM Mod</span></div><div class="sbsec">Painel</div>${item(R_ZVM_MOD,'🔑','Chaves','keys')}<div class="sbft">${item(R_ZVM_MOD+'/logout','→','Sair','out')}</div></aside>`;
+}
+
+const ZVM_ADMIN_JS = (function() {
+  var RA = R_ZVM_ADMIN;
+  return [
+    'var _RA=' + JSON.stringify(RA) + ';',
+    'function toast(m,ok){var t=document.getElementById("toast");t.textContent=m;t.style.borderColor=ok===false?"var(--dg)":"var(--ac)";t.classList.add("show");setTimeout(function(){t.classList.remove("show");},3500);}',
+    'function closeModal(){document.getElementById("modal-bg").classList.remove("open");}',
+    'function filterKeys(){var q=(document.getElementById("search-input").value||"").toLowerCase();var st=document.getElementById("filter-status").value;document.querySelectorAll("#kb tr").forEach(function(r){var row=(r.dataset.code+r.dataset.label+r.dataset.phone).toLowerCase();r.style.display=((!q||row.includes(q))&&(!st||r.dataset.status===st))?"":"none";});}',
+    'async function generateKey(){var btn=document.querySelector(\'button[onclick="generateKey()"]\');if(btn){btn.disabled=true;btn.textContent="Gerando...";}var label=(document.getElementById("nlabel").value||"").trim();if(!label){toast("Informe o nome do cliente",false);if(btn){btn.disabled=false;btn.textContent="+ Gerar";}return;}if(label.length>60){toast("Máx 60 caracteres",false);if(btn){btn.disabled=false;btn.textContent="+ Gerar";}return;}var body={label:label};var d=+(document.getElementById("ndays").value)||0,h=+(document.getElementById("nhours").value)||0,m=+(document.getElementById("nmins").value)||0;if(d)body.expireDays=d;if(h)body.expireHours=h;if(m)body.expireMinutes=m;var u=document.getElementById("nuses").value.trim();if(u!=="")body.maxUses=parseInt(u);if(document.getElementById("nfirstuse").checked)body.ativarNoPrimeiroUso=true;try{var r=await fetch(_RA+"/api/keys",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});if(r.status===401){location.href=_RA+"/login";return;}var j=await r.json();if(j.ok){toast("Chave gerada: "+j.key);["nlabel","ndays","nhours","nmins","nuses"].forEach(function(id){document.getElementById(id).value="";});document.getElementById("nfirstuse").checked=false;doRefresh();}else{toast("Erro: "+(j.error||"?"),false);}}catch(e){toast("Erro de conexão",false);}finally{if(btn){btn.disabled=false;btn.textContent="+ Gerar";}}}',
+    'async function toggleKey(code){try{var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/toggle",{method:"POST"});var j=await r.json();if(j.ok){toast("Status alterado");doRefresh();}else toast("Falha",false);}catch(e){toast("Erro",false);}}',
+    'async function deleteKey(code){if(!confirm("Excluir "+code+"?"))return;try{var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code),{method:"DELETE"});var j=await r.json();if(j.ok){toast("Excluída");doRefresh();}else toast("Falha",false);}catch(e){toast("Erro",false);}}',
+    'function openRenew(code){var b=document.getElementById("modal-box");var sc=code.split(\'"\').join("&quot;");b.innerHTML=\'<h3>Renovar \'+code+\'</h3><div class="field"><label>Dias</label><input id="rd" type="number" min="0" value="30"></div><div class="field"><label>Horas</label><input id="rh" type="number" min="0" value="0"></div><div class="mrow"><button class="btn-p" id="ren-btn" onclick="submitRenew(this.dataset.code)" data-code="\'+sc+\'">Confirmar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById("modal-bg").classList.add("open");}',
+    'async function submitRenew(code){var btn=document.getElementById("ren-btn");if(btn){btn.disabled=true;btn.textContent="Salvando...";}var days=+(document.getElementById("rd").value)||0,hours=+(document.getElementById("rh").value)||0;try{var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/renew",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({days:days,hours:hours})});var j=await r.json();closeModal();if(j.ok){toast("Renovada");doRefresh();}else toast("Falha: "+(j.error||"?"),false);}catch(e){closeModal();toast("Erro",false);}}',
+    'function openMaxUses(code,cur){var b=document.getElementById("modal-box");var sc=code.split(\'"\').join("&quot;");b.innerHTML=\'<h3>Limite de usos</h3><div class="field"><label>Máx (-1=∞)</label><input id="mu" type="number" value="\'+cur+\'"></div><div class="mrow"><button class="btn-p" id="mu-btn" onclick="submitMaxUses(this.dataset.code)" data-code="\'+sc+\'">Confirmar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById("modal-bg").classList.add("open");}',
+    'async function submitMaxUses(code){var btn=document.getElementById("mu-btn");if(btn){btn.disabled=true;btn.textContent="Salvando...";}var mu=parseInt(document.getElementById("mu").value);try{var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/max-uses",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({maxUses:mu})});var j=await r.json();closeModal();if(j.ok){toast("Atualizado");doRefresh();}else toast("Falha",false);}catch(e){closeModal();toast("Erro",false);}}',
+    'function openNote(code,cur){var b=document.getElementById("modal-box");var safe=cur.split("&").join("&amp;").split("<").join("&lt;").split(">").join("&gt;");var sc=code.split(\'"\').join("&quot;");b.innerHTML=\'<h3>Nota</h3><div class="field"><textarea id="nt" rows="4" style="width:100%;padding:10px;border-radius:8px;border:1px solid var(--bdr);background:#040d06;color:var(--tx);font:inherit;resize:vertical">\'+safe+\'</textarea></div><div class="mrow"><button class="btn-p" id="note-btn" onclick="submitNote(this.dataset.code)" data-code="\'+sc+\'">Salvar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById("modal-bg").classList.add("open");}',
+    'async function submitNote(code){var btn=document.getElementById("note-btn");if(btn){btn.disabled=true;btn.textContent="Salvando...";}var note=document.getElementById("nt").value;try{var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/note",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({note:note})});var j=await r.json();closeModal();if(j.ok){toast("Nota salva");doRefresh();}else toast("Falha",false);}catch(e){closeModal();toast("Erro",false);}}',
+    'function openLabel(code,cur){var b=document.getElementById("modal-box");var sc=code.split(\'"\').join("&quot;");var sv=cur.split("&").join("&amp;").split("<").join("&lt;").split(">").join("&gt;").split(\'"\').join("&quot;");b.innerHTML=\'<h3>Renomear</h3><div class="field"><label>Novo nome</label><input id="rn" type="text" maxlength="60" value="\'+sv+\'"></div><div class="mrow"><button class="btn-p" id="lbl-btn" onclick="submitLabel(this.dataset.code)" data-code="\'+sc+\'">Salvar</button><button class="btn-w" onclick="closeModal()">Cancelar</button></div>\';document.getElementById("modal-bg").classList.add("open");setTimeout(function(){var t=document.getElementById("rn");if(t){t.focus();t.select();}},60);}',
+    'async function submitLabel(code){var label=document.getElementById("rn").value.trim();if(!label){toast("Informe um nome",false);return;}var btn=document.getElementById("lbl-btn");if(btn){btn.disabled=true;btn.textContent="Salvando...";}try{var r=await fetch(_RA+"/api/keys/"+encodeURIComponent(code)+"/label",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({label:label})});var j=await r.json();closeModal();if(j.ok){toast("Renomeado");doRefresh();}else toast("Falha",false);}catch(e){closeModal();toast("Erro",false);}}',
+    'async function doRefresh(manual){var lr=document.getElementById("last-r");if(lr)lr.textContent="Atualizando...";try{var r=await fetch(_RA+"/api/data");if(r.status===401){if(manual)location.href=_RA+"/login";return;}if(!r.ok){if(manual)toast("Erro "+r.status,false);return;}var d=await r.json();if(!d.keysHtml)return;document.getElementById("kb").innerHTML=d.keysHtml;if(document.getElementById("logb")&&d.logsHtml)document.getElementById("logb").innerHTML=d.logsHtml;["totalKeys","activeKeys","expiredKeys","pendingKeys","blockedKeys"].forEach(function(k){var el=document.getElementById("s-"+k.replace("Keys","").toLowerCase());if(el)el.textContent=d[k]||0;});if(lr)lr.textContent=new Date().toLocaleTimeString("pt-BR");filterKeys();}catch(e){if(lr)lr.textContent="Erro";if(manual)toast("Erro ao atualizar",false);}}',
+    'async function exportCsv(){window.location=_RA+"/api/export/csv";}',
+    'setInterval(doRefresh,60000);doRefresh();'
+  ].join('\n');
+})();
+
+function renderAdminDashboard() {
+  const stats   = getKeyStats();
+  const keysHtml = getKeysHtmlCached();
+  const logsHtml = buildLogsHtml();
+  const sc = (id, val, lbl, style) => `<div class="sc"><div class="n" id="s-${id}"${style?' style="'+style+'"':''}>${val}</div><div class="l">${lbl}</div></div>`;
+  const statsRow = `<div class="sc-row" style="margin-bottom:18px">${sc('total',stats.totalKeys,'Total','')}${sc('active',stats.activeKeys,'Ativas','color:var(--ac)')}${sc('expired',stats.expiredKeys,'Expiradas',stats.expiredKeys?'color:var(--dg)':'')}${sc('pending',stats.pendingKeys||0,'Pendentes','')}${sc('blocked',stats.blockedKeys||0,'Bloqueadas','')}</div>`;
+  const genForm = `<div style="padding:16px 18px;background:#020904;border-bottom:1px solid #183326"><div style="max-width:450px;background:#070f0a;border:1px solid #183326;border-radius:12px;padding:16px 18px"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#5a8a6e;margin-bottom:12px">Nova Chave ZVM</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><input type="text" id="nlabel" placeholder="Nome do cliente" maxlength="60" style="flex:1;min-width:140px;padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="ndays" placeholder="Dias" min="0" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="nhours" placeholder="H" min="0" max="23" style="width:46px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="nmins" placeholder="Min" min="0" max="59" style="width:50px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="nuses" placeholder="Usos" title="-1=∞" min="-1" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><label style="display:flex;align-items:center;gap:4px;font-size:.76rem;color:var(--mt);cursor:pointer;white-space:nowrap"><input type="checkbox" id="nfirstuse" style="margin:0;width:auto;padding:0"> 1º uso</label><button onclick="generateKey()" style="padding:7px 14px;border-radius:5px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap">+ Gerar</button></div></div></div>`;
+  const searchBar = `<div style="display:flex;flex-wrap:wrap;gap:6px;padding:10px 18px;border-bottom:1px solid #183326;align-items:center"><input type="text" id="search-input" placeholder="🔍 Buscar..." oninput="filterKeys()" style="flex:1;min-width:180px;padding:7px 11px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><select id="filter-status" onchange="filterKeys()" style="padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><option value="">Todos</option><option value="ativo">Ativas</option><option value="pendente">Pendentes</option><option value="expirada">Expiradas</option><option value="bloqueado">Bloqueadas</option></select><button onclick="doRefresh(true)" style="padding:7px 12px;border-radius:5px;border:1px solid #26543c;background:transparent;color:#39ff14;font-size:.8rem;cursor:pointer">↻</button><button onclick="exportCsv()" style="padding:7px 12px;border-radius:5px;border:1px solid #183326;background:transparent;color:#8ab89a;font-size:.8rem;cursor:pointer">↓ CSV</button><span id="last-r" style="font-size:.7rem;color:#5a8a6e">—</span></div>`;
+  const keysSection = `<div class="sec"><div class="sh"><span class="sh-t">🔑 Chaves ZVM</span></div>${genForm}${searchBar}<div class="tbl-w" style="overflow-x:auto"><table style="min-width:820px"><thead><tr style="background:#070f0a"><th>Chave</th><th>Cliente</th><th>Status</th><th>Validade</th><th>Usos</th><th>Telefone</th><th>IP</th><th>Nota</th><th>Ações</th></tr></thead><tbody id="kb">${keysHtml}</tbody></table></div></div>`;
+  const logsSection = `<div class="sec"><div class="sh"><span class="sh-t">📋 Logs ZVM</span></div><div class="tbl-w" style="max-height:40vh;overflow-y:auto;overflow-x:auto"><table style="min-width:600px"><thead><tr style="background:#070f0a"><th>Data/Hora</th><th>Ação</th><th>Chave</th><th>Telefone</th><th>IP</th><th>Detalhe</th></tr></thead><tbody id="logb">${logsHtml}</tbody></table></div></div>`;
+  return spaShell('Admin ZVM', zvmAdminSidebar('dash'), 'ZapVoice Admin', statsRow + keysSection + logsSection + `<scr`+`ipt>${ZVM_ADMIN_JS}</scr`+`ipt>`);
+}
+
+function renderModDashboard(modName) {
+  const ZVM_MOD_JS = ZVM_ADMIN_JS.replace(JSON.stringify(R_ZVM_ADMIN), JSON.stringify(R_ZVM_MOD));
+  const sc = (id, val, lbl, style) => `<div class="sc"><div class="n" id="s-${id}"${style?' style="'+style+'"':''}>${val}</div><div class="l">${lbl}</div></div>`;
+  const stats = getKeyStats();
+  const statsRow = `<div class="sc-row" style="margin-bottom:18px">${sc('total',stats.totalKeys,'Total','')}${sc('active',stats.activeKeys,'Ativas','color:var(--ac)')}${sc('expired',stats.expiredKeys,'Expiradas','')}</div>`;
+  const genForm = `<div style="padding:16px 18px;background:#020904;border-bottom:1px solid #183326"><div style="max-width:450px;background:#070f0a;border:1px solid #183326;border-radius:12px;padding:16px 18px"><div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#5a8a6e;margin-bottom:12px">Nova Chave ZVM</div><div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><input type="text" id="nlabel" placeholder="Nome do cliente" maxlength="60" style="flex:1;min-width:140px;padding:7px 10px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="ndays" placeholder="Dias" min="0" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="nhours" placeholder="H" min="0" max="23" style="width:46px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="nmins" placeholder="Min" min="0" max="59" style="width:50px;padding:7px 6px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><input type="number" id="nuses" placeholder="Usos" title="-1=∞" min="-1" max="9999" style="width:58px;padding:7px 8px;border-radius:5px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.82rem"><label style="display:flex;align-items:center;gap:4px;font-size:.76rem;color:var(--mt);cursor:pointer;white-space:nowrap"><input type="checkbox" id="nfirstuse" style="margin:0;width:auto;padding:0"> 1º uso</label><button onclick="generateKey()" style="padding:7px 14px;border-radius:5px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.82rem;font-weight:700;cursor:pointer;white-space:nowrap">+ Gerar</button></div></div></div>`;
+  const keysHtml = getKeysHtmlCached();
+  const keysSection = `<div class="sec"><div class="sh"><span class="sh-t">🔑 Chaves ZVM${modName?' — '+esc(modName):''}</span></div>${genForm}<div class="tbl-w" style="overflow-x:auto"><table style="min-width:820px"><thead><tr style="background:#070f0a"><th>Chave</th><th>Cliente</th><th>Status</th><th>Validade</th><th>Usos</th><th>Telefone</th><th>IP</th><th>Nota</th><th>Ações</th></tr></thead><tbody id="kb">${keysHtml}</tbody></table></div></div>`;
+  return spaShell('Mod ZVM', zvmModSidebar('keys'), 'ZapVoice Moderador', statsRow + keysSection + `<scr`+`ipt>${ZVM_MOD_JS}</scr`+`ipt>`);
+}
+
+async function renderAnalyticsDashboard() {
+  const stats = await getPaymentStats();
+  const byDayJson    = JSON.stringify(stats.byDay    || {});
+  const byProdJson   = JSON.stringify(stats.byProduct || {});
+  const byMethodJson = JSON.stringify(stats.byMethod  || {});
+  const byHourJson   = JSON.stringify(stats.byHour    || []);
+  const body = `<div class="sec"><div class="sh"><span class="sh-t">📊 Analytics — Pagamentos</span><a href="${esc(R_ANALYTICS)}/export/csv" style="padding:5px 12px;border-radius:5px;border:1px solid #26543c;background:transparent;color:#39ff14;font-size:.78rem;text-decoration:none">↓ CSV</a></div>
+<div class="sc-row">
+<div class="sc"><div class="n" style="color:var(--ac)">${stats.total||0}</div><div class="l">Total Vendas</div></div>
+<div class="sc"><div class="n" style="color:var(--ac)">R$ ${(stats.revenue||0).toFixed(2).replace('.',',')}</div><div class="l">Receita Total</div></div>
+</div>
+<div style="padding:14px 18px;display:grid;grid-template-columns:1fr 1fr;gap:14px;flex-wrap:wrap">
+<div><h4 style="font-size:.75rem;color:#5a8a6e;margin-bottom:8px">Por Produto</h4><table style="width:100%;border-collapse:collapse">${Object.entries(stats.byProduct||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td style="font-size:.75rem;padding:3px 0;color:#c8e8c8">${esc(k)}</td><td style="font-size:.75rem;padding:3px 0;color:var(--ac);text-align:right">R$ ${v.toFixed(2).replace('.',',')}</td></tr>`).join('')}</table></div>
+<div><h4 style="font-size:.75rem;color:#5a8a6e;margin-bottom:8px">Por Método</h4><table style="width:100%;border-collapse:collapse">${Object.entries(stats.byMethod||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<tr><td style="font-size:.75rem;padding:3px 0;color:#c8e8c8">${esc(k)}</td><td style="font-size:.75rem;padding:3px 0;color:var(--ac);text-align:right">${v}</td></tr>`).join('')}</table></div>
+</div>
+</div>
+<scr`+`ipt>var _byDay=${byDayJson};var _byProd=${byProdJson};var _byMethod=${byMethodJson};var _byHour=${byHourJson};</scr`+`ipt>`;
+  return spaShell('Analytics ZVM', `<aside class="sidebar"><div class="sb-brand"><span class="bdot"></span><span class="btxt">Analytics</span></div><div class="sbft"><a href="${esc(R_ANALYTICS)}/logout" class="ni"><span class="ic">→</span><span class="nl">Sair</span></a></div></aside>`, 'ZVM Analytics', body);
+}
+
+async function handleZvmExtension(req, res, pathname, ip) {
+  const p = pathname;
+
+  if (p === R_EXT + '/auth' && req.method === 'GET') {
+    sendHtml(res, `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>ZapVoice Auth</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#020904;color:#e8fff3;min-height:100vh;display:flex;align-items:center;justify-content:center}:root{--ac:#39ff14}.card{background:#070f0a;border:1px solid #183326;border-radius:14px;padding:32px 28px;width:100%;max-width:360px}.logo{font-size:1.3rem;font-weight:900;color:var(--ac);margin-bottom:18px}.field{margin-bottom:13px}.field label{display:block;font-size:.73rem;color:#5a8a6e;margin-bottom:5px}.field input{width:100%;padding:9px 11px;border-radius:7px;border:1px solid #183326;background:#040d06;color:#e8fff3;font:inherit;font-size:.84rem}.btn{width:100%;padding:11px;border-radius:8px;border:none;background:linear-gradient(135deg,#39ff14,#00ff88);color:#020604;font-size:.88rem;font-weight:800;cursor:pointer}</style></head><body>
+${CANVAS_BG}
+<div class="card"><div class="logo">ZapVoice</div>
+<form id="f" method="POST" action="${R_EXT}/auth/verify">
+<div class="field"><label>Chave de acesso</label><input name="key" placeholder="zv-xxxxx-xxxxx-xxxxx" required></div>
+<div class="field"><label>Número WhatsApp</label><input name="phone" placeholder="5511999999999" required></div>
+<button class="btn" type="submit">Entrar</button>
+</form></div></body></html>`);
+    return;
+  }
+
+  if (p === R_EXT + '/auth/verify' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'login')) { sendHtml(res, '<h2>Muitas tentativas</h2>', 429); return; }
+    const form  = await parseFormBody(req);
+    const code  = (form.get('key') || '').trim().toLowerCase().slice(0, 30);
+    const phone = (form.get('phone') || '').trim().slice(0, 20);
+    if (!code || !keys[code]) {
+      if (code && !keys[code]) await ensureKeyLoaded(code);
+    }
+    const k = keys[code];
+    if (!k || !k.active || isKeyExpiredZvm(k)) {
+      sendHtml(res, `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="background:#020904;color:#ff8899;font-family:sans-serif;padding:40px;text-align:center"><h2>Chave inválida ou expirada</h2><br><a href="${R_EXT}/auth" style="color:#39ff14">Tentar novamente</a></body></html>`, 401);
+      return;
+    }
+    const cbUrl = `${R_EXT}/v3/callback?key=${encodeURIComponent(code)}&phone=${encodeURIComponent(phone)}&status=ok`;
+    res.writeHead(302, { Location: cbUrl }); res.end();
+    return;
+  }
+
+  if (p === R_EXT + '/v3/key' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'ext_key')) { sendJson(res, { ok: false, status: false, data: { errorType: 'RATE_LIMITED' } }, 429); return; }
+    const body  = await parseBody(req);
+    const code  = sanitizeInput(String(body.key || body.keyId || ''), 30).toLowerCase();
+    const phone = sanitizeInput(String(body.phone || body.whatsapp || ''), 20);
+    if (!code) { sendJson(res, { ok: false, status: false, data: { errorType: 'MISSING_KEY' } }, 400); return; }
+
+    if (isFreeAuthKey(code)) {
+      const usage = await ensureFreeUsage(ip);
+      sendJson(res, getFreeAuthData(ip, usage));
+      return;
+    }
+
+    if (!keys[code] && !await ensureKeyLoaded(code)) {
+      sendJson(res, { ok: false, status: false, data: { errorType: 'KEY_NOT_FOUND' } }, 404);
+      return;
+    }
+    const k = keys[code];
+    if (!k.active) { sendJson(res, { ok: false, status: false, data: { errorType: 'KEY_BLOCKED' } }, 403); return; }
+    if (isKeyExpiredZvm(k)) { sendJson(res, { ok: false, status: false, data: { errorType: 'KEY_EXPIRED' } }, 403); return; }
+
+    if (k.expireDuration && !k.expiresAt) {
+      k.expiresAt    = new Date(Date.now() + k.expireDuration).toISOString();
+      k.activatedAt  = new Date().toISOString();
+      saveKey(code);
+    }
+
+    const maxU = k.maxUses != null ? k.maxUses : MAX_USES;
+    const isUnlimited = maxU <= 0 || maxU === -1;
+    if (phone && !isUnlimited) {
+      if (!(k.phones || []).includes(phone) && (k.phones || []).length >= maxU) {
+        await addLogZvm({ keyCode: code, label: k.label, phone, ip, action: 'max_devices_reached', detail: `maxUses=${maxU}` });
+        sendJson(res, { ok: false, status: false, data: { errorType: 'MAX_DEVICES_REACHED', maxUses: maxU } }, 403);
+        return;
+      }
+    }
+
+    if (phone) {
+      if (!Array.isArray(k.phones)) k.phones = [];
+      if (!k.phones.includes(phone)) k.phones.push(phone);
+      k.lastPhone = phone;
+    }
+    k.lastUsed = new Date().toISOString();
+    k.lastIp   = ip;
+    k.uses     = (k.uses || 0) + 1;
+    saveKey(code);
+
+    const today = await ensureKeyUsage(code, k);
+    const usage = buildUsagePayload(today, k);
+
+    await addLogZvm({ keyCode: code, label: k.label, phone, ip, action: 'login_ok', detail: `uses=${k.uses}` });
+    sendJson(res, getAuthData(code, k, usage));
+    return;
+  }
+
+  if (p === R_EXT + '/v3/check-status' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'check_status')) { sendJson(res, { ok: false, status: false, data: { errorType: 'RATE_LIMITED' } }, 429); return; }
+    const body = await parseBody(req);
+    const code = sanitizeInput(String(body.key || body.keyId || ''), 30).toLowerCase();
+    if (isFreeAuthKey(code)) { sendJson(res, getFreeAuthData(ip, unlimitedUsagePayload())); return; }
+    if (!keys[code] && !await ensureKeyLoaded(code)) { sendJson(res, { ok: false, status: false, data: { errorType: 'KEY_NOT_FOUND' } }, 404); return; }
+    const k = keys[code];
+    if (!k.active || isKeyExpiredZvm(k)) { sendJson(res, { ok: false, status: false, data: { errorType: k.active ? 'KEY_EXPIRED' : 'KEY_BLOCKED' } }, 403); return; }
+    const today = await ensureKeyUsage(code, k);
+    sendJson(res, getAuthData(code, k, buildUsagePayload(today, k)));
+    return;
+  }
+
+  if (p === R_EXT + '/v3/usage' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const code = sanitizeInput(String(body.key || body.keyId || ''), 30).toLowerCase();
+    const type = sanitizeInput(String(body.itemType || body.type || ''), 30);
+    const qty  = Math.max(1, parseInt(body.qty || body.quantity || 1));
+    if (isFreeAuthKey(code) || !USAGE_ITEM_TYPES.includes(type)) { sendJson(res, { ok: true }); return; }
+    if (!keys[code]) await ensureKeyLoaded(code);
+    if (keys[code]) await incrementUsageRow(code, keys[code], type, qty);
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  if (p === R_EXT + '/v3/get-usage' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const code = sanitizeInput(String(body.key || body.keyId || ''), 30).toLowerCase();
+    if (isFreeAuthKey(code)) { sendJson(res, { ok: true, usage: unlimitedUsagePayload() }); return; }
+    if (!keys[code]) await ensureKeyLoaded(code);
+    const k = keys[code];
+    if (!k) { sendJson(res, { ok: false }, 404); return; }
+    const today = await ensureKeyUsage(code, k);
+    sendJson(res, { ok: true, usage: buildUsagePayload(today, k) });
+    return;
+  }
+
+  if (p === R_EXT + '/v3/sync-usage' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const code = sanitizeInput(String(body.key || body.keyId || ''), 30).toLowerCase();
+    if (!isFreeAuthKey(code) && keys[code]) {
+      const k = keys[code];
+      const today = usageTodayKey();
+      if (!k.usage) k.usage = {};
+      if (!k.usage[today]) k.usage[today] = {};
+      const incoming = body.usage || {};
+      for (const t of USAGE_ITEM_TYPES) {
+        if (incoming[t] && typeof incoming[t].used === 'number') {
+          if (!k.usage[today][t]) k.usage[today][t] = { used: 0 };
+          k.usage[today][t].used = Math.max(k.usage[today][t].used, incoming[t].used);
+        }
+      }
+      saveKey(code);
+    }
+    sendJson(res, { ok: true });
+    return;
+  }
+
+  if (p === R_EXT + '/v3/create-user-event' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const eventType = sanitizeInput(String(body.event_type || ''), 64);
+    if (eventType) {
+      try {
+        const db = await getMongoDb();
+        await db.collection('user_events').insertOne({
+          event_type: eventType,
+          keyId:      sanitizeInput(String(body.keyId || ''), 64),
+          userId:     sanitizeInput(String(body.userId || ''), 64),
+          metadata:   body.metadata && typeof body.metadata === 'object' ? body.metadata : {},
+          createdAt:  new Date(),
+          ip,
+        });
+      } catch {}
+    }
+    sendJson(res, { status: 'success' });
+    return;
+  }
+
+  sendJson(res, { ok: false, status: false, data: { errorType: 'NOT_FOUND' } }, 404);
+}
+
+async function handleZvmAdmin(req, res, p, ip, url) {
+  if (p === R_ZVM_ADMIN + '/login' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'login')) { sendHtml(res, renderZvmAdminLogin(`⏳ Aguarde ${getRateLimitWait(ip,'login')} min`), 429); return; }
+    const form  = await parseFormBody(req);
+    const uBuf  = Buffer.from(form.get('user') || '');
+    const pBuf  = Buffer.from(form.get('pass') || '');
+    const auBuf = Buffer.from(ZVM_ADMIN_USER || '');
+    const apBuf = Buffer.from(ZVM_ADMIN_PASS || '');
+    const credOk = uBuf.length === auBuf.length && pBuf.length === apBuf.length &&
+      crypto.timingSafeEqual(uBuf.length ? uBuf : Buffer.alloc(1), auBuf.length ? auBuf : Buffer.alloc(1)) &&
+      crypto.timingSafeEqual(pBuf.length ? pBuf : Buffer.alloc(1), apBuf.length ? apBuf : Buffer.alloc(1));
+    const totpOk = verifyTOTP(ZVM_TOTP_SECRET, (form.get('totp') || '').trim());
+    if (credOk && totpOk) {
+      const token = generateToken();
+      ZVM_SESSIONS[token] = { expiresAt: new Date(Date.now() + 8*3600000).toISOString() };
+      res.setHeader('Set-Cookie', `zv_admin=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
+      res.writeHead(302, { Location: R_ZVM_ADMIN }); res.end();
+    } else {
+      sendHtml(res, renderZvmAdminLogin(credOk && !totpOk ? 'Código 2FA inválido' : 'Usuário ou senha incorretos'));
+    }
+    return;
+  }
+  if (p === R_ZVM_ADMIN + '/logout') {
+    res.setHeader('Set-Cookie', 'zv_admin=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
+    res.writeHead(302, { Location: R_ZVM_ADMIN }); res.end(); return;
+  }
+  if (p === R_ZVM_ADMIN || p === R_ZVM_ADMIN + '/') {
+    if (!isAdminSession(req)) { sendHtml(res, renderZvmAdminLogin()); return; }
+    sendHtml(res, renderAdminDashboard()); return;
+  }
+  if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+
+  if (p === R_ZVM_ADMIN + '/api/data' && req.method === 'GET') {
+    sendJson(res, { ...getKeyStats(), keysHtml: getKeysHtmlCached(), logsHtml: buildLogsHtml() }); return;
+  }
+  if (p === R_ZVM_ADMIN + '/api/keys' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const rawLabel = sanitizeInput(String(body.label || ''), 60);
+    if (!rawLabel) { sendJson(res, { error: 'label obrigatório' }, 400); return; }
+    if (rawLabel.length > 60) { sendJson(res, { error: 'label_too_long' }, 400); return; }
+    if (detectInjection(rawLabel)) { sendJson(res, { error: 'invalid_input' }, 400); return; }
+    const code = generateCode();
+    const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body, { allowMinutes: true });
+    const maxUses = body.maxUses !== undefined ? parseInt(body.maxUses) : MAX_USES;
+    keys[code] = { label: rawLabel, active: true, createdAt: new Date().toISOString(), uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null, deviceId: null, wppVersion: null, note: '', expiresAt, expireDuration: expireDuration || null, maxUses: isNaN(maxUses) ? MAX_USES : maxUses, warnCount: 0, modules: { ...DEFAULT_MODULES } };
+    saveKey(code);
+    sendJson(res, { ok: true, key: code }); return;
+  }
+  const RA = R_ZVM_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const extractCode = (pattern) => { const m = p.match(pattern); if (!m) return null; const c = decodeURIComponent(m[1]); return /^[a-z0-9_\-]{1,30}$/.test(c) ? c : null; };
+
+  const codeToggle = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/toggle$`));
+  if (codeToggle && req.method === 'POST') {
+    const k = await adminGetKey(codeToggle); if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
+    k.active = !k.active; saveKey(codeToggle);
+    if (!k.active) fireWebhook('key_blocked', codeToggle, 'Bloqueio manual');
+    sendJson(res, { ok: true, active: k.active }); return;
+  }
+  const codeRenew = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/renew$`));
+  if (codeRenew && req.method === 'POST') {
+    const k = await adminGetKey(codeRenew); if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    const addMs = ((parseInt(body.days||0)*1440)+(parseInt(body.hours||0)*60)+parseInt(body.mins||0))*60000;
+    if (!addMs) { sendJson(res, { error: 'nenhum tempo' }, 400); return; }
+    const base = (k.expiresAt && !isKeyExpiredZvm(k)) ? new Date(k.expiresAt).getTime() : Date.now();
+    k.expiresAt = new Date(base+addMs).toISOString(); k.expireDuration = null; k.active = true;
+    saveKey(codeRenew); sendJson(res, { ok: true, expiresAt: k.expiresAt }); return;
+  }
+  const codeMaxUses = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/max-uses$`));
+  if (codeMaxUses && req.method === 'POST') {
+    const k = await adminGetKey(codeMaxUses); if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req); const mu = parseInt(body.maxUses);
+    if (isNaN(mu) || mu < -1) { sendJson(res, { error: 'invalid' }, 400); return; }
+    k.maxUses = mu; saveKey(codeMaxUses); sendJson(res, { ok: true, maxUses: mu }); return;
+  }
+  const codeLabel = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/label$`));
+  if (codeLabel && req.method === 'POST') {
+    const k = await adminGetKey(codeLabel); if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    const label = sanitizeInput(String(body.label||'').trim(), 60);
+    if (!label) { sendJson(res, { error: 'label vazio' }, 400); return; }
+    k.label = label; saveKey(codeLabel); sendJson(res, { ok: true, label }); return;
+  }
+  const codeNote = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/note$`));
+  if (codeNote && req.method === 'POST') {
+    const k = await adminGetKey(codeNote); if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    k.note = sanitizeInput(String(body.note||''), 500); saveKey(codeNote); sendJson(res, { ok: true }); return;
+  }
+  const codeDel = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)$`));
+  if (codeDel && req.method === 'DELETE') {
+    delete keys[codeDel]; await deleteKeyFromDb(codeDel); sendJson(res, { ok: true }); return;
+  }
+  if (p === R_ZVM_ADMIN + '/api/logs' && req.method === 'DELETE') {
+    const body = await parseBody(req);
+    if (body.date) logs = logs.filter(l => !l.timestamp.startsWith(body.date));
+    else logs = [];
+    await saveLogs(); sendJson(res, { ok: true, remaining: logs.length }); return;
+  }
+  if (p === R_ZVM_ADMIN + '/api/export/csv' && req.method === 'GET') {
+    const header = 'Chave,Cliente,Status,Validade,Usos,Telefone,IP,Criada em,Nota';
+    const rows = Object.entries(keys).map(([code, k]) => {
+      const st = getKeyDisplayStatus(k).toUpperCase();
+      const mu = k.maxUses===-1?'Ilimitado':(k.maxUses>0?k.maxUses:MAX_USES);
+      return [code,k.label,st,k.expiresAt?k.expiresAt.slice(0,10):(k.expireDuration?'Ao 1º uso':'∞'),`${(k.phones||[]).length}/${mu}`,k.lastPhone||'',k.lastIp||'',k.createdAt?k.createdAt.slice(0,10):'',(k.note||'').replace(/,/g,';')].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',');
+    });
+    res.setHeader('Content-Type','text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition',`attachment; filename="zvm-chaves-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.writeHead(200); res.end('﻿' + [header,...rows].join('\r\n')); return;
+  }
+  sendJson(res, { error: 'not_found' }, 404);
+}
+
+async function handleZvmMod(req, res, p, ip) {
+  if (MODS.length === 0) { res.writeHead(404); res.end('Not found'); return; }
+  if (p === R_ZVM_MOD + '/login' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'login')) { sendHtml(res, renderZvmModLogin(`⏳ Aguarde ${getRateLimitWait(ip,'login')} min`), 429); return; }
+    const form = await parseFormBody(req);
+    const inputUser = form.get('user') || '';
+    const inputPass = form.get('pass') || '';
+    const inputTotp = (form.get('totp') || '').trim();
+    const matchedMod = MODS.find(m => {
+      try {
+        const bu = Buffer.from(m.user), bi = Buffer.from(inputUser);
+        const bp = Buffer.from(m.pass), bip = Buffer.from(inputPass);
+        return bu.length===bi.length && bp.length===bip.length && crypto.timingSafeEqual(bu,bi) && crypto.timingSafeEqual(bp,bip);
+      } catch { return false; }
+    });
+    const totpOk = matchedMod ? verifyTOTP(matchedMod.totp, inputTotp) : false;
+    if (matchedMod && totpOk) {
+      const token = generateToken();
+      ZVM_MOD_SESSIONS[token] = { expiresAt: new Date(Date.now()+8*3600000).toISOString(), modName: matchedMod.name };
+      res.setHeader('Set-Cookie', `zv_mod=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
+      res.writeHead(302, { Location: R_ZVM_MOD }); res.end();
+    } else {
+      sendHtml(res, renderZvmModLogin(matchedMod && !totpOk ? 'Código 2FA inválido' : 'Usuário ou senha incorretos'));
+    }
+    return;
+  }
+  if (p === R_ZVM_MOD + '/logout') {
+    res.setHeader('Set-Cookie','zv_mod=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
+    res.writeHead(302, { Location: R_ZVM_MOD }); res.end(); return;
+  }
+  if (p === R_ZVM_MOD || p === R_ZVM_MOD + '/') {
+    if (!isModSession(req)) { sendHtml(res, renderZvmModLogin()); return; }
+    const mc = (req.headers.cookie||'').match(/zv_mod=([a-f0-9]+)/);
+    const ms = mc ? ZVM_MOD_SESSIONS[mc[1]] : null;
+    sendHtml(res, renderModDashboard(ms ? ms.modName : 'Moderador')); return;
+  }
+  if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+  const mc2 = (req.headers.cookie||'').match(/zv_mod=([a-f0-9]+)/);
+  const ms2 = mc2 ? ZVM_MOD_SESSIONS[mc2[1]] : null;
+  const modName = ms2 ? ms2.modName : 'Moderador';
+
+  if (p === R_ZVM_MOD + '/api/keys' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const rawLabel = sanitizeInput(String(body.label||'').trim(), 60);
+    if (!rawLabel) { sendJson(res, { error: 'label obrigatório' }, 400); return; }
+    if (rawLabel.length > 60) { sendJson(res, { error: 'label_too_long' }, 400); return; }
+    const code = generateCode();
+    const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body);
+    const maxUses = Math.max(1, parseInt(body.maxUses) || MAX_USES);
+    keys[code] = { label: rawLabel, active: true, createdAt: new Date().toISOString(), uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null, deviceId: null, wppVersion: null, note: '[Mod: '+modName+']', expiresAt, expireDuration: expireDuration||null, maxUses, warnCount: 0 };
+    saveKey(code); sendJson(res, { ok: true, key: code }); return;
+  }
+  if (p === R_ZVM_MOD + '/api/data' && req.method === 'GET') {
+    sendJson(res, { ...getKeyStats(), keysHtml: getKeysHtmlCached(), logsHtml: buildLogsHtml() }); return;
+  }
+  sendJson(res, { error: 'not_found' }, 404);
+}
+
+async function handleZvmAnalytics(req, res, p, ip) {
+  if (!ZVM_ANALYTICS_PASS) { res.writeHead(404); res.end('Not found'); return; }
+  if (p === R_ANALYTICS + '/login' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'login')) { sendHtml(res, renderZvmAnalyticsLogin(`⏳ Aguarde ${getRateLimitWait(ip,'login')} min`), 429); return; }
+    const form = await parseFormBody(req);
+    const pBuf = Buffer.from(form.get('pass')||''), apBuf = Buffer.from(ZVM_ANALYTICS_PASS||'');
+    if (pBuf.length===apBuf.length && crypto.timingSafeEqual(pBuf.length?pBuf:Buffer.alloc(1), apBuf.length?apBuf:Buffer.alloc(1))) {
+      const token = generateToken();
+      ZVM_AN_SESSIONS[token] = { expiresAt: new Date(Date.now()+8*3600000).toISOString() };
+      res.setHeader('Set-Cookie', `zv_an=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
+      res.writeHead(302, { Location: R_ANALYTICS }); res.end();
+    } else {
+      sendHtml(res, renderZvmAnalyticsLogin('Senha incorreta.'));
+    }
+    return;
+  }
+  if (p === R_ANALYTICS + '/logout') {
+    clearAnalyticsCookie(res); res.writeHead(302, { Location: R_ANALYTICS }); res.end(); return;
+  }
+  if ((p === R_ANALYTICS || p === R_ANALYTICS + '/') && req.method === 'GET') {
+    if (!isAnalyticsSession(req)) { clearAnalyticsCookie(res); sendHtml(res, renderZvmAnalyticsLogin()); return; }
+    sendHtml(res, await renderAnalyticsDashboard()); return;
+  }
+  if (p === R_ANALYTICS + '/export/csv' && req.method === 'GET') {
+    if (!isAnalyticsSession(req)) { res.writeHead(302, { Location: R_ANALYTICS }); res.end(); return; }
+    const payments = await getPayments({ limit: 10000 });
+    const header = 'Data,Cliente,Email,Telefone,Produto,Valor,Chave,Método';
+    const rows = payments.map(pay => [
+      pay.paidAt?new Date(pay.paidAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}):'',
+      pay.clientName||'',pay.clientEmail||'',pay.clientPhone||'',pay.productName||'',
+      (pay.amount||0).toFixed(2).replace('.',','),pay.keyCode||'',pay.paymentMethod||''
+    ].map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(','));
+    res.setHeader('Content-Type','text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition',`attachment; filename="zvm-pagamentos-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.writeHead(200); res.end('﻿' + [header,...rows].join('\r\n')); return;
+  }
+  if (p === R_ANALYTICS + '/api/stats' && req.method === 'GET') {
+    if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    sendJson(res, await getPaymentStats() || {}); return;
+  }
+  sendJson(res, { error: 'not_found' }, 404);
+}
+
+async function handlePaytWebhook(req, res, ip) {
+  const rawBody = await new Promise(r => { let b = ''; req.on('data', c => b += c); req.on('end', () => r(b)); });
+  let payload;
+  try { payload = JSON.parse(rawBody); }
+  catch { try { payload = Object.fromEntries(new URLSearchParams(rawBody)); } catch { res.writeHead(400); res.end('Bad Request'); return; } }
+
+  if (ZVM_PAYT_SECRET) {
+    const ht  = req.headers['x-payt-token'] || req.headers['x-webhook-token'] || '';
+    const bk  = payload.integration_key || '';
+    if ((ht && ht !== ZVM_PAYT_SECRET) || (bk && bk !== ZVM_PAYT_SECRET)) {
+      res.writeHead(401); res.end('Unauthorized'); return;
+    }
+  }
+  if (payload.test === true) { res.writeHead(200); res.end('test_ignored'); return; }
+
+  const status   = String(payload.status||payload.payment_status||payload.sale_status||'').toLowerCase();
+  const APPROVED = ['venda_paga','approved','paid','completed','finished','aprovada','finalizada','active','confirmed'];
+  const approved = APPROVED.some(s => status===s || status.includes(s));
+  const txId     = String(payload.transaction_id||payload.sale_id||payload.cart_id||payload.id||'').trim();
+
+  const customer    = payload.customer||payload.buyer||payload.client||{};
+  const clientName  = customer.name||customer.full_name||payload.customer_name||payload.buyer_name||'Cliente';
+  const clientEmail = customer.email||payload.customer_email||payload.buyer_email||payload.email||'';
+  const clientPhone = customer.phone||customer.cellphone||customer.phone_number||payload.customer_phone||'';
+
+  let productNameRaw = '-', amount = 0;
+  if (Array.isArray(payload.products) && payload.products.length) {
+    productNameRaw = payload.products.map(pr=>pr.name||pr.title||'').filter(Boolean).join(' + ') || '-';
+    amount = payload.products.reduce((s,pr)=>s+(parseFloat(String(pr.price||pr.value||0).replace(',','.'))||0),0);
+  }
+  if (productNameRaw==='-') {
+    const offer = payload.offer||payload.product||{};
+    productNameRaw = offer.name||offer.title||payload.product_name||payload.offer_name||payload.plan_name||'-';
+  }
+  if (!amount) {
+    const raw = payload.amount||payload.value||payload.price||payload.sale_amount||payload.total||0;
+    amount = parseFloat(String(raw).replace(',','.'))||0;
+  }
+  const paymentMethod = payload.payment_method||payload.charge_type||payload.method||payload.payment_type||'-';
+  const productNameLow = productNameRaw.toLowerCase();
+
+  if (!approved) {
+    if (txId) savePayment({ txId, status:status||'unknown', approved:false, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:null, paidAt:new Date().toISOString(), rawStatus:status }).catch(()=>{});
+    res.writeHead(200); res.end('ignored'); return;
+  }
+
+  if (txId) {
+    if (Object.values(keys).some(k=>k.note&&(k.note.includes('payt_tx:'+txId)||k.note.includes('renovado_payt_tx:'+txId)))) { res.writeHead(200); res.end('ok'); return; }
+    try {
+      const db = await getMongoDb();
+      const ex = await db.collection('payments').findOne({ txId, approved:true });
+      if (ex) { res.writeHead(200); res.end('ok'); return; }
+    } catch {}
+  }
+
+  let maxUses = 3;
+  if      (productNameLow.match(/\b1\b|individual|solo|basico|starter/)) maxUses = 1;
+  else if (productNameLow.match(/\b5\b|multi|team|equipe|avancado/))     maxUses = 5;
+  else if (productNameLow.match(/\b3\b|trio|standard|padrao/))           maxUses = 3;
+
+  let existingCode = null;
+  if (clientEmail) {
+    existingCode = Object.keys(keys).find(c => {
+      const em = (keys[c].note||'').match(/Email: ([^\s|]+)/);
+      return em && em[1].toLowerCase()===clientEmail.toLowerCase() && keys[c].active;
+    });
+  }
+
+  const now = new Date(), durationMs = 31*24*3600000;
+  if (existingCode) {
+    const k = keys[existingCode];
+    const base = (k.expiresAt && new Date(k.expiresAt)>now) ? new Date(k.expiresAt) : now;
+    k.expiresAt = new Date(base.getTime()+durationMs).toISOString(); k.active = true;
+    k.note = k.note + (txId?' | renovado_payt_tx:'+txId:' | renovado');
+    saveKey(existingCode);
+    await savePayment({ txId:txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:status });
+    res.writeHead(200); res.end('ok'); return;
+  }
+
+  const code = generateCode();
+  keys[code] = { label:'PAYT - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:new Date(now.getTime()+durationMs).toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, note:'Pedido automatico Payt | Email: '+clientEmail+(txId?' | payt_tx:'+txId:''), modules:{ ...DEFAULT_MODULES } };
+  saveKey(code);
+  await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:status });
+  res.writeHead(200); res.end('ok');
+}
 
 async function handleRequest(req, res) {
   applySecurityHeaders(res);
-
-  const url      = new URL(req.url, `http://127.0.0.1:${config.port}`);
+  const url      = new URL(req.url, `http://127.0.0.1:${PORT}`);
   const pathname = url.pathname;
-  const ip       = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket?.remoteAddress || '';
+  const ip       = (req.headers['x-forwarded-for']||'').split(',')[0].trim() || (req.socket && req.socket.remoteAddress) || '';
   const method   = req.method;
 
-  applyCors(req, res, pathname);
+  applyCors(req, res);
 
-  if (method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
+  if (method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
-  if (pathname === '/ping') {
-    sendText(res, 'OK');
-    return;
-  }
+  if (pathname === '/ping') { sendText(res, 'OK'); return; }
 
   if (pathname === '/health') {
-    const mem      = process.memoryUsage();
-    const mongoOk  = mongoReady && db !== null && !cbIsOpen();
-    let   keyCount = 0;
-    const t0       = Date.now();
-    await new Promise((r) => setImmediate(r));
-    const loopMs   = Date.now() - t0;
-    if (mongoOk) {
-      try { keyCount = await db.collection(COL.licenses).countDocuments(); } catch {  }
-    }
+    const mem    = process.memoryUsage();
+    const wsOk   = mongoReady && dbWS !== null && !cbIsOpen();
+    let zvmKeys  = Object.keys(keys).length;
+    let wsKeys   = 0;
+    const t0     = Date.now();
+    await new Promise(r => setImmediate(r));
+    if (wsOk) { try { wsKeys = await dbWS.collection(COL.licenses).countDocuments(); } catch {} }
     sendJson(res, {
-      ok                : mongoOk,
-      service           : 'waspeed-server',
-      version           : '5.0.0',
-      keys              : keyCount,
-      mongo             : mongoOk,
-      circuitBreaker    : cbIsOpen() ? 'OPEN' : 'CLOSED',
-      storage           : 'mongodb',
-      heapUsedMB        : (mem.heapUsed  / 1048576).toFixed(1),
-      heapTotalMB       : (mem.heapTotal / 1048576).toFixed(1),
-      rssMB             : (mem.rss       / 1048576).toFixed(1),
-      eventLoopLatencyMs: loopMs,
-      uptime            : Math.floor(process.uptime()),
-    }, mongoOk ? 200 : 503);
+      ok:              wsOk,
+      service:         'waspeed-zvm-unified',
+      version:         '1.0.0',
+      mongo:           wsOk,
+      circuitBreaker:  cbIsOpen() ? 'OPEN' : 'CLOSED',
+      zvmKeys,
+      wsKeys,
+      heapUsedMB:      (mem.heapUsed/1048576).toFixed(1),
+      rssMB:           (mem.rss/1048576).toFixed(1),
+      eventLoopMs:     Date.now() - t0,
+      uptime:          Math.floor(process.uptime()),
+    }, wsOk ? 200 : 503);
     return;
   }
 
-  if (cbIsOpen() && pathname.startsWith('/api/') && !pathname.startsWith('/api/external/')) {
-    sendJson(res, { success: false, msg_id: 'service_unavailable' }, 503);
-    return;
-  }
+  if (pathname === '/config.json') { await sendCachedConfigJson(res); return; }
+  if (pathname === '/api/code') { res.writeHead(200,{'Content-Type':'application/javascript; charset=utf-8','Cache-Control':'public, max-age=86400'}); res.end(''); return; }
 
-  if ((!mongoReady || !db) && pathname.startsWith('/api/')) {
-    sendError(res, 503, 'db_unavailable');
-    return;
-  }
+  if (cbIsOpen() && pathname.startsWith('/api/')) { sendJson(res, { success:false, msg_id:'service_unavailable' }, 503); return; }
+  if ((!mongoReady || !dbWS) && pathname.startsWith('/api/')) { sendError(res, 503, 'db_unavailable'); return; }
 
   try {
-    if (pathname === '/config.json') {
-      sendCachedConfigJson(res);
+    if (pathname === '/payt/webhook' && method === 'POST') { await handlePaytWebhook(req, res, ip); return; }
+
+    if (pathname.startsWith(R_EXT)) { await handleZvmExtension(req, res, pathname, ip); return; }
+    if (pathname.startsWith(R_ZVM_ADMIN)) { await handleZvmAdmin(req, res, pathname, ip, url); return; }
+    if (MODS.length > 0 && pathname.startsWith(R_ZVM_MOD)) { await handleZvmMod(req, res, pathname, ip); return; }
+    if (ZVM_ANALYTICS_PASS && pathname.startsWith(R_ANALYTICS)) { await handleZvmAnalytics(req, res, pathname, ip); return; }
+
+    if (pathname === '/client/status' && method === 'POST') {
+      if (!checkRateLimit(ip, 'api')) { sendJson(res, { error:'rate_limited' }, 429); return; }
+      const body = await parseBody(req);
+      const code = sanitizeInput(String(body.key||'').trim().toLowerCase(), 20);
+      if (!code) { sendJson(res, { error:'not_found' }, 404); return; }
+      if (!await ensureKeyLoaded(code)) { sendJson(res, { error:'not_found' }, 404); return; }
+      const k = keys[code];
+      sendJson(res, {
+        label:      k.label||'Cliente',
+        active:     k.active && !isKeyExpiredZvm(k),
+        expired:    isKeyExpiredZvm(k),
+        expiresAt:  k.expiresAt||null,
+        lastUsed:   k.lastUsed||null,
+        phones:     (k.phones||[]).length,
+        phoneList:  (k.phones||[]).map((ph,i)=>({idx:i,display:ph.replace(/(\d+)(\d{4})$/,'••••$2')})),
+        maxUses:    k.maxUses===-1?null:(k.maxUses>0?k.maxUses:MAX_USES),
+        hoursLeft:  hoursUntilExpiry(k),
+        daysLeft:   daysUntilExpiry(k),
+        deferred:   !!(k.expireDuration && !k.expiresAt),
+      });
       return;
     }
-
-    if (pathname === '/api/code') {
-      if (!res.headersSent) {
-        res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
-        res.end('');
-      }
-      return;
+    if (pathname === '/client/remove-phone' && method === 'POST') {
+      if (!checkRateLimit(ip, 'api')) { sendJson(res, { error:'rate_limited' }, 429); return; }
+      const body     = await parseBody(req);
+      const keyCode  = sanitizeInput(String(body.key||'').trim().toLowerCase(), 20);
+      const phoneIdx = body.phoneIdx != null ? parseInt(body.phoneIdx) : -1;
+      const phoneTxt = sanitizeInput(String(body.phone||'').trim(), 20);
+      if (!keyCode || (phoneIdx<0 && !phoneTxt)) { sendJson(res, { error:'bad_request' }, 400); return; }
+      if (!await ensureKeyLoaded(keyCode)) { sendJson(res, { error:'not_found' }, 404); return; }
+      const phone = resolvePhoneToRemove(keys[keyCode].phones||[], { phoneIdx, phoneTxt });
+      if (!phone) { sendJson(res, { error:'numero_nao_encontrado' }, 404); return; }
+      removePhoneFromKey(keys[keyCode], phone);
+      saveKey(keyCode).catch(()=>{});
+      sendJson(res, { ok:true, phones:keys[keyCode].phones }); return;
     }
 
-    if (pathname === '/obrigado') {
-      sendHtml(res, clientShell('Até logo!', `
-  <div class="card" style="max-width:540px;margin:0 auto;text-align:center;padding:48px 32px">
-    <div style="font-size:3rem;margin-bottom:16px">👋</div>
-    <h2 style="font-size:1.5rem;font-weight:800;margin-bottom:10px">Até logo!</h2>
-    <p style="color:var(--muted);font-size:.95rem;line-height:1.8;margin-bottom:24px">O WaSpeed foi desinstalado do seu navegador.</p>
-    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-      <a class="btn" href="https://chromewebstore.google.com/detail/${config.chromeStoreId}" target="_blank" rel="noopener">🔄 Reinstalar</a>
-      <a class="btn btn-ghost" href="/${config.chromeStoreId}/auth-painel">🔑 Minha conta</a>
-    </div>
-  </div>`));
-      return;
-    }
+    if (pathname === '/' || pathname === '') { sendHtml(res, renderPortal(WS_CHROME_ID)); return; }
+    if (pathname === '/faq' && method==='GET') { sendHtml(res, pubShell('FAQ — WaSpeed','<div class="card"><h2 style="color:#39ff14;margin-bottom:16px">FAQ</h2><p style="color:#5a8a6e">Perguntas frequentes em breve.</p></div>')); return; }
+    if (pathname === '/planos' && method==='GET') { sendHtml(res, pubShell('Planos — WaSpeed','<div class="card"><h2 style="color:#39ff14;margin-bottom:16px">Planos</h2><p style="color:#5a8a6e">Consulte nossos planos.</p></div>')); return; }
+    if (pathname === '/privacidade' && method==='GET') { sendHtml(res, pubShell('Privacidade — WaSpeed','<div class="card"><h2 style="color:#39ff14;margin-bottom:16px">Política de Privacidade</h2><p style="color:#5a8a6e">Seus dados são protegidos.</p></div>')); return; }
+    if (pathname === '/obrigado') { sendHtml(res, clientShell('Até logo!','<div class="card" style="text-align:center;padding:48px 28px"><div style="font-size:3rem;margin-bottom:16px">👋</div><h2 style="font-size:1.5rem;font-weight:800;margin-bottom:10px">Até logo!</h2><p style="color:#5a8a6e">O WaSpeed foi desinstalado.</p></div>')); return; }
 
-    if (pathname === '/' || pathname === '') {
-      sendHtml(res, renderPortal(config.chromeStoreId));
-      return;
-    }
+    if (pathname.startsWith(R_WS_MOD)) { await handleMod(req, res, pathname, ip); return; }
+    if (pathname.startsWith(R_WS_ADMIN)) { await handleAdmin(req, res, pathname, ip); return; }
 
-    if (pathname === '/faq' && method === 'GET') {
-      sendHtml(res, renderFaqPage());
-      return;
-    }
-
-    if (pathname === '/planos' && method === 'GET') {
-      sendHtml(res, renderPlanosPage());
-      return;
-    }
-
-    if (pathname === '/privacidade' && method === 'GET') {
-      sendHtml(res, renderPrivacyPage());
-      return;
-    }
-
-    if (pathname.startsWith('/utils/')) {
-      sendJson(res, { success: false, msg_id: 'not_configured' }, 501);
-      return;
-    }
-
-    if (await handleClientPanel(req, res, pathname, url)) return;
-
-    if (pathname.startsWith(R_MOD)) {
-      await handleMod(req, res, pathname, ip);
-      return;
-    }
-
-    if (pathname.startsWith(R_ADMIN)) {
-      await handleAdmin(req, res, pathname, ip);
-      return;
-    }
+    if (await handleClientPanel(req, res, pathname)) return;
 
     if (pathname.startsWith('/api/')) {
-      const handled = await handleWaSpeedApi(req, res, pathname, ip);
-      if (handled !== false) return;
-      sendJson(res, { success: false, msg_id: 'not_found' }, 404);
+      await handleWaSpeedApi(req, res, pathname, ip);
       return;
     }
 
-    if (!res.headersSent) {
-      sendJson(res, { success: false, error: 'not_found' }, 404);
-    }
-
+    if (!res.headersSent) sendJson(res, { success:false, error:'not_found' }, 404);
   } catch (err) {
     sendInternalError(res, err, pathname);
   }
 }
 
 function startAntiSleepCron() {
-  const base = config.publicUrl || config.baseUrl;
-  if (!base) { slog(LOG_LEVELS.WARN, 'PUBLIC_URL não definida — anti-sleep desativado'); return; }
-  const pingUrl = `${base.replace(/\/$/, '')}/ping`;
-  slog(LOG_LEVELS.INFO, `Anti-sleep ativo: GET ${pingUrl} a cada 5 min`);
+  const pingUrl = (WS_PUBLIC_URL || WS_BASE_URL).replace(/\/$/, '') + '/ping';
+  slog(LOG_LEVELS.INFO, `Anti-sleep: GET ${pingUrl} a cada 5min`);
   setInterval(() => {
     try {
-      const u    = new URL(pingUrl);
-      const opts = { hostname: u.hostname, path: u.pathname, method: 'GET' };
-      const mod  = pingUrl.startsWith('https') ? https : http;
-      const r    = mod.request(opts, (res) => res.resume());
-      r.on('error', () => {});
-      r.setTimeout(8000, () => r.destroy());
-      r.end();
+      const u   = new URL(pingUrl);
+      const mod = pingUrl.startsWith('https') ? https : http;
+      const r   = mod.request({ hostname: u.hostname, path: u.pathname, method: 'GET' }, res => res.resume());
+      r.on('error', () => {}); r.setTimeout(8000, () => r.destroy()); r.end();
     } catch {}
   }, ANTI_SLEEP_MS).unref();
 }
 
 async function shutdown(sig) {
-  slog(LOG_LEVELS.INFO, `${sig} — encerrando WaSpeed`);
+  slog(LOG_LEVELS.INFO, `${sig} — encerrando servidor unificado`);
   mongoReady = false;
-  try { if (mongoClient) await mongoClient.close(); }
-  catch (err) { slog(LOG_LEVELS.WARN, 'mongo close', { err: err.message }); }
+  try {
+    for (const [, tid] of _saveDebounce) clearTimeout(tid);
+    if (_mongoClient) await _mongoClient.close();
+  } catch (e) { slog(LOG_LEVELS.WARN, 'mongo close', { err: e.message }); }
   if (server) server.close(() => process.exit(0));
   else process.exit(0);
   setTimeout(() => process.exit(1), 10000).unref();
@@ -2920,34 +2667,39 @@ async function shutdown(sig) {
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT',  () => shutdown('SIGINT'));
-process.on('unhandledRejection', (reason, promise) => {
-  slog(LOG_LEVELS.CRITICAL, 'Unhandled Promise Rejection', { reason: String(reason) });
-  dispatchWebhookAlert('unhandled_rejection', { reason: String(reason) });
-});
-process.on('uncaughtException', (err) => {
-  slog(LOG_LEVELS.CRITICAL, 'Uncaught Exception', { err: err.message });
-  dispatchWebhookAlert('uncaught_exception', { err: err.message });
-  process.exit(1);
-});
+process.on('uncaughtException',  err => { slog(LOG_LEVELS.CRITICAL, 'uncaughtException',  { err: err.message }); dispatchWebhookAlert('uncaught_exception',  { err: err.message }); process.exit(1); });
+process.on('unhandledRejection', err => { slog(LOG_LEVELS.CRITICAL, 'unhandledRejection', { err: String(err) }); dispatchWebhookAlert('unhandled_rejection', { err: String(err) }); });
 
 async function bootstrap() {
-  slog(LOG_LEVELS.INFO, 'WaSpeed Server v4.0 — iniciando bootstrap');
+  slog(LOG_LEVELS.INFO, 'Servidor Unificado WaSpeed+ZVM v1.0 — iniciando');
+  if (!MONGODB_URI) { slog(LOG_LEVELS.CRITICAL, 'MONGODB_URI não definida'); process.exit(1); }
+
   try {
     await connectMongo();
+    slog(LOG_LEVELS.INFO, 'MongoDB conectado', { zvmDb: 'zapvoice', wsDb: WS_DB_NAME });
     await initSeed();
     mongoReady = true;
-    slog(LOG_LEVELS.INFO, 'MongoDB pronto', { db: config.dbName });
   } catch (err) {
-    slog(LOG_LEVELS.CRITICAL, 'Falha no bootstrap', { err: err.message });
+    slog(LOG_LEVELS.CRITICAL, 'Falha no connect MongoDB', { err: err.message });
     process.exit(1);
   }
 
+  try {
+    const loaded = await loadDb();
+    keys = loaded.keys || {};
+    logs = loaded.logs || [];
+    for (const code of Object.keys(keys)) sanitizeKeyRecord(keys[code]);
+    slog(LOG_LEVELS.INFO, `ZVM: ${Object.keys(keys).length} chaves | ${logs.length} logs`);
+  } catch (err) {
+    slog(LOG_LEVELS.WARN, 'loadDb falhou — iniciando vazio', { err: err.message });
+  }
+
   server = http.createServer((req, res) => {
-    handleRequest(req, res).catch((err) => {
-      slog(LOG_LEVELS.CRITICAL, 'Unhandled request error', { err: err?.message, stack: err?.stack });
+    handleRequest(req, res).catch(err => {
+      slog(LOG_LEVELS.CRITICAL, 'Unhandled request error', { err: err && err.message, url: req.url });
       if (!res.headersSent) {
-        const errorId = crypto.randomBytes(8).toString('hex');
-        sendJson(res, { success: false, msg_id: 'server_error', error_id: errorId }, 500);
+        const eid = crypto.randomBytes(8).toString('hex');
+        sendJson(res, { success: false, msg_id: 'server_error', error_id: eid }, 500);
       }
     });
   });
@@ -2957,14 +2709,22 @@ async function bootstrap() {
     slog(LOG_LEVELS.WARN, 'clientError', { err: err.message });
     if (!socket.destroyed) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
   });
-  server.listen(config.port, '0.0.0.0', () => {
-    slog(LOG_LEVELS.INFO, `WaSpeed Server v4.0 ouvindo na porta ${config.port}`);
-    slog(LOG_LEVELS.INFO, `Health : ${config.baseUrl}/health`);
+  server.listen(PORT, '0.0.0.0', () => {
+    slog(LOG_LEVELS.INFO, `Servidor ouvindo na porta ${PORT}`);
+    slog(LOG_LEVELS.INFO, `ZVM Admin:     ${R_ZVM_ADMIN}`);
+    slog(LOG_LEVELS.INFO, `ZVM Mod:       ${MODS.length>0 ? R_ZVM_MOD+' ('+MODS.length+' mods)' : 'inativo'}`);
+    slog(LOG_LEVELS.INFO, `ZVM Analytics: ${ZVM_ANALYTICS_PASS ? R_ANALYTICS : 'inativo'}`);
+    slog(LOG_LEVELS.INFO, `ZVM Extension: ${R_EXT}/v3/key`);
+    slog(LOG_LEVELS.INFO, `WS Admin:      ${R_WS_ADMIN}`);
+    slog(LOG_LEVELS.INFO, `WS Mod:        ${R_WS_MOD}`);
+    slog(LOG_LEVELS.INFO, `PAYT Webhook:  /payt/webhook${ZVM_PAYT_SECRET?' (auth)':' (aberto)'}`);
+    slog(LOG_LEVELS.INFO, `TOTP ZVM:      ${ZVM_TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'}`);
+    slog(LOG_LEVELS.INFO, `HMAC slugs:    ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO — rotas em modo padrão'}`);
     startAntiSleepCron();
   });
 }
 
-bootstrap().catch((err) => {
+bootstrap().catch(err => {
   slog(LOG_LEVELS.CRITICAL, 'bootstrap fatal', { err: err.message });
   process.exit(1);
 });
