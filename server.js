@@ -1138,12 +1138,16 @@ const EMPTY_AUTH_GOOGLE = {
 
 function buildUserPremium(code, rec) {
   const st = keyStatus(rec);
+  if (!rec.premium || (st !== 'active' && st !== 'expiring_soon')) return null;
   return {
-    plan:     rec.premium ? 'pro' : 'free',
-    active:   st === 'active',
-    features: rec.premium ? ['all'] : [],
+    id_assinatura: String(rec.user_id || code),
+    data_liberacao: (rec.createdAt ? new Date(rec.createdAt) : new Date()).toISOString().slice(0, 10),
+    teste: '0',
+    plan: 'pro',
+    active: true,
+    features: ['all'],
     expiresAt: rec.expiresAt || null,
-    maxUses:  rec.maxUses != null ? rec.maxUses : -1,
+    maxUses: rec.maxUses != null ? rec.maxUses : -1,
   };
 }
 
@@ -1582,10 +1586,11 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
 
   if (pathname === '/api/probe/label' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
-    const body = await readJson(req);
-    const raw  = String(body.label || '');
+    const rawBody = await readBody(req);
+    let raw = '';
+    try { const parsed = JSON.parse(rawBody); raw = String(parsed.label || ''); } catch { raw = ''; }
     if (raw.length > 60) { sendJson(res, { error: 'label_too_long' }, 400); return; }
-    if (detectInjection(raw)) { sendJson(res, { error: 'nosql_injection_detected' }, 400); return; }
+    if (NOSQL_OP_RE.test(raw)) { sendJson(res, { error: 'nosql_injection_detected' }, 400); return; }
     sendJson(res, { ok: true });
     return;
   }
@@ -1663,7 +1668,7 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     }
     if (!checkRateLimit(ip, 'login')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
     const body    = await readJson(req);
-    const rawCode = String(body.email || body.access_token_plugin || body.key || '');
+    const rawCode = String(body.email || body.access_token_plugin || body.key || '').replace(/@waspeed\.local$/i, '');
     const code    = normKey(sanitizeInput(rawCode, 60));
     if (!code) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
     const rec = await findKey(code);
