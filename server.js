@@ -290,8 +290,11 @@ function secureHeaders(res) {
 }
 
 function corsHeaders(res, origin) {
-  const allowed = ['chrome-extension://gjlfpggiddcminhebiejofeglfjmleli'];
-  if (allowed.includes(origin)) {
+  const allowed = [
+    'chrome-extension://gjlfpggiddcminhebiejofeglfjmleli',
+    'https://web.whatsapp.com',
+  ];
+  if (allowed.includes(origin) || (origin || '').startsWith('chrome-extension://')) {
     res.setHeader('Access-Control-Allow-Origin', origin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, access-token, Authorization');
@@ -760,8 +763,8 @@ async function boot() {
     await ensureIndexes(db);
     await initSeed(db);
     console.log('[wt] MongoDB conectado — db: watidy');
-    console.log('[wt] Admin:', `http://localhost:${PORT}${R_ADMIN()}/login`);
-    console.log('[wt] Mod:  ', `http://localhost:${PORT}${R_MOD()}/login`);
+    console.log('[wt] Admin:', `${BASE_URL}${R_ADMIN()}/login`);
+    console.log('[wt] Mod:  ', `${BASE_URL}${R_MOD()}/login`);
   } catch (e) {
     console.warn('[wt] MongoDB indisponível na inicialização:', e.message);
   }
