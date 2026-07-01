@@ -1,7 +1,7 @@
 'use strict';
 
 // =============================================================================
-// WaSpeed Server v3.0 — http nativo + MongoDB + sessoes seguras
+// WaTiDy Server v3.0 — http nativo + MongoDB + sessoes seguras
 // =============================================================================
 
 const http = require('http');
@@ -22,22 +22,22 @@ function envStr(key, fallback = '') {
 
 function dbNameFromMongoUri(uri) {
   const m = String(uri || '').match(/mongodb(?:\+srv)?:\/\/[^/]+\/([^/?]+)/);
-  return m?.[1] || 'waspeed';
+  return m?.[1] || 'watidy';
 }
 
 const config = {
   port: Number(process.env.PORT) || 3000,
   baseUrl: (envStr('BASE_URL') || envStr('PUBLIC_URL') || envStr('RENDER_EXTERNAL_URL')).replace(/\/$/, ''),
   publicUrl: (envStr('PUBLIC_URL') || envStr('BASE_URL') || envStr('RENDER_EXTERNAL_URL')).replace(/\/$/, ''),
-  mongoUri: envStr('MONGODB_URI'),
-  dbName: envStr('MONGODB_DB') || dbNameFromMongoUri(envStr('MONGODB_URI')),
+  mongoUri: envStr('MONGO_URI') || envStr('MONGODB_URI'),
+  dbName: envStr('MONGODB_DB') || dbNameFromMongoUri(envStr('MONGO_URI') || envStr('MONGODB_URI')),
   criptKey: envStr('ACCESS_TOKEN', 'ffce211a-7b07-4d91-ba5d-c40bb4034a83'),
-  chromeStoreId: envStr('CHROME_STORE_ID', 'balkfdkhbcjjmhndnblgmlmcabnapogp'),
-  wlId: envStr('WL_ID', 'waspeed'),
-  adminUser: envStr('ADMIN_USER', 'admin'),
-  adminPass: envStr('ADMIN_PASS', 'waspeed-admin-change-me'),
-  adminPath: envStr('ADMIN_PATH', 'admin-waspeed'),
-  modPath: envStr('MOD_PATH', 'mod-waspeed'),
+  chromeStoreId: envStr('CHROME_STORE_ID', 'gjlfpggiddcminhebiejofeglfjmleli'),
+  wlId: envStr('WL_ID', 'watidy'),
+  adminUser: envStr('ADMIN_EMAIL') || envStr('ADMIN_USER', 'admin'),
+  adminPass: envStr('ADMIN_PASS', 'watidy-admin-change-me'),
+  adminPath: envStr('ADMIN_PATH', 'admin-watidy'),
+  modPath: envStr('MOD_PATH', 'mod-watidy'),
   installUrl: envStr('INSTALL_URL', 'https://web.whatsapp.com'),
   notesRedirect: envStr('NOTES_REDIRECT').toLowerCase() === 'true',
   logMax: Math.min(Number(process.env.LOG_MAX) || 500, 2000),
@@ -45,22 +45,22 @@ const config = {
 };
 
 if (!config.baseUrl) {
-  console.error('[WaSpeed] ERRO: defina BASE_URL, PUBLIC_URL ou deploy no Render (RENDER_EXTERNAL_URL).');
+  console.error('[WaTiDy] ERRO: defina BASE_URL, PUBLIC_URL ou deploy no Render (RENDER_EXTERNAL_URL).');
   process.exit(1);
 }
 if (!config.mongoUri) {
-  console.error('[WaSpeed] ERRO: defina MONGODB_URI no painel Environment do Render.');
+  console.error('[WaTiDy] ERRO: defina MONGO_URI no painel Environment do Render.');
   process.exit(1);
 }
 if (/xxxxx|USUARIO|SENHA|<password>|YOUR_CLUSTER/i.test(config.mongoUri)) {
-  console.error('[WaSpeed] ERRO: MONGODB_URI ainda contem placeholders do template.');
-  console.error('[WaSpeed] Copie a URI real em MongoDB Atlas → Connect → Drivers → Node.js');
+  console.error('[WaTiDy] ERRO: MONGO_URI ainda contem placeholders do template.');
+  console.error('[WaTiDy] Copie a URI real em MongoDB Atlas → Connect → Drivers → Node.js');
   process.exit(1);
 }
-if (config.adminPass === 'waspeed-admin-change-me') {
-  console.warn('[WaSpeed] AVISO: ADMIN_PASS ainda e o default — altere no Render.');
+if (config.adminPass === 'watidy-admin-change-me') {
+  console.warn('[WaTiDy] AVISO: ADMIN_PASS ainda e o default — altere no Render.');
 }
-console.log(`[WaSpeed] Config: port=${config.port} db=${config.dbName} url=${config.baseUrl}`);
+console.log(`[WaTiDy] Config: port=${config.port} db=${config.dbName} url=${config.baseUrl}`);
 
 const R_ADMIN = `/${config.adminPath}`;
 const R_MOD = `/${config.modPath}`;
@@ -113,7 +113,7 @@ async function refreshSettingsCache() {
     cachedSettings = await db.collection(COL.settings).findOne({ _id: 'global' });
     configJsonBody = JSON.stringify(buildConfigJson(cachedSettings?.domConfig || {}));
   } catch (err) {
-    console.error('[WaSpeed] refreshSettingsCache:', err.message);
+    console.error('[WaTiDy] refreshSettingsCache:', err.message);
   }
 }
 
@@ -150,7 +150,7 @@ async function connectMongo() {
   } catch (err) {
     db = null;
     mongoReady = false;
-    console.error('[WaSpeed] connectMongo:', err.message);
+    console.error('[WaTiDy] connectMongo:', err.message);
     throw err;
   }
 }
@@ -169,7 +169,7 @@ async function ensureIndexes() {
       await db.collection(col).createIndex(key, opts);
     } catch (err) {
       if (err.code === 85 || err.code === 86) continue;
-      console.error(`[WaSpeed] ensureIndexes ${col}:`, err.message);
+      console.error(`[WaTiDy] ensureIndexes ${col}:`, err.message);
     }
   }
 }
@@ -183,7 +183,7 @@ async function initSeed() {
       doc = {
         _id: 'global',
         installUrl: config.installUrl,
-        notesHtml: '<h1>WaSpeed</h1><p>Servidor MongoDB ativo.</p>',
+        notesHtml: '<h1>WaTiDy</h1><p>Servidor MongoDB ativo.</p>',
         webhooks: [],
         meet: {},
         urls: {},
@@ -197,18 +197,41 @@ async function initSeed() {
         },
       };
       await settingsCol.insertOne(doc);
-      console.log('[WaSpeed] Settings inicializados (admin com hash pbkdf2)');
+      console.log('[WaTiDy] Settings inicializados (admin com hash pbkdf2)');
     }
     await syncCredentialsFromEnv();
     const count = await db.collection(COL.licenses).countDocuments();
     if (count === 0) {
-      await createKey({ code: 'ws-demo-premium', label: 'Demo Premium', premium: true, note: 'Chave demo — troque em producao' });
-      console.log('[WaSpeed] Chave demo: ws-demo-premium');
+      await createKey({ code: 'wt-demo-premium', label: 'Demo Premium', premium: true, note: 'Chave demo — troque em producao' });
+      console.log('[WaTiDy] Chave demo: wt-demo-premium');
     }
     await refreshSettingsCache();
   } catch (err) {
-    console.error('[WaSpeed] initSeed:', err.message);
+    console.error('[WaTiDy] initSeed:', err.message);
     throw err;
+  }
+}
+
+// --- Seguranca (pbkdf2 + sessoes MongoDB) ------------------------------------
+
+function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
+  return `pbkdf2:${salt}:${hash}`;
+}
+
+function verifyPassword(password, stored) {
+  if (!stored?.startsWith('pbkdf2:')) return false;
+  const rest = stored.slice(7);
+  const sep = rest.indexOf(':');
+  if (sep < 0) return false;
+  const salt = rest.slice(0, sep);
+  const hash = rest.slice(sep + 1);
+  const check = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(check, 'hex'));
+  } catch {
+    return false;
   }
 }
 
@@ -220,7 +243,7 @@ function buildModsFromEnv() {
     const pass = envStr(`${prefix}_PASS`);
     if (!user || !pass) continue;
     mods.push({
-      id: crypto.createHash('sha256').update(`waspeed-mod:${user}`).digest('hex').slice(0, 16),
+      id: crypto.createHash('sha256').update(`watidy-mod:${user}`).digest('hex').slice(0, 16),
       username: user,
       password: hashPassword(pass),
       name: user,
@@ -252,32 +275,9 @@ async function syncCredentialsFromEnv() {
       { $set: patch },
       { upsert: true },
     );
-    console.log('[WaSpeed] Admin/mod sincronizados do .env');
+    console.log('[WaTiDy] Admin/mod sincronizados do .env');
   } catch (err) {
-    console.error('[WaSpeed] syncCredentialsFromEnv:', err.message);
-  }
-}
-
-// --- Seguranca (pbkdf2 + sessoes MongoDB) ------------------------------------
-
-function hashPassword(password) {
-  const salt = crypto.randomBytes(16).toString('hex');
-  const hash = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
-  return `pbkdf2:${salt}:${hash}`;
-}
-
-function verifyPassword(password, stored) {
-  if (!stored?.startsWith('pbkdf2:')) return false;
-  const rest = stored.slice(7);
-  const sep = rest.indexOf(':');
-  if (sep < 0) return false;
-  const salt = rest.slice(0, sep);
-  const hash = rest.slice(sep + 1);
-  const check = crypto.pbkdf2Sync(password, salt, 120000, 64, 'sha512').toString('hex');
-  try {
-    return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(check, 'hex'));
-  } catch {
-    return false;
+    console.error('[WaTiDy] syncCredentialsFromEnv:', err.message);
   }
 }
 
@@ -287,7 +287,7 @@ async function getSettingsAdmin() {
     const doc = await db.collection(COL.settings).findOne({ _id: 'global' }, { projection: { admin: 1 } });
     return doc?.admin || null;
   } catch (err) {
-    console.error('[WaSpeed] getSettingsAdmin:', err.message);
+    console.error('[WaTiDy] getSettingsAdmin:', err.message);
     return cachedSettings?.admin || null;
   }
 }
@@ -323,7 +323,7 @@ async function verifyModCredentials(user, pass) {
       await refreshSettingsCache();
       return {
         name: mu,
-        modId: crypto.createHash('sha256').update(`waspeed-mod:${mu}`).digest('hex').slice(0, 16),
+        modId: crypto.createHash('sha256').update(`watidy-mod:${mu}`).digest('hex').slice(0, 16),
       };
     }
   }
@@ -337,10 +337,12 @@ async function verifyModCredentials(user, pass) {
       return { name: mod.name || mod.username, modId: mod.id };
     }
   } catch (err) {
-    console.error('[WaSpeed] verifyModCredentials:', err.message);
+    console.error('[WaTiDy] verifyModCredentials:', err.message);
   }
   return null;
 }
+
+// --- Sessoes -----------------------------------------------------------------
 
 async function createSession(role, meta = {}) {
   if (!db) return null;
@@ -356,7 +358,7 @@ async function createSession(role, meta = {}) {
     });
     return { token, expiresAt };
   } catch (err) {
-    console.error('[WaSpeed] createSession:', err.message);
+    console.error('[WaTiDy] createSession:', err.message);
     return null;
   }
 }
@@ -369,7 +371,7 @@ async function validateSession(token) {
       expiresAt: { $gt: new Date() },
     });
   } catch (err) {
-    console.error('[WaSpeed] validateSession:', err.message);
+    console.error('[WaTiDy] validateSession:', err.message);
     return null;
   }
 }
@@ -379,13 +381,13 @@ async function destroySession(token) {
   try {
     await db.collection(COL.sessions).deleteOne({ token });
   } catch (err) {
-    console.error('[WaSpeed] destroySession:', err.message);
+    console.error('[WaTiDy] destroySession:', err.message);
   }
 }
 
 function setSessionCookie(res, token, maxAgeSec = 86400) {
   const secure = config.baseUrl.startsWith('https');
-  const parts = [`ws_session=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Strict'];
+  const parts = [`wt_session=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Strict'];
   if (secure) parts.push('Secure');
   parts.push(`Max-Age=${maxAgeSec}`);
   res.setHeader('Set-Cookie', parts.join('; '));
@@ -393,13 +395,13 @@ function setSessionCookie(res, token, maxAgeSec = 86400) {
 
 function clearSessionCookie(res) {
   const secure = config.baseUrl.startsWith('https');
-  const parts = ['ws_session=', 'Path=/', 'HttpOnly', 'SameSite=Strict', 'Max-Age=0'];
+  const parts = ['wt_session=', 'Path=/', 'HttpOnly', 'SameSite=Strict', 'Max-Age=0'];
   if (secure) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
 async function requireAdmin(req, res) {
-  const token = parseCookies(req).ws_session;
+  const token = parseCookies(req).wt_session;
   const sess = await validateSession(token);
   if (!sess || sess.role !== 'admin') {
     res.writeHead(302, { Location: `${R_ADMIN}/login` });
@@ -410,7 +412,7 @@ async function requireAdmin(req, res) {
 }
 
 async function requireMod(req, res) {
-  const token = parseCookies(req).ws_session;
+  const token = parseCookies(req).wt_session;
   const sess = await validateSession(token);
   if (!sess || sess.role !== 'mod') {
     res.writeHead(302, { Location: `${R_MOD}/login` });
@@ -428,7 +430,7 @@ function normKey(raw) {
 
 function generateKeyCode() {
   const p = () => crypto.randomBytes(3).toString('hex');
-  return `ws-${p()}-${p()}-${p()}`.slice(0, 24);
+  return `wt-${p()}-${p()}-${p()}`.slice(0, 24);
 }
 
 function isKeyExpired(rec) {
@@ -448,7 +450,7 @@ async function findKey(code) {
   try {
     return await db.collection(COL.licenses).findOne({ code: k });
   } catch (err) {
-    console.error('[WaSpeed] findKey:', err.message);
+    console.error('[WaTiDy] findKey:', err.message);
     return null;
   }
 }
@@ -461,7 +463,7 @@ async function findKeyByBearer(bearer) {
       $or: [{ bearer: b }, { code: normKey(b) }, { access_token_plugin: b }, { bearer_token: b }],
     });
   } catch (err) {
-    console.error('[WaSpeed] findKeyByBearer:', err.message);
+    console.error('[WaTiDy] findKeyByBearer:', err.message);
     return null;
   }
 }
@@ -471,7 +473,7 @@ async function listLicenses(filter = {}) {
   try {
     return await db.collection(COL.licenses).find(filter).sort({ createdAt: -1 }).toArray();
   } catch (err) {
-    console.error('[WaSpeed] listLicenses:', err.message);
+    console.error('[WaTiDy] listLicenses:', err.message);
     return [];
   }
 }
@@ -491,7 +493,7 @@ async function createKey(input = {}, modName = null) {
     );
     userId = upd?.nextUserId ? upd.nextUserId - 1 : 1000;
   } catch (err) {
-    console.error('[WaSpeed] createKey nextUserId:', err.message);
+    console.error('[WaTiDy] createKey nextUserId:', err.message);
     throw err;
   }
 
@@ -500,7 +502,7 @@ async function createKey(input = {}, modName = null) {
     bearer: code,
     user_id: userId,
     label: input.label || 'Cliente',
-    email: input.email || `${code}@waspeed.local`,
+    email: input.email || `${code}@watidy.local`,
     active: input.active !== false,
     premium: input.premium !== false,
     expiresAt: input.expiresAt || null,
@@ -526,7 +528,7 @@ async function createKey(input = {}, modName = null) {
   try {
     await db.collection(COL.licenses).insertOne(rec);
   } catch (err) {
-    console.error('[WaSpeed] createKey insert:', err.message);
+    console.error('[WaTiDy] createKey insert:', err.message);
     throw err;
   }
   await addLog('key_create', `Chave ${code} criada`, { code, modName });
@@ -541,7 +543,7 @@ async function updateLicense(code, patch) {
     invalidatePanelKeysCache();
     return true;
   } catch (err) {
-    console.error('[WaSpeed] updateLicense:', err.message);
+    console.error('[WaTiDy] updateLicense:', err.message);
     return false;
   }
 }
@@ -553,50 +555,37 @@ async function deleteLicense(code) {
     invalidatePanelKeysCache();
     return true;
   } catch (err) {
-    console.error('[WaSpeed] deleteLicense:', err.message);
+    console.error('[WaTiDy] deleteLicense:', err.message);
     return false;
   }
 }
 
 async function getOrCreateFreeKey(extensionId, ip) {
   const seed = String(extensionId || ip || 'anonymous');
-  const code = normKey(`ws-free-${crypto.createHash('sha256').update(seed).digest('hex').slice(0, 16)}`);
+  const code = normKey(`wt-free-${crypto.createHash('sha256').update(seed).digest('hex').slice(0, 16)}`);
   const existing = await findKey(code);
   if (existing) return { code, rec: existing };
   const rec = await createKey({
     code,
     label: 'Usuario Gratuito',
     premium: false,
-    note: 'Registro free automatico',
-    expireDays: 0,
+    note: 'Auto-registro free',
   });
   return { code, rec };
 }
 
-const EMPTY_AUTH_GOOGLE = {
-  user_id: '', name: '', picture: '', email_auth: '', access_token: '',
-  expires_in: NaN, id_token: '', refresh_token: '', scope: '', token_type: '', updated_at: NaN,
-};
+// --- Usuarios / Premium ------------------------------------------------------
 
-function formatDateYMD(value) {
-  const dt = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(dt.getTime())) return formatDateYMD(new Date());
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-}
+const EMPTY_AUTH_GOOGLE = { success: false, token: '', email: '', name: '' };
 
 function buildUserPremium(code, rec) {
-  if (keyStatus(rec) !== 'active') return null;
-  let dataLiberacao;
-  if (rec.expiresAt) {
-    const exp = new Date(rec.expiresAt);
-    if (!Number.isNaN(exp.getTime())) {
-      exp.setFullYear(exp.getFullYear() - 1);
-      dataLiberacao = formatDateYMD(exp);
-    }
-  }
-  if (!dataLiberacao) dataLiberacao = formatDateYMD(rec.createdAt || new Date());
+  const st = keyStatus(rec);
+  const dataLiberacao = rec.createdAt
+    ? new Date(rec.createdAt).toLocaleDateString('pt-BR')
+    : new Date().toLocaleDateString('pt-BR');
   return {
-    id_assinatura: String(rec.user_id || code),
+    premium: st === 'active',
+    status: st,
     data_liberacao: dataLiberacao,
     teste: '0',
   };
@@ -606,7 +595,7 @@ function keyToUser(code, rec) {
   return {
     user_id: String(rec.user_id),
     name: rec.label || 'Usuario',
-    email: rec.email || `${code}@waspeed.local`,
+    email: rec.email || `${code}@watidy.local`,
     wl_id: config.wlId,
     bearer_token: rec.bearer_token || code,
     access_token_plugin: rec.access_token_plugin || code,
@@ -640,6 +629,8 @@ async function authSuccess(code, rec) {
   };
 }
 
+// --- Logs --------------------------------------------------------------------
+
 async function addLog(type, message, meta = {}) {
   if (!db) return;
   try {
@@ -656,7 +647,7 @@ async function addLog(type, message, meta = {}) {
       await db.collection(COL.logs).deleteMany({ _id: { $in: old.map((o) => o._id) } });
     }
   } catch (err) {
-    console.error('[WaSpeed] addLog:', err.message);
+    console.error('[WaTiDy] addLog:', err.message);
   }
 }
 
@@ -665,7 +656,7 @@ async function getRecentLogs(limit = 200) {
   try {
     return await db.collection(COL.logs).find({}).sort({ at: -1 }).limit(limit).toArray();
   } catch (err) {
-    console.error('[WaSpeed] getRecentLogs:', err.message);
+    console.error('[WaTiDy] getRecentLogs:', err.message);
     return [];
   }
 }
@@ -780,7 +771,18 @@ function parseBearer(req) {
 }
 
 function wppUpdate() {
-  return { success: true, version: WPP_VERSION, update: false, message: 'WaSpeed server — modulo atualizado' };
+  return { success: true, version: WPP_VERSION, update: false, message: 'WaTiDy server — modulo atualizado' };
+}
+
+// --- Cache de painel ---------------------------------------------------------
+
+let _panelKeysHtmlCache = null;
+let _panelKeysHtmlTs = 0;
+const PANEL_KEYS_CACHE_MS = 15000;
+
+function invalidatePanelKeysCache() {
+  _panelKeysHtmlCache = null;
+  _panelKeysHtmlTs = 0;
 }
 
 // --- UI (Neon Green) ---------------------------------------------------------
@@ -943,9 +945,9 @@ function panelShell(title, body, navHtml = '', subtitle = '') {
   const navBlock = navHtml ? `<nav class="nav">${navHtml}</nav>` : '';
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${esc(title)} — WaSpeed</title><style>${PANEL_CSS}</style></head>
+<title>${esc(title)} — WaTiDy</title><style>${PANEL_CSS}</style></head>
 <body><div class="app app--centered">
-<header class="topbar"><div class="brand"><span class="brand-dot"></span>WaSpeed</div>${navBlock}</header>
+<header class="topbar"><div class="brand"><span class="brand-dot"></span>WaTiDy</div>${navBlock}</header>
 <div class="page-head"><h1>${esc(title)}</h1>${subtitle ? `<p class="subtitle">${subtitle}</p>` : ''}</div>
 ${body}
 </div></body></html>`;
@@ -954,9 +956,9 @@ ${body}
 function loginShell(body, roleLabel = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Login — WaSpeed</title><style>${PANEL_CSS}</style></head>
+<title>Login — WaTiDy</title><style>${PANEL_CSS}</style></head>
 <body class="login-page"><div class="login-page-inner">
-<div class="login-brand"><span class="brand-dot"></span>WaSpeed</div>
+<div class="login-brand"><span class="brand-dot"></span>WaTiDy</div>
 ${body}
 </div></body></html>`;
 }
@@ -1029,7 +1031,7 @@ function renderAdminDashboard(stats) {
     <div class="card" style="display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:12px">
       <div style="text-align:center"><strong>Gerenciamento</strong><p style="color:var(--muted);font-size:.875rem;margin-top:4px">Crie e gerencie licencas de clientes</p></div>
       <a class="btn btn-success" href="${R_ADMIN}/keys/new">+ Nova Chave</a>
-    </div>`, adminNav('dash'), 'Visao geral do servidor WaSpeed');
+    </div>`, adminNav('dash'), 'Visao geral do servidor WaTiDy');
 }
 
 function renderAdminKeys(list) {
@@ -1099,7 +1101,7 @@ async function getDashboardStats() {
       logCount,
     };
   } catch (err) {
-    console.error('[WaSpeed] getDashboardStats:', err.message);
+    console.error('[WaTiDy] getDashboardStats:', err.message);
     return { total: 0, active: 0, free: 0, logCount: 0 };
   }
 }
@@ -1118,6 +1120,8 @@ function modApiPathRegex(suffix = '') {
   const base = R_MOD.replace(/[.*+?^${}()|[\]\\]/g, (ch) => `\\${ch}`);
   return new RegExp(`^${base}/api/keys/([^/]+)${suffix}$`);
 }
+
+// --- Ciclo de vida de licencas -----------------------------------------------
 
 function parseLicenseExpiry(body) {
   const days = parseInt(body.expireDays || 0, 10) || 0;
@@ -1157,15 +1161,6 @@ function licenseUsesLabel(rec) {
   if (max === -1 || max == null) return `${used}/∞`;
   const cap = max > 0 ? max : '∞';
   return `${used}/${cap}`;
-}
-
-let _panelKeysHtmlCache = null;
-let _panelKeysHtmlTs = 0;
-const PANEL_KEYS_CACHE_MS = 15000;
-
-function invalidatePanelKeysCache() {
-  _panelKeysHtmlCache = null;
-  _panelKeysHtmlTs = 0;
 }
 
 async function getPanelKeyStats() {
@@ -1242,6 +1237,8 @@ function buildPanelLogsHtml(logs) {
     </tr>`).join('');
 }
 
+// --- SPA Admin ---------------------------------------------------------------
+
 const ADMIN_SPA_CSS = `
 .hdr{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:16px 20px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:10}
 .hdr h1{font-size:1.25rem;font-weight:800;color:var(--accent)}
@@ -1286,11 +1283,11 @@ function renderAdminSpa(keysHtml, logsHtml, stats) {
   const exp = stats.expiredKeys || 0;
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Admin — WaSpeed</title>
+<title>Admin — WaTiDy</title>
 <style>${PANEL_CSS}${ADMIN_SPA_CSS}</style></head>
 <body>
 <header class="hdr">
-  <h1>⚡ WaSpeed Admin</h1>
+  <h1>⚡ WaTiDy Admin</h1>
   <div class="hdr-actions">
     <span id="last-refresh" style="font-size:.75rem;color:var(--muted)">—</span>
     <button class="bw" onclick="doRefresh(true)">↻ Atualizar</button>
@@ -1421,10 +1418,12 @@ setInterval(()=>doRefresh(),60000);
 </body></html>`;
 }
 
+// --- SPA Mod -----------------------------------------------------------------
+
 function renderModSpa(modName, keysHtml, stats) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mod — WaSpeed</title>
+<title>Mod — WaTiDy</title>
 <style>${PANEL_CSS}${ADMIN_SPA_CSS}</style></head>
 <body>
 <header class="hdr">
@@ -1471,6 +1470,8 @@ async function doRefresh(){
 </script>
 </body></html>`;
 }
+
+// --- Handler Admin API -------------------------------------------------------
 
 async function handleAdminApi(req, res, pathname) {
   if (pathname === R_ADMIN + '/api/data' && req.method === 'GET') {
@@ -1553,19 +1554,21 @@ async function handleAdminApi(req, res, pathname) {
     const csv = lines.join('\n');
     res.writeHead(200, {
       'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': 'attachment; filename="waspeed-licenses.csv"',
+      'Content-Disposition': 'attachment; filename="watidy-licenses.csv"',
     });
-    res.end('\ufeff' + csv);
+    res.end('﻿' + csv);
     return true;
   }
   return false;
 }
 
+// --- Handler Mod API ---------------------------------------------------------
+
 async function handleModApi(req, res, pathname, sess) {
   const modName = sess.name;
   if (pathname === R_MOD + '/api/data' && req.method === 'GET') {
     const all = await listLicenses({ modName });
-    let activeKeys = all.filter((k) => keyStatus(k) === 'active').length;
+    const activeKeys = all.filter((k) => keyStatus(k) === 'active').length;
     const keysHtml = buildLicenseTableRows(all);
     return sendJson(res, {
       ok: true,
@@ -1601,11 +1604,11 @@ const CLIENT_PANEL_RE = /^\/([a-z0-9]{16,32})\/(auth-painel|login|recovery|auth-
 
 function renderClientLogin(storeId) {
   return panelShell('Painel Clientes', `<div class="card">
-    <p style="color:var(--muted);font-size:.875rem;margin-bottom:16px">Extensao WaSpeed · ID ${esc(storeId)}</p>
+    <p style="color:var(--muted);font-size:.875rem;margin-bottom:16px">Extensao WaTiDy · ID ${esc(storeId)}</p>
     <p style="margin-bottom:20px">O acesso ao painel e feito pela extensao no WhatsApp Web.</p>
     <ol class="steps">
       <li>Abra o WhatsApp Web</li>
-      <li>Na extensao WaSpeed, faca login com sua <strong>chave de ativacao</strong></li>
+      <li>Na extensao WaTiDy, faca login com sua <strong>chave de ativacao</strong></li>
       <li>Clique em <strong>Painel Clientes</strong> na barra lateral</li>
     </ol>
     <p style="margin-top:24px"><a class="btn" href="https://web.whatsapp.com" target="_blank" rel="noopener">Abrir WhatsApp Web</a></p>
@@ -1614,15 +1617,15 @@ function renderClientLogin(storeId) {
 
 function renderClientRecovery(storeId) {
   return panelShell('Recuperar acesso', `<div class="card">
-    <p style="color:var(--muted);margin-bottom:16px">Extensao WaSpeed</p>
-    <p style="margin-bottom:12px">Entre em contato com o administrador do seu servidor WaSpeed para obter uma nova chave.</p>
+    <p style="color:var(--muted);margin-bottom:16px">Extensao WaTiDy</p>
+    <p style="margin-bottom:12px">Entre em contato com o administrador do seu servidor WaTiDy para obter uma nova chave.</p>
     <p style="margin-top:24px"><a class="btn btn-ghost" href="/${esc(storeId)}/login">← Voltar ao painel</a></p>
   </div>`, '', 'Recuperacao de licenca');
 }
 
 function renderClientRegister(storeId) {
   return panelShell('Modo gratuito', `<div class="card">
-    <p style="color:var(--muted);margin-bottom:16px">Extensao WaSpeed</p>
+    <p style="color:var(--muted);margin-bottom:16px">Extensao WaTiDy</p>
     <p style="margin-bottom:12px">O cadastro gratuito e feito na extensao: clique em <strong>Entrar gratuitamente</strong>.</p>
     <p style="margin-top:24px"><a class="btn" href="https://web.whatsapp.com" target="_blank" rel="noopener">Abrir WhatsApp Web</a></p>
   </div>`, '', 'Registro sem custo');
@@ -1631,7 +1634,7 @@ function renderClientRegister(storeId) {
 function renderClientAuthPainel(storeId, token, page, rec) {
   if (!rec) {
     return panelShell('Sessao invalida', `<div class="card">
-      <div class="alert alert-danger">Token invalido ou sessao expirada. Faca login novamente na extensao WaSpeed.</div>
+      <div class="alert alert-danger">Token invalido ou sessao expirada. Faca login novamente na extensao WaTiDy.</div>
       <a class="btn" href="/${esc(storeId)}/login">Instrucoes de acesso</a>
     </div>`);
   }
@@ -1719,9 +1722,9 @@ async function handleClientPanel(req, res, pathname, url) {
   return false;
 }
 
-// --- Router ------------------------------------------------------------------
+// --- Router principal WaTiDy API ---------------------------------------------
 
-async function handleWaSpeedApi(req, res, pathname, ip) {
+async function handleWaTiDyApi(req, res, pathname, ip) {
   const chromeId = config.chromeStoreId;
   const settings = cachedSettings || {};
 
@@ -1736,7 +1739,7 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
     return sendJson(res, { success: true, path_note_update: { redirect: config.notesRedirect } });
   }
   if (pathname.match(/^\/api\/urls\/notes\//)) {
-    const html = settings.notesHtml || '<h1>WaSpeed</h1>';
+    const html = settings.notesHtml || '<h1>WaTiDy</h1>';
     if (res.headersSent) return true;
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(html);
@@ -1754,7 +1757,7 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
   if (pathname === '/api/external/ping') {
     let keyCount = 0;
     try { keyCount = await db.collection(COL.licenses).countDocuments(); } catch {}
-    return sendJson(res, { success: true, server: 'waspeed', version: '3.0.0', keys: keyCount, storage: 'mongodb' });
+    return sendJson(res, { success: true, server: 'watidy', version: '3.0.0', keys: keyCount, storage: 'mongodb' });
   }
 
   if (!requireAccessToken(req)) {
@@ -1848,6 +1851,8 @@ async function handleWaSpeedApi(req, res, pathname, ip) {
   return false;
 }
 
+// --- handleAdmin -------------------------------------------------------------
+
 async function handleAdmin(req, res, pathname, ip = '') {
   if (pathname === R_ADMIN + '/login') {
     if (req.method === 'GET') return sendHtml(res, renderLogin(R_ADMIN, 'Admin'));
@@ -1871,7 +1876,7 @@ async function handleAdmin(req, res, pathname, ip = '') {
   }
 
   if (pathname === R_ADMIN + '/logout') {
-    const token = parseCookies(req).ws_session;
+    const token = parseCookies(req).wt_session;
     await destroySession(token);
     clearSessionCookie(res);
     res.writeHead(302, { Location: R_ADMIN + '/login' });
@@ -1965,6 +1970,8 @@ async function handleAdmin(req, res, pathname, ip = '') {
   return res.end('Not found');
 }
 
+// --- handleMod ---------------------------------------------------------------
+
 async function handleMod(req, res, pathname, ip = '') {
   if (pathname === R_MOD + '/login') {
     if (req.method === 'GET') return sendHtml(res, renderLogin(R_MOD, 'Moderador'));
@@ -1989,7 +1996,7 @@ async function handleMod(req, res, pathname, ip = '') {
   }
 
   if (pathname === R_MOD + '/logout') {
-    const token = parseCookies(req).ws_session;
+    const token = parseCookies(req).wt_session;
     await destroySession(token);
     clearSessionCookie(res);
     res.writeHead(302, { Location: R_MOD + '/login' });
@@ -2029,6 +2036,8 @@ async function handleMod(req, res, pathname, ip = '') {
   return res.end('Not found');
 }
 
+// --- handleRequest (centralizador) -------------------------------------------
+
 async function handleRequest(req, res) {
   const url = new URL(req.url, `http://127.0.0.1:${config.port}`);
   const pathname = url.pathname;
@@ -2057,13 +2066,13 @@ async function handleRequest(req, res) {
         try {
           keyCount = await db.collection(COL.licenses).countDocuments();
         } catch (err) {
-          console.error('[WaSpeed] health count:', err.message);
+          console.error('[WaTiDy] health count:', err.message);
           mongoOk = false;
         }
       }
       return sendJson(res, {
         ok: mongoOk,
-        service: 'waspeed-server',
+        service: 'watidy-server',
         version: '3.0.0',
         keys: keyCount,
         mongo: mongoOk,
@@ -2076,7 +2085,7 @@ async function handleRequest(req, res) {
     }
 
     if (pathname === '/') {
-      return sendHtml(res, panelShell('WaSpeed Server', `${mongoBanner()}
+      return sendHtml(res, panelShell('WaTiDy Server', `${mongoBanner()}
         <div class="card">
           <p style="margin-bottom:8px">Backend ativo em <strong>${esc(config.baseUrl)}</strong></p>
           <p style="color:var(--muted);font-size:.875rem;margin-bottom:20px">Login extensao: somente chave · API: /api/auth/validation/:id</p>
@@ -2098,12 +2107,12 @@ async function handleRequest(req, res) {
         'Content-Type': 'application/javascript; charset=utf-8',
         'Cache-Control': 'public, max-age=3600',
       });
-      res.end('/* WaSpeed remote code stub — WPP injetado localmente pela extensao */\n');
+      res.end('/* WaTiDy remote code stub — WPP injetado localmente pela extensao */\n');
       return;
     }
 
     if (pathname === '/obrigado') {
-      return sendHtml(res, panelShell('Obrigado', '<div class="card" style="text-align:center;padding:48px"><h2 style="margin-bottom:8px">Obrigado!</h2><p style="color:var(--muted)">WaSpeed</p></div>'));
+      return sendHtml(res, panelShell('Obrigado', '<div class="card" style="text-align:center;padding:48px"><h2 style="margin-bottom:8px">Obrigado!</h2><p style="color:var(--muted)">WaTiDy</p></div>'));
     }
 
     if (pathname.startsWith('/utils/')) {
@@ -2113,7 +2122,7 @@ async function handleRequest(req, res) {
     if (await handleClientPanel(req, res, pathname, url)) return;
 
     if (pathname.startsWith('/api/')) {
-      const handled = await handleWaSpeedApi(req, res, pathname, ip);
+      const handled = await handleWaTiDyApi(req, res, pathname, ip);
       if (handled !== false) return;
       return sendJson(res, { success: false, msg_id: 'not_found' }, 404);
     }
@@ -2132,7 +2141,7 @@ async function handleRequest(req, res) {
       res.end('Not found');
     }
   } catch (err) {
-    console.error('[WaSpeed] handleRequest:', err.message);
+    console.error('[WaTiDy] handleRequest:', err.message);
     if (!res.headersSent) {
       sendJson(res, { success: false, msg_id: 'server_error' }, 500);
     }
@@ -2144,14 +2153,14 @@ async function handleRequest(req, res) {
 function startAntiSleepCron() {
   const base = config.publicUrl || config.baseUrl;
   if (!base) {
-    console.warn('[WaSpeed] PUBLIC_URL nao definida — anti-sleep desativado');
+    console.warn('[WaTiDy] PUBLIC_URL nao definida — anti-sleep desativado');
     return;
   }
   const pingUrl = `${base.replace(/\/$/, '')}/ping`;
-  console.log(`[WaSpeed] Anti-sleep ativo: GET ${pingUrl} a cada 5 min`);
+  console.log(`[WaTiDy] Anti-sleep ativo: GET ${pingUrl} a cada 5 min`);
   setInterval(() => {
     fetch(pingUrl, { method: 'GET' }).catch((err) => {
-      console.warn('[WaSpeed] Anti-sleep ping falhou:', err.message);
+      console.warn('[WaTiDy] Anti-sleep ping falhou:', err.message);
     });
   }, ANTI_SLEEP_MS).unref();
 }
@@ -2159,12 +2168,12 @@ function startAntiSleepCron() {
 // --- Bootstrap ---------------------------------------------------------------
 
 async function shutdown(sig) {
-  console.log(`[WaSpeed] ${sig} — encerrando`);
+  console.log(`[WaTiDy] ${sig} — encerrando`);
   mongoReady = false;
   try {
     if (mongoClient) await mongoClient.close();
   } catch (err) {
-    console.error('[WaSpeed] mongo close:', err.message);
+    console.error('[WaTiDy] mongo close:', err.message);
   }
   if (server) server.close(() => process.exit(0));
   else process.exit(0);
@@ -2180,17 +2189,17 @@ async function bootstrap() {
     await initSeed();
     mongoReady = true;
   } catch (err) {
-    console.error('[WaSpeed] Falha no bootstrap:', err.message);
+    console.error('[WaTiDy] Falha no bootstrap:', err.message);
     process.exit(1);
   }
 
   server = http.createServer(handleRequest);
   server.on('clientError', (err, socket) => {
-    console.warn('[WaSpeed] clientError:', err.message);
+    console.warn('[WaTiDy] clientError:', err.message);
     if (!socket.destroyed) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
   });
   server.listen(config.port, () => {
-    console.log(`WaSpeed Server v3.0 em http://localhost:${config.port}`);
+    console.log(`WaTiDy Server v3.0 em http://localhost:${config.port}`);
     console.log(`MongoDB: ${config.dbName} (ready=${mongoReady})`);
     console.log(`Admin: ${config.baseUrl}${R_ADMIN}/login`);
     console.log(`Mod:   ${config.baseUrl}${R_MOD}/login`);
@@ -2201,7 +2210,6 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-  console.error('[WaSpeed] bootstrap fatal:', err.message);
+  console.error('[WaTiDy] bootstrap fatal:', err.message);
   process.exit(1);
 });
-
