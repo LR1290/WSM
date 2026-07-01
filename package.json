@@ -1,12 +1,16 @@
 {
-  "name": "waspeed-server",
-  "version": "3.0.0",
+  "name": "watidy-server",
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": "26.4.0"
+  },
   "main": "server.js",
-  "engines": { "node": ">=18.0.0" },
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "dev": "node --watch server.js"
   },
   "dependencies": {
-    "mongodb": "^6.12.0"
+    "mongodb": "^6.8.0"
   }
 }
