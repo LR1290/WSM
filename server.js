@@ -1429,7 +1429,7 @@ async function createKey(){
 function copyKey(){const key=document.getElementById('result-key').textContent;navigator.clipboard.writeText(key).then(()=>toast('Chave copiada!')).catch(()=>{const ta=document.createElement('textarea');ta.value=key;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('Chave copiada!');});}
 
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
-function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// escHtml comprehensive defined above (line ~1085) — this duplicate removed
 
 const ACHIEVEMENTS=[
   {id:'first_key',icon:'🔑',name:'Primeira Chave',desc:'Crie sua primeira chave',req:k=>k.total>=1},
@@ -5308,6 +5308,29 @@ async function handleRequest(req, res) {
     const dest = new URL(callback.startsWith('http') ? callback : 'https://web.whatsapp.com');
     dest.searchParams.set('bearer_token', bearer);
     res.writeHead(302, { Location: dest.toString() }); res.end(); return;
+  }
+
+  // ── Gerenciamento de Labels (extensão) ──────────────────────────────────────
+  if (p === R_EXT + '/v3/labels' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) { res.writeHead(429); res.end('Too Many Requests'); return; }
+    const token = req.headers['x-access-token'] || req.headers['authorization'] || '';
+    if (!token) { sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403); return; }
+    const body = await parseBody(req);
+    const rawLabel = body && body.label !== undefined ? body.label : undefined;
+    if (rawLabel !== undefined && rawLabel !== null && typeof rawLabel === 'object') {
+      sendJson(res, { success: false, error: 'nosql_injection_detected' }, 400); return;
+    }
+    const labelStr = String(rawLabel || '').trim();
+    if (labelStr.length > 60) {
+      sendJson(res, { success: false, error: 'label_too_long', max: 60 }, 400); return;
+    }
+    if (!labelStr) { sendJson(res, { success: false, error: 'label_required' }, 400); return; }
+    sendJson(res, { success: true, label: escHtml(labelStr) }); return;
+  }
+  if (p === R_EXT + '/v3/labels' && req.method === 'GET') {
+    const token = req.headers['x-access-token'] || req.headers['authorization'] || '';
+    if (!token) { sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403); return; }
+    sendJson(res, { success: true, labels: [] }); return;
   }
 
   const CLIENT_PATHS = ['/', '/plans/manage', '/plans/new', '/dashboard/chaves'];
