@@ -1572,7 +1572,7 @@ ${CANVAS_BG}</body></html>`;
 function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WSM — Ativação</title>
+<title>WaTiDy — Ativação</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
@@ -1612,7 +1612,7 @@ input[type=text].key-input:focus{border-color:#00ff87}
     <div class="video-wrap">
       <iframe
         src="https://www.youtube.com/embed/DZ29f5U6OF8?rel=0&modestbranding=1"
-        title="Tutorial WSM"
+        title="Tutorial WaTiDy"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowfullscreen
         referrerpolicy="strict-origin-when-cross-origin">
@@ -1620,7 +1620,7 @@ input[type=text].key-input:focus{border-color:#00ff87}
     </div>
   </div>
   <div class="card">
-    <div class="logo">⚡ WSM</div>
+    <div class="logo">⚡ WaTiDy</div>
     <div class="sub">Ativação da Extensão</div>
     ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
     <form method="POST" action="/extension/auth/verify">
@@ -1630,9 +1630,9 @@ input[type=text].key-input:focus{border-color:#00ff87}
         type="text" name="key" id="key-field" class="key-input"
         value="${escHtml(keyVal)}"
         placeholder="wt-xxxxx-xxxxx-xxxxx"
-        autocomplete="off" spellcheck="false" maxlength="20"
-        oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,20)"
-        onpaste="var e=this;setTimeout(function(){e.value=e.value.toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,20);},0)">
+        autocomplete="off" spellcheck="false" maxlength="26"
+        oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,26)"
+        onpaste="var e=this;setTimeout(function(){e.value=e.value.toLowerCase().replace(/[^a-z0-9\-]/g,'').slice(0,26);},0)">
       <p class="key-hint">Você recebeu esta chave junto com a sua compra.</p>
       <button type="submit" class="btn-primary" onclick="
         var v=document.getElementById('key-field').value.trim();
@@ -4208,9 +4208,28 @@ function generateKeyCode() {
   return `wt-${hex()}-${hex()}-${hex()}`;
 }
 
+function _synthRec(k, kv) {
+  return {
+    code: k, label: kv.label || k, active: kv.active !== false,
+    premium: !!kv.premium, expiresAt: kv.expiresAt || null,
+    phones: Array.isArray(kv.phones) ? kv.phones : [],
+    uses: kv.uses || 0, maxUses: kv.maxUses != null ? kv.maxUses : -1,
+    email: k + '@watidy.local', bearer_token: k, access_token_plugin: k,
+    user_id: 0, createdAt: kv.createdAt || new Date().toISOString(),
+    lastPhone: kv.lastPhone || '', lastIp: kv.lastIp || '', lastUsed: kv.lastUsed || null,
+  };
+}
+
 async function findKeyByBearer(bearer) {
   const b = String(bearer || '').trim();
-  if (!b || !_mongoDb) return null;
+  if (!b) return null;
+  // Chaves do admin estao em keys[] — compara HMAC derivado ou codigo direto
+  const _sec = APP_SECRET || criptKey || 'wt-secret';
+  for (const [k, kv] of Object.entries(keys)) {
+    const exp = crypto.createHmac('sha256', _sec).update(k).digest('hex').slice(0, 40);
+    if (exp === b || k === b) return _synthRec(k, kv);
+  }
+  if (!_mongoDb) return null;
   try {
     return await _mongoDb.collection('licenses').findOne({
       $or: [{ bearer: b }, { code: normKey(b) }, { access_token_plugin: b }, { bearer_token: b }],
@@ -4223,7 +4242,10 @@ async function findKeyByBearer(bearer) {
 
 async function findLicenseByCode(code) {
   const k = normKey(code);
-  if (!k || !_mongoDb) return null;
+  if (!k) return null;
+  // Chaves do admin/mod estao em keys[] (store.keys), nao em licenses
+  if (keys[k]) return _synthRec(k, keys[k]);
+  if (!_mongoDb) return null;
   try {
     return await _mongoDb.collection('licenses').findOne({ code: k });
   } catch (err) {
@@ -4233,9 +4255,12 @@ async function findLicenseByCode(code) {
 }
 
 async function updateLicense(code, patch) {
+  const k = normKey(code);
+  // Sincroniza keys[] quando a chave esta la
+  if (k && keys[k]) { Object.assign(keys[k], patch); saveKey(k); }
   if (!_mongoDb) return false;
   try {
-    await _mongoDb.collection('licenses').updateOne({ code: normKey(code) }, { $set: patch });
+    await _mongoDb.collection('licenses').updateOne({ code: k }, { $set: patch });
     return true;
   } catch (err) {
     console.error('[WSM] updateLicense:', err.message);
@@ -4553,7 +4578,8 @@ async function handleRequest(req, res) {
     if (p === '/api/auth/validation/' + chromeStoreId && req.method === 'POST') {
       if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
       const body = await parseBody(req);
-      const keyCode = normKey(body.access_token_plugin || body.chave || body.senha || body.email || '');
+      let keyCode = normKey(body.access_token_plugin || body.chave || body.senha || body.email || '');
+      keyCode = keyCode.replace(/@[a-z0-9._-]+\.[a-z]{2,}$/, '');
       const phone = String(body.phone || body.whatsapp || '').trim();
       const rec = await findLicenseByCode(keyCode);
       if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return; }
@@ -5249,6 +5275,39 @@ async function handleRequest(req, res) {
     securityAlerts = [];
     saveSecurityAlerts().catch(() => {});
     sendJson(res, { ok: true }); return;
+  }
+
+  // ── Portal de Ativação ZVM-style ─────────────────────────────────────────
+  if (p === '/extension/auth' && req.method === 'GET') {
+    const cb = url.searchParams.get('callback') || 'https://web.whatsapp.com';
+    sendHtml(res, renderExtensionLogin({ callback: cb })); return;
+  }
+  if (p === '/extension/auth/verify' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) { res.writeHead(429); res.end('Too Many Requests'); return; }
+    const form = await parseFormBody(req);
+    const callback = String(form.get('callback') || 'https://web.whatsapp.com').trim();
+    const mode = String(form.get('mode') || '');
+    const _sec = APP_SECRET || criptKey || 'wt-secret';
+    if (mode === 'free') {
+      const { code: fc } = await getOrCreateFreeKey(ip, ip);
+      const bearer = crypto.createHmac('sha256', _sec).update(fc).digest('hex').slice(0, 40);
+      const dest = new URL(callback.startsWith('http') ? callback : 'https://web.whatsapp.com');
+      dest.searchParams.set('bearer_token', bearer);
+      res.writeHead(302, { Location: dest.toString() }); res.end(); return;
+    }
+    const keyVal = normKey(form.get('key') || '').replace(/@[a-z0-9._-]+\.[a-z]{2,}$/, '');
+    if (!keyVal) { sendHtml(res, renderExtensionLogin({ callback, error: 'Digite sua chave de ativação.', keyVal: '' })); return; }
+    const rec = await findLicenseByCode(keyVal);
+    if (!rec || !rec.active) {
+      sendHtml(res, renderExtensionLogin({ callback, error: 'Chave inválida ou não encontrada.', keyVal })); return;
+    }
+    if (rec.expiresAt && new Date(rec.expiresAt) < new Date()) {
+      sendHtml(res, renderExtensionLogin({ callback, error: 'Chave expirada.', keyVal })); return;
+    }
+    const bearer = crypto.createHmac('sha256', _sec).update(keyVal).digest('hex').slice(0, 40);
+    const dest = new URL(callback.startsWith('http') ? callback : 'https://web.whatsapp.com');
+    dest.searchParams.set('bearer_token', bearer);
+    res.writeHead(302, { Location: dest.toString() }); res.end(); return;
   }
 
   const CLIENT_PATHS = ['/', '/plans/manage', '/plans/new', '/dashboard/chaves'];
