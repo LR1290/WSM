@@ -691,7 +691,7 @@ function getAuthData(keyCode, userName) {
       username: userName || k.label || '',
       paymentUrl: k.paymentUrl || null,
       marketplace: k.marketplace || 'premium',
-      email: k.email || 'cliente@watidy.com.br',
+      email: k.email || 'cliente@wsm.app.br',
       planName: k.planName || 'Pro',
       plan_id: (k.plan_id === FREE_PLAN_ID || k.plan_id === FREE_OWNER_ID)
         ? 'WSM_PRO'
@@ -1135,7 +1135,7 @@ function renderModLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WSM — Moderação</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1173,7 +1173,7 @@ function renderModDashboard(modName = 'Moderador') {
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WSM — Moderação</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1571,37 +1571,40 @@ ${CANVAS_BG}</body></html>`;
 function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WaTiDy — Ativação</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<title>WSM — Ativação</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
+:root{--g:#00ff87;--bg:#0d0d14;--bg2:#111118;--brd:#1e1e2e;--tx:#e8e8f4;--tx2:#8a8aaa;--tx3:#5a5a7a;--red:#ff4757;--wa:#25d366}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow-x:hidden;padding:24px 16px}
-.wrap{display:grid;grid-template-columns:3fr 2fr;gap:28px;width:100%;max-width:1100px;align-items:center;position:relative;z-index:1}
-.video-col{display:flex;flex-direction:column;gap:12px}
-.video-label{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:#5a5a7a;text-transform:uppercase;letter-spacing:2px;text-align:center}
-.video-wrap{position:relative;width:100%;padding-top:56.25%;border-radius:14px;overflow:hidden;border:1px solid #1e1e2e;box-shadow:0 0 30px rgba(0,255,135,0.07)}
+body{background:var(--bg);min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:'Space Mono',monospace;overflow-x:hidden;padding:24px 16px;color:var(--tx)}
+.wrap{display:grid;grid-template-columns:3fr 2fr;gap:32px;width:100%;max-width:1100px;align-items:center}
+.video-col{display:flex;flex-direction:column;gap:14px}
+.video-label{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:2px;text-align:center}
+.video-wrap{position:relative;width:100%;padding-top:56.25%;border-radius:14px;overflow:hidden;border:1px solid var(--brd);box-shadow:0 0 40px rgba(0,255,135,0.06)}
 .video-wrap iframe{position:absolute;top:0;left:0;width:100%;height:100%;border:none}
-.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:30px 26px;width:100%;text-align:center;box-shadow:0 0 40px rgba(124,58,237,0.15)}
-.logo{font-family:'Syne',sans-serif;font-size:24px;font-weight:800;color:#00ff87;margin-bottom:4px;letter-spacing:-0.5px}
-.sub{color:#8a8aaa;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin-bottom:20px;font-family:'Syne',sans-serif}
-.field-label{display:block;text-align:left;font-size:12px;letter-spacing:.5px;color:#8a8aaa;text-transform:uppercase;margin-bottom:8px;font-family:'Syne',sans-serif;font-weight:700}
-input[type=text].key-input{width:100%;padding:13px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:10px;color:#00ff87;font-family:'Space Mono',monospace;font-size:14px;outline:none;letter-spacing:2px;transition:border-color .2s}
-input[type=text].key-input:focus{border-color:#00ff87}
-.key-hint{text-align:left;font-size:11px;color:#5a5a7a;margin-top:6px;font-family:'Syne',sans-serif}
-.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:11px 14px;font-size:13px;margin-bottom:14px;text-align:left;font-family:'Syne',sans-serif}
-.err-inline{color:#ff4757;font-size:12px;text-align:left;margin-top:5px;font-family:'Syne',sans-serif}
-.divider{display:flex;align-items:center;gap:10px;margin:14px 0}
-.divider-line{flex:1;height:1px;background:#1e1e2e}
-.divider-text{color:#5a5a7a;font-size:10px;font-family:'Syne',sans-serif;white-space:nowrap;letter-spacing:1.5px;text-transform:uppercase}
-.btn-primary{width:100%;padding:14px;background:#00ff87;border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:15px;cursor:pointer;margin-top:14px;transition:opacity .2s}
-.btn-primary:hover{opacity:.85}
-.btn-wa{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px;background:#25d36615;border:1.5px solid #25d36640;border-radius:10px;color:#25d366;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;text-decoration:none;transition:all .2s}
-.btn-wa:hover{background:#25d36625;border-color:#25d366}
-.btn-free{width:100%;padding:13px;background:transparent;border:1.5px solid #00ff8740;border-radius:10px;color:#00ff87;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s}
-.btn-free:hover{background:#00ff8710;border-color:#00ff87}
-.hint{margin-top:14px;color:#5a5a7a;font-size:11px;font-family:'Syne',sans-serif;line-height:1.8}
-.hint a{color:#8a8aaa;text-decoration:none}.hint a:hover{color:#00ff87}
+.card{background:var(--bg2);border:1px solid var(--brd);border-radius:20px;padding:36px 30px;width:100%;text-align:center;box-shadow:0 0 60px rgba(0,255,135,0.04)}
+.logo-wrap{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px}
+.logo-dot{width:8px;height:8px;border-radius:50%;background:var(--g);box-shadow:0 0 10px var(--g);flex-shrink:0}
+.logo{font-family:'Syne',sans-serif;font-size:26px;font-weight:800;color:var(--g);letter-spacing:-0.5px}
+.sub{color:var(--tx3);font-size:10px;letter-spacing:3px;text-transform:uppercase;margin-bottom:28px;font-family:'Syne',sans-serif}
+.field-label{display:block;text-align:left;font-size:11px;letter-spacing:.8px;color:var(--tx3);text-transform:uppercase;margin-bottom:8px;font-family:'Syne',sans-serif;font-weight:700}
+input[type=text].key-input{width:100%;padding:14px 16px;background:var(--bg);border:1.5px solid var(--brd);border-radius:10px;color:var(--g);font-family:'Space Mono',monospace;font-size:13px;outline:none;letter-spacing:2px;transition:border-color .2s,box-shadow .2s}
+input[type=text].key-input:focus{border-color:var(--g);box-shadow:0 0 0 3px rgba(0,255,135,0.08)}
+.key-hint{text-align:left;font-size:11px;color:var(--tx3);margin-top:7px;font-family:'Syne',sans-serif;line-height:1.6}
+.err{background:rgba(255,71,87,.08);border:1px solid rgba(255,71,87,.5);border-radius:8px;color:var(--red);padding:11px 14px;font-size:12px;margin-bottom:16px;text-align:left;font-family:'Syne',sans-serif}
+.err-inline{color:var(--red);font-size:11px;text-align:left;margin-top:6px;font-family:'Syne',sans-serif}
+.divider{display:flex;align-items:center;gap:10px;margin:18px 0}
+.divider-line{flex:1;height:1px;background:var(--brd)}
+.divider-text{color:var(--tx3);font-size:10px;font-family:'Syne',sans-serif;white-space:nowrap;letter-spacing:1.5px;text-transform:uppercase}
+.btn-primary{width:100%;padding:14px;background:var(--g);border:none;border-radius:10px;color:#000;font-family:'Syne',sans-serif;font-weight:800;font-size:15px;cursor:pointer;margin-top:16px;transition:opacity .2s,transform .1s;letter-spacing:.3px}
+.btn-primary:hover{opacity:.88}.btn-primary:active{transform:scale(.98)}
+.btn-wa{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:13px;background:rgba(37,211,102,.06);border:1.5px solid rgba(37,211,102,.3);border-radius:10px;color:var(--wa);font-family:'Syne',sans-serif;font-weight:700;font-size:14px;text-decoration:none;transition:all .2s}
+.btn-wa:hover{background:rgba(37,211,102,.12);border-color:var(--wa)}
+.btn-free{width:100%;padding:13px;background:transparent;border:1.5px solid rgba(0,255,135,.25);border-radius:10px;color:var(--g);font-family:'Syne',sans-serif;font-weight:700;font-size:14px;cursor:pointer;transition:all .2s}
+.btn-free:hover{background:rgba(0,255,135,.06);border-color:var(--g)}
+.hint{margin-top:16px;color:var(--tx3);font-size:11px;font-family:'Syne',sans-serif;line-height:1.9}
+.hint a{color:var(--tx2);text-decoration:none}.hint a:hover{color:var(--g)}
 @media(max-width:720px){.wrap{grid-template-columns:1fr}.video-col{order:2}.card{order:1}}
 </style>
 </head><body>
@@ -1611,7 +1614,7 @@ input[type=text].key-input:focus{border-color:#00ff87}
     <div class="video-wrap">
       <iframe
         src="https://www.youtube.com/embed/DZ29f5U6OF8?rel=0&modestbranding=1"
-        title="Tutorial WaTiDy"
+        title="Tutorial WSM"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowfullscreen
         referrerpolicy="strict-origin-when-cross-origin">
@@ -1619,7 +1622,7 @@ input[type=text].key-input:focus{border-color:#00ff87}
     </div>
   </div>
   <div class="card">
-    <div class="logo">⚡ WaTiDy</div>
+    <div class="logo-wrap"><div class="logo-dot"></div><div class="logo">WSM</div></div>
     <div class="sub">Ativação da Extensão</div>
     ${error ? `<div class="err">${escHtml(error)}</div>` : ''}
     <form method="POST" action="/extension/auth/verify">
@@ -1658,7 +1661,7 @@ input[type=text].key-input:focus{border-color:#00ff87}
       <button type="submit" class="btn-free">🆓 Entrar Gratuitamente</button>
     </form>
     <div class="hint">
-      Precisa de ajuda? <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
+      Precisa de ajuda? <a href="https://wa.me/5521996771552?text=WSM!%20Preciso%20de%20ajuda." target="_blank">💬 Suporte</a>
       &nbsp;·&nbsp; <a href="/planos">💳 Ver Planos</a>
     </div>
   </div>
@@ -1670,7 +1673,7 @@ function renderAdminLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WSM Admin</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1702,7 +1705,7 @@ function renderClientPortal() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WSM — Portal do Cliente</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -1800,7 +1803,7 @@ footer a:hover{color:var(--green)}
     <a href="/faq" data-navpath="/faq">FAQ</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
+    <a href="https://wa.me/5521996771552?text=WSM!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
   </div>
 </nav>
 <script>(function(){var cp=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===cp)a.classList.add('nav-active');});})();</script>
@@ -1824,7 +1827,7 @@ footer a:hover{color:var(--green)}
         <div class="quick-links">
           <a class="quick-link" href="/faq">❓ FAQ — Dúvidas</a>
           <a class="quick-link" href="/planos">💳 Ver Planos</a>
-          <a class="quick-link full" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">💬 Suporte via WhatsApp</a>
+          <a class="quick-link full" href="https://wa.me/5521996771552?text=WSM!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">💬 Suporte via WhatsApp</a>
         </div>
         <div class="privacy-note">🔒 Ao usar este serviço, você concorda com nossa <a href="/privacidade">Política de Privacidade</a> e com a coleta de dados de uso para fins de licenciamento (LGPD).</div>
       </div>
@@ -1915,7 +1918,7 @@ function showPanel(d,key){
   const actCard=document.getElementById('r-act-card'),lastCard=document.getElementById('r-last-card');
   if(d.activatedAt&&actCard){actCard.style.display='block';document.getElementById('r-activated').textContent=fmtDate(d.activatedAt);}
   if(d.lastUsed&&lastCard){lastCard.style.display='block';document.getElementById('r-lastused').textContent=fmtDate(d.lastUsed);}
-  document.getElementById('r-links').innerHTML='<a class="link-btn" href="https://app.watidy.com.br/dashboard/backup-fixer" target="_blank">🔧 Corrija Backups</a><a class="link-btn" href="https://app.watidy.com.br/dashboard/converter" target="_blank">🎵 Converta Áudios</a><a class="link-btn" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="border-color:#25d36640;color:#25d366">💬 Suporte WhatsApp</a>';
+  document.getElementById('r-links').innerHTML='<a class="link-btn" href="https://app.watidy.com.br/dashboard/backup-fixer" target="_blank">🔧 Corrija Backups</a><a class="link-btn" href="https://app.watidy.com.br/dashboard/converter" target="_blank">🎵 Converta Áudios</a><a class="link-btn" href="https://wa.me/5521996771552?text=WSM!%20Preciso%20de%20ajuda." target="_blank" style="border-color:#25d36640;color:#25d366">💬 Suporte WhatsApp</a>';
   const renewBanner=document.getElementById('r-renew-banner');
   if(renewBanner){const showRenew=d.expired||(d.hoursLeft!==null&&d.hoursLeft<168);renewBanner.style.display=showRenew?'flex':'none';if(d.expired){const t=renewBanner.querySelector('.renew-banner-title');if(t)t.textContent='⏰ Chave expirada!';}}
   const phoneSec=document.getElementById('r-phone-section'),phoneList=document.getElementById('r-phone-list');
@@ -2103,7 +2106,7 @@ function renderAdminDashboard() {
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WSM Admin v10</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -2978,7 +2981,7 @@ function renderPlanosPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WSM — Planos e Preços</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -3065,7 +3068,7 @@ main{width:100%;max-width:1080px;margin:0 auto;padding:60px 28px 90px;flex:1 0 a
     <a href="/faq" data-navpath="/faq">FAQ</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
+    <a href="https://wa.me/5521996771552?text=WSM!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
   </div>
 </nav>
 <script>(function(){var cp=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===cp)a.classList.add('nav-active');});})();</script>
@@ -3142,7 +3145,7 @@ function renderFaqPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WSM — FAQ</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -3218,7 +3221,7 @@ main{max-width:880px;margin:0 auto;padding:60px 32px 90px;width:100%;flex:1;posi
     <a href="/faq" data-navpath="/faq">FAQ</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
+    <a href="https://wa.me/5521996771552?text=WSM!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
   </div>
 </nav>
 <script>(function(){var cp=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===cp)a.classList.add('nav-active');});})();</script>
@@ -3351,7 +3354,7 @@ function renderPrivacyPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WSM — Política de Privacidade</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EZV%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -3405,7 +3408,7 @@ main{max-width:740px;margin:0 auto;padding:60px 28px 90px;flex:1;position:relati
     <a href="/faq" data-navpath="/faq">FAQ</a>
     <a href="/privacidade" data-navpath="/privacidade">PRIVACIDADE</a>
     <a href="/planos" data-navpath="/planos">PLANOS</a>
-    <a href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
+    <a href="https://wa.me/5521996771552?text=WSM!%20Preciso%20de%20ajuda." target="_blank" rel="noopener">SUPORTE</a>
   </div>
 </nav>
 <script>(function(){var cp=window.location.pathname;document.querySelectorAll('#main-nav a[data-navpath]').forEach(function(a){if(a.getAttribute('data-navpath')===cp)a.classList.add('nav-active');});})();</script>
@@ -3501,7 +3504,7 @@ function renderAnalyticsLogin(error = '') {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WSM — Analytics</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -3567,7 +3570,7 @@ async function renderAnalyticsDashboard() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WSM — Analytics</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3ELR%3C/text%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -4213,7 +4216,7 @@ function buildConfigJson() {
 }
 
 function wppUpdate() {
-  return { success: true, version: WPP_VERSION, update: false, message: 'WaTiDy server — modulo atualizado' };
+  return { success: true, version: WPP_VERSION, update: false, message: 'WSM server — modulo atualizado' };
 }
 
 function requireAccessToken(req) {
@@ -4242,7 +4245,7 @@ function _synthRec(k, kv) {
     premium: !!kv.premium, expiresAt: kv.expiresAt || null,
     phones: Array.isArray(kv.phones) ? kv.phones : [],
     uses: kv.uses || 0, maxUses: kv.maxUses != null ? kv.maxUses : -1,
-    email: k + '@watidy.local', bearer_token: k, access_token_plugin: k,
+    email: k + '@wsm.local', bearer_token: k, access_token_plugin: k,
     user_id: 0, createdAt: kv.createdAt || new Date().toISOString(),
     lastPhone: kv.lastPhone || '', lastIp: kv.lastIp || '', lastUsed: kv.lastUsed || null,
   };
@@ -4304,7 +4307,7 @@ async function getOrCreateFreeKey(extensionId, ip) {
   const now = new Date().toISOString();
   const rec = {
     code, bearer: code, user_id: 0, label: 'Usuario Gratuito',
-    email: code + '@watidy.local', active: true, premium: false,
+    email: code + '@wsm.local', active: true, premium: false,
     expiresAt: null, expireDays: 0, maxUses: -1, phones: [], uses: 0,
     note: 'Auto-registro free', bearer_token: code, access_token_plugin: code,
     createdAt: now, lastUsed: null, lastIp: null, lastPhone: null,
@@ -4347,7 +4350,7 @@ function keyToUser(code, rec) {
   return {
     user_id: String(rec.user_id || 0),
     name: rec.label || 'Usuario',
-    email: rec.email || (code + '@watidy.local'),
+    email: rec.email || (code + '@wsm.local'),
     wl_id: wlId,
     bearer_token: rec.bearer_token || code,
     access_token_plugin: rec.access_token_plugin || code,
@@ -4384,7 +4387,7 @@ async function authSuccess(code, rec) {
 function renderInstallPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WaTiDy — Instalado com Sucesso!</title>
+<title>WSM — Instalado com Sucesso!</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0f172a 100%);color:#fff;overflow:hidden}
@@ -4411,16 +4414,16 @@ h1{font-size:26px;font-weight:700;margin-bottom:8px;background:linear-gradient(9
 <div class="bg-circles"><span></span><span></span><span></span></div>
 <div class="card">
   <div class="icon-wrap">&#10003;</div>
-  <h1>WaTiDy Instalado!</h1>
+  <h1>WSM Instalado!</h1>
   <p class="subtitle">Sua extensao foi instalada com sucesso.<br>Siga os passos abaixo para comecar a usar.</p>
   <div class="steps">
     <div class="step"><div class="step-num">1</div><div class="step-text">Abra o <strong>WhatsApp Web</strong> no seu navegador</div></div>
-    <div class="step"><div class="step-num">2</div><div class="step-text">Clique no icone do WaTiDy na barra de extensoes</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-text">Clique no icone do WSM na barra de extensoes</div></div>
     <div class="step"><div class="step-num">3</div><div class="step-text">Insira sua chave de ativacao e clique em <strong>Ativar Agora</strong></div></div>
-    <div class="step"><div class="step-num">4</div><div class="step-text">Aproveite todos os recursos premium do WaTiDy!</div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-text">Aproveite todos os recursos premium do WSM!</div></div>
   </div>
   <a class="btn" href="https://web.whatsapp.com" target="_blank">Abrir WhatsApp Web</a>
-  <div class="badge">WaTiDy &mdash; Automacao inteligente para WhatsApp</div>
+  <div class="badge">WSM &mdash; Automacao inteligente para WhatsApp</div>
 </div>
 </body></html>`;
 }
@@ -4428,7 +4431,7 @@ h1{font-size:26px;font-weight:700;margin-bottom:8px;background:linear-gradient(9
 function renderUninstallPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WaTiDy — Ate logo!</title>
+<title>WSM — Ate logo!</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a 0%,#1a1a2e 50%,#0f172a 100%);color:#fff;overflow:hidden}
@@ -4456,12 +4459,12 @@ h1{font-size:26px;font-weight:700;margin:20px 0 8px;background:linear-gradient(9
 <div class="card">
   <div class="wave">&#128075;</div>
   <h1>Nos vemos em breve!</h1>
-  <p class="subtitle">O WaTiDy foi desinstalado do seu navegador.<br>Sentiremos sua falta por aqui.</p>
+  <p class="subtitle">O WSM foi desinstalado do seu navegador.<br>Sentiremos sua falta por aqui.</p>
   <div class="msg-box">
-    Obrigado por ter usado o WaTiDy! Se algo nao funcionou como esperado, adorariamos saber o que aconteceu para poder melhorar. Sua opiniao e muito importante para nos.
+    Obrigado por ter usado o WSM! Se algo nao funcionou como esperado, adorariamos saber o que aconteceu para poder melhorar. Sua opiniao e muito importante para nos.
   </div>
   <div class="feedback">
-    <p>Como foi sua experiencia com o WaTiDy?</p>
+    <p>Como foi sua experiencia com o WSM?</p>
     <div class="stars-rating" id="rating">
       <span class="star-btn" data-v="1">&#9733;</span>
       <span class="star-btn" data-v="2">&#9733;</span>
@@ -4471,8 +4474,8 @@ h1{font-size:26px;font-weight:700;margin:20px 0 8px;background:linear-gradient(9
     </div>
   </div>
   <a class="btn" href="https://web.whatsapp.com" target="_blank">Reinstalar</a>
-  <a class="btn btn-ghost" href="mailto:suporte@watidy.com.br">Enviar Feedback</a>
-  <div class="badge">WaTiDy &mdash; Ate a proxima!</div>
+  <a class="btn btn-ghost" href="mailto:suporte@wsm.app.br">Enviar Feedback</a>
+  <div class="badge">WSM &mdash; Ate a proxima!</div>
 </div>
 <script>
 (function(){
@@ -4705,7 +4708,7 @@ async function handleRequest(req, res) {
   }
   if (p === '/api/code' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
-    res.end('/* WaTiDy remote code stub */\n'); return;
+    res.end('/* WSM remote code stub */\n'); return;
   }
   if (p === '/_/') {
     sendJson(res, buildConfigJson()); return;
