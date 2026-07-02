@@ -20,7 +20,7 @@ const MODS = [
 
 const PAYT_SECRET  = process.env.PAYT_SECRET  || '';
 const ANALYTICS_PASS = process.env.ANALYTICS_PASS || '';
-const MONGODB_URI  = ((process.env.MONGO_URI || process.env.MONGODB_URI) || '').replace(/^["']|["']$/g, '');
+const MONGODB_URI  = (process.env.MONGO_URI || process.env.MONGODB_URI || '').replace(/^["']|["']$/g, '');
 const APP_SECRET   = process.env.APP_SECRET   || '';
 const TOTP_SECRET  = process.env.TOTP_SECRET  || '';
 const WEBHOOK_URL  = process.env.WEBHOOK_URL  || '';
@@ -82,13 +82,13 @@ const MONGODB_DB = (() => {
 const MAX_USES = 3;
 const AVAILABLE_MODULES = ['zapSaver'];
 const DEFAULT_MODULES = Object.fromEntries(AVAILABLE_MODULES.map(m => [m, false]));
-// ─── WaTiDy Extension API constants ─────────────────────────────────────────
-const CHROME_STORE_ID     = (process.env.CHROME_STORE_ID || 'gjlfpggiddcminhebiejofeglfjmleli').trim();
-const WT_ACCESS_TOKEN     = ((process.env.ACCESS_TOKEN || process.env.CRIPT_KEY) || '').replace(/^["']|["']$/g, '');
-const WPP_VERSION         = '1.11';
+const ACCESS_TOKEN = process.env.ACCESS_TOKEN || '';
+const criptKey = ACCESS_TOKEN || 'ffce211a-7b07-4d91-ba5d-c40bb4034a83';
+const WPP_VERSION = '1.11';
 const REMOTE_CODE_VERSION = '1.0.41';
-const DOM_DEFAULTS = {"version":"1.11","update_path_active":"true","disabled_wait_sync":false,"wpp_mensagens":{"timer":"60000","enable_two_send":false},"newModel":{"model":"taghtml","parm":"body.color-refresh"},"app":{"model":"querySelector","selector":["#app"]},"afiliadoMain":{"model":"querySelector","selector":["body \u003e div"]},"paneSide":{"model":"Element","selector":"#pane-side"},"waPage":{"model":"querySelector","selector":["div.two"]},"two":{"model":"Element","selector":"two"},"menuLateral":{"model":"querySelector","selector":["div.two \u003e div:nth-child(5)"]},"closeChat":{"model":"Element","selector":"x10l6tqk"},"chatListInput":{"model":"querySelector","selector":[".lexical-rich-text-input \u003e div"]},"searchInput":{"model":"querySelector","selector":["[data-icon=\u0027search\u0027]"]},"downAba":{"model":"querySelector","selector":["header \u003e div \u003e div \u003e div \u003e div \u003e span \u003e div \u003e div:nth-child(1)","header \u003e div._ak0w"]},"chatListHeader":{"model":"querySelector","selector":["header \u003e header \u003e div \u003e span \u003e div"]},"searchCamp":{"model":"querySelector","selector":["#side div[data-testid=\u0027chat-list-search-container\u0027]"]},"chatName":{"model":"querySelector","selector":["#main header span[title]","#main header div[role=\"button\"] span","#main header h1","#main \u003e header div.x78zum5 \u003e div \u003e div \u003e div \u003e div","#main header [data-testid=\"conversation-info-header-chat-title\"]","#main header"]},"menuVertical":{"model":"querySelector","selector":["#main ._amm9","#main .x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh"]},"menuHorizontal":{"model":"querySelector","selector":["#main \u003e header \u003e div.x1c4vz4f \u003e div"]},"menuFooter":{"model":"querySelector","selector":["footer ._ak1m"]},"respostaRapida":{"model":"querySelector","selector":["footer \u003e div"]},"footerTextArea":{"model":"querySelector","selector":["footer div[contenteditable=true]"]},"mainAudio":{"model":"querySelector","selector":["footer \u003e div.copyable-area \u003e div"]},"assChat":{"model":"querySelector","selector":["#main \u003e div.x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh"]},"assInput":{"model":"querySelector","selector":["#main \u003e footer \u003e div.copyable-area \u003e div \u003e span \u003e div \u003e div \u003e div"]},"assBtn":{"model":"querySelector","selector":["#main \u003e footer \u003e div.copyable-area \u003e div \u003e span \u003e div \u003e div \u003e div \u003e div:nth-child(6)"]},"assEmoji":{"model":"querySelector","selector":["#main \u003e footer \u003e div.copyable-area \u003e div \u003e span \u003e div \u003e div._ak1m \u003e div \u003e button[tabindex=\u0027-1\u0027]"]},"assCitacao":{"model":"querySelector","selector":["footer div.x9f619.x1okw0bk \u003e button \u003e div \u003e div \u003e div:nth-child(1)"]},"listMensages":{"model":"querySelector","selector":["div[data-scrolltracepolicy=\u0027wa.web.conversation.messages\u0027]"]},"allMensages":{"model":"querySelectorAll","selector":["#main div \u003e div[data-id]"]},"assistenteChat":{"model":"querySelector","selector":["#main \u003e footer"]},"trasferidos":{"model":"querySelector","selector":["#side div[tabindex=\u0027-1\u0027]"]},"notification":{"model":"querySelector","selector":["#side \u003e div:nth-child(2)"]},"quotedMsg":{"model":"querySelector","selector":["#main \u003e footer \u003e div.x10l6tqk.x13vifvy.x1o0tod.xh8yej3 \u003e div \u003e div \u003e div \u003e span \u003e div"]},"listChats":{"model":"querySelector","selector":["#pane-side \u003e div \u003e div \u003e div"]},"listChatsUsers":{"model":"querySelectorAll","selector":["#pane-side \u003e div \u003e div \u003e div \u003e div  div[aria-selected]","#pane-side \u003e div \u003e div \u003e div div[role=\u0027button\u0027] \u003e div"]},"listChatAtendimento":{"model":"Element","selector":"div div[data-testid=\u0027cell-frame-secondary\u0027] div[role=\u0027gridcell\u0027]"},"insertAtendente":{"model":"Element","selector":"x10l6tqk xh8yej3 x1g42fcv"},"reactFiberContainer":{"model":"listElement","list":{"reactFiber":"__reactFiber","reactFiberIndex":0,"path_user_id":".child.memoizedProps[1].props.id._serialized","path_key_message":".child.memoizedProps.children[0].key"}},"updateChatList":{"model":"querySelector","selector":["#side div._ai04 \u003e button"]},"useTradutor":{"model":"listElement","list":{"main_audio_1":"div.x121pien.x9f619","main_audio_2":"div.x121pien.x9f619","camp_text_1":"row-translate","camp_text_2":"div \u003e span","add_btn_tradutor":"div.x1c4vz4f.x1q0g3np.x6s0dn4","camp_audio_1":"div[role=\"slider\"] \u003e canvas","camp_audio_2":"div.x1e4oeot.x1ui04y5[role=\"slider\"] \u003e div"}},"chatList":{"model":"querySelector","selector":["#pane-side","#side","div.two \u003e div:first-child","div.two \u003e div._aigw"]},"observerFooter":{"model":"querySelector","selector":["#main \u003e span:nth-child(8)","#main \u003e :last-child"]},"observerFooterNewModel":{"model":"querySelector","selector":["#main \u003e span:nth-child(7)","#main \u003e span:nth-child(8)","#main \u003e span:nth-child(9)"]},"whatsModal":{"model":"querySelector","selector":["#app \u003e div \u003e div \u003e span:nth-child(3)"]},"menu_whats":{"model":"querySelector","selector":["#app \u003e div \u003e div.x78zum5.xdt5ytf.x5yr21d \u003e div \u003e header \u003e div \u003e div:nth-child(2) \u003e div","header \u003e div \u003e div:nth-child(2) \u003e div"]},"actionMonitor":{"model":"querySelector","selector":["#main header"]},"footerIconsLeft":{"model":"querySelector","selector":["#main \u003e footer \u003e div.copyable-area \u003e div \u003e span \u003e div \u003e div \u003e div"]},"side":{"model":"querySelector","selector":["#side"]},"chatFiltersContainer":{"model":"listElement","list":{"div_filters":"_akap _akan _arj9"}},"chatFilters":{"model":"querySelectorAll","selector":["#side \u003e div:nth-of-type(3) button"]},"selector_theme":{"model":"querySelector","selector":[".os-win"]},"update_path":"https://wspeed-2y4o.onrender.com/api/urls/update","update_path_new":"https://wspeed-2y4o.onrender.com/api/services/update"};
-// ─────────────────────────────────────────────────────────────────────────────
+const chromeStoreId = process.env.CHROME_STORE_ID || 'gjlfpggiddcminhebiejofeglfjmleli';
+const wlId = process.env.WL_ID || 'watidy';
+const installUrl = process.env.INSTALL_URL || 'https://web.whatsapp.com';
 
 let _mongoClient = null;
 let _mongoDb     = null;
@@ -313,7 +313,7 @@ function deriveSlug(seed) {
 const R_ADMIN     = (s => s ? '/' + s : '/admin')    (deriveSlug('admin-panel'));
 const R_MOD       = (s => s ? '/' + s : '/mod')      (deriveSlug('mod-panel'));
 const R_ANALYTICS = (s => s ? '/' + s : '/analytics')(deriveSlug('analytics-panel'));
-const R_EXT       = '/extension';
+const R_EXT       = '/extension'; // kept for internal pentest audit only
 
 const rateLimitMap  = new Map();
 const _DEDUP_TTL_MS = 60 * 60 * 1000; // TTL para entradas de dedup de logs (1h)
@@ -685,8 +685,8 @@ function getAuthData(keyCode, userName) {
     data: {
       key: keyCode,
       keyId: k.keyId || `id-${keyCode}`,
-      ownerId: k.ownerId || 'zv-owner',
-      managerId: k.managerId || 'zv-manager',
+      ownerId: k.ownerId || 'wt-owner',
+      managerId: k.managerId || 'wt-manager',
       permissions: Array.isArray(k.permissions) && k.permissions.length ? k.permissions : FULL_PERMISSIONS,
       username: userName || k.label || '',
       paymentUrl: k.paymentUrl || null,
@@ -709,55 +709,6 @@ function getAuthData(keyCode, userName) {
     },
   };
 }
-function redirectExtensionCallback(res, callback, plan, keyCode) {
-  const _cbOk = ['chrome-extension:', 'https:', 'http:'];
-  let _cbUrl = null;
-  if (callback) {
-    try {
-      _cbUrl = new URL(callback);
-      if (!_cbOk.includes(_cbUrl.protocol)) _cbUrl = null;
-    } catch (_) { _cbUrl = null; }
-  }
-  if (_cbUrl) {
-    if (plan === 'free') {
-      _cbUrl.searchParams.set('key', FREE_AUTH_KEY);
-      _cbUrl.searchParams.set('keyId', FREE_KEY_ID);
-      _cbUrl.searchParams.set('ownerId', FREE_OWNER_ID);
-      _cbUrl.searchParams.set('managerId', FREE_MANAGER_ID);
-      _cbUrl.searchParams.set('isPremium', 'false');
-      _cbUrl.searchParams.set('isLoggedIn', 'true');
-      _cbUrl.searchParams.set('planName', 'Gratuito');
-      _cbUrl.searchParams.set('marketplace', 'free');
-      _cbUrl.searchParams.set('username', 'Usuário Gratuito');
-      _cbUrl.searchParams.set('email', '');
-      _cbUrl.searchParams.set('plan_id', FREE_PLAN_ID);
-      _cbUrl.searchParams.set('permissions', '');
-    } else {
-      const k = keys[keyCode] || {};
-      _cbUrl.searchParams.set('key', keyCode);
-      _cbUrl.searchParams.set('keyId', k.keyId || `id-${keyCode}`);
-      _cbUrl.searchParams.set('ownerId', k.ownerId || 'zv-owner');
-      _cbUrl.searchParams.set('managerId', k.managerId || 'zv-manager');
-      _cbUrl.searchParams.set('isPremium', 'true');
-      _cbUrl.searchParams.set('isLoggedIn', 'true');
-      _cbUrl.searchParams.set('planName', k.planName || 'Pro');
-      _cbUrl.searchParams.set('marketplace', k.marketplace || 'premium');
-      _cbUrl.searchParams.set('username', k.label || '');
-      _cbUrl.searchParams.set('email', k.email || 'cliente@watidy.com.br');
-      _cbUrl.searchParams.set('plan_id', k.plan_id || k.planId || 'WSM_PRO');
-      _cbUrl.searchParams.set('permissions', (Array.isArray(k.permissions) && k.permissions.length ? k.permissions : FULL_PERMISSIONS).join(','));
-    }
-    res.writeHead(302, { Location: _cbUrl.toString() });
-    res.end();
-    return;
-  }
-  const title = plan === 'free' ? 'Acesso Gratuito Ativado!' : 'Chave Ativada!';
-  const label = plan === 'free' ? 'Plano Gratuito' : keyCode;
-  const page = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>WSM - Ativado</title><style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace}.card{background:#111118;border:1px solid #00ff8740;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.title{font-size:22px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;line-height:1.6;margin-bottom:20px}.key{background:#0a0a0f;border:1px solid #00ff8730;border-radius:8px;padding:10px 16px;color:#00ff87;font-size:14px;margin-bottom:20px}</style></head><body><div class="card"><div class="title">${escHtml(title)}</div><div class="sub">Volte ao WhatsApp Web e atualize a página.</div><div class="key">${escHtml(label)}</div></div><script>setTimeout(function(){window.close();},3100);</script></body></html>`;
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(page);
-}
-
 function isKeyExpired(k) {
   if (!k.expiresAt) return false;
   return new Date() > new Date(k.expiresAt);
@@ -1913,7 +1864,7 @@ footer a:hover{color:var(--green)}
 </div>
 
 <footer>
-  © ${new Date().getFullYear()}${new Date().getFullYear()} WSM. Todos os direitos reservados. &nbsp;·&nbsp;
+  © ${new Date().getFullYear()} WSM. Todos os direitos reservados. &nbsp;·&nbsp;
   <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
   <a href="/faq">FAQ</a> &nbsp;·&nbsp;
   <a href="/planos">Planos</a>
@@ -1965,7 +1916,7 @@ function showPanel(d,key){
   const actCard=document.getElementById('r-act-card'),lastCard=document.getElementById('r-last-card');
   if(d.activatedAt&&actCard){actCard.style.display='block';document.getElementById('r-activated').textContent=fmtDate(d.activatedAt);}
   if(d.lastUsed&&lastCard){lastCard.style.display='block';document.getElementById('r-lastused').textContent=fmtDate(d.lastUsed);}
-  document.getElementById('r-links').innerHTML='<a class="link-btn" href="https://web.whatsapp.com/dashboard/backup-fixer" target="_blank">🔧 Corrija Backups</a><a class="link-btn" href="https://web.whatsapp.com/dashboard/converter" target="_blank">🎵 Converta Áudios</a><a class="link-btn" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="border-color:#25d36640;color:#25d366">💬 Suporte WhatsApp</a>';
+  document.getElementById('r-links').innerHTML='<a class="link-btn" href="https://app.watidy.com.br/dashboard/backup-fixer" target="_blank">🔧 Corrija Backups</a><a class="link-btn" href="https://app.watidy.com.br/dashboard/converter" target="_blank">🎵 Converta Áudios</a><a class="link-btn" href="https://wa.me/5521996771552?text=LR!%20Preciso%20de%20ajuda." target="_blank" style="border-color:#25d36640;color:#25d366">💬 Suporte WhatsApp</a>';
   const renewBanner=document.getElementById('r-renew-banner');
   if(renewBanner){const showRenew=d.expired||(d.hoursLeft!==null&&d.hoursLeft<168);renewBanner.style.display=showRenew?'flex':'none';if(d.expired){const t=renewBanner.querySelector('.renew-banner-title');if(t)t.textContent='⏰ Chave expirada!';}}
   const phoneSec=document.getElementById('r-phone-section'),phoneList=document.getElementById('r-phone-list');
@@ -3043,9 +2994,9 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:14px 3
 .nav-links a:hover{color:var(--green);border-color:var(--green-brd);background:var(--green-soft)}
 .nav-links a.nav-active{color:var(--green)!important;border-color:var(--green-brd)!important;background:var(--green-soft)!important}
 .nav-links a.nav-active::after{display:none}.nav-links a.nav-active::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 10px #00ff8780;flex-shrink:0}
-footer.wsm-footer{text-align:center;padding:20px 24px;font-size:13px;color:var(--muted2);font-family:'Syne',sans-serif;border-top:1px solid var(--border);flex-shrink:0}
-footer.wsm-footer a{color:var(--muted2);text-decoration:none;transition:color .2s}
-footer.wsm-footer a:hover{color:var(--green)}
+footer.WSM-footer{text-align:center;padding:20px 24px;font-size:13px;color:var(--muted2);font-family:'Syne',sans-serif;border-top:1px solid var(--border);flex-shrink:0}
+footer.WSM-footer a{color:var(--muted2);text-decoration:none;transition:color .2s}
+footer.WSM-footer a:hover{color:var(--green)}
 main{width:100%;max-width:1080px;margin:0 auto;padding:60px 28px 90px;flex:1 0 auto;position:relative;z-index:2}
 /* hero */
 .hero{text-align:center;margin-bottom:52px}
@@ -3177,8 +3128,8 @@ main{width:100%;max-width:1080px;margin:0 auto;padding:60px 28px 90px;flex:1 0 a
     <a class="btn-wpp" href="https://wa.me/5521996771552?text=LR!%20Quero%20saber%20mais%20sobre%20os%20planos%20do%20WSM." target="_blank" rel="noopener">💬 Falar com o Suporte no WhatsApp</a>
   </div>
 </main>
-<footer class="wsm-footer">
-  © ${new Date().getFullYear()}${new Date().getFullYear()} WSM. Todos os direitos reservados. &nbsp;·&nbsp;
+<footer class="WSM-footer">
+  © ${new Date().getFullYear()} WSM. Todos os direitos reservados. &nbsp;·&nbsp;
   <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
   <a href="/faq">FAQ</a> &nbsp;·&nbsp;
   <a href="/planos">Planos</a>
@@ -3207,9 +3158,9 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:14px 3
 .nav-links a:hover{color:var(--green);border-color:var(--green-brd);background:var(--green-soft)}
 .nav-links a.nav-active{color:var(--green)!important;border-color:var(--green-brd)!important;background:var(--green-soft)!important}
 .nav-links a.nav-active::after{display:none}.nav-links a.nav-active::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 10px #00ff8780;flex-shrink:0}
-footer.wsm-footer{text-align:center;padding:20px 24px;font-size:13px;color:var(--muted2);font-family:'Syne',sans-serif;border-top:1px solid var(--border);flex-shrink:0}
-footer.wsm-footer a{color:var(--muted2);text-decoration:none;transition:color .2s}
-footer.wsm-footer a:hover{color:var(--green)}
+footer.WSM-footer{text-align:center;padding:20px 24px;font-size:13px;color:var(--muted2);font-family:'Syne',sans-serif;border-top:1px solid var(--border);flex-shrink:0}
+footer.WSM-footer a{color:var(--muted2);text-decoration:none;transition:color .2s}
+footer.WSM-footer a:hover{color:var(--green)}
 main{max-width:880px;margin:0 auto;padding:60px 32px 90px;width:100%;flex:1;position:relative;z-index:2}
 /* hero */
 .hero{text-align:center;margin-bottom:52px}
@@ -3378,8 +3329,8 @@ main{max-width:880px;margin:0 auto;padding:60px 32px 90px;width:100%;flex:1;posi
     </div>
   </div>
 </main>
-<footer class="wsm-footer">
-  © ${new Date().getFullYear()}${new Date().getFullYear()} WSM. Todos os direitos reservados. &nbsp;·&nbsp;
+<footer class="WSM-footer">
+  © ${new Date().getFullYear()} WSM. Todos os direitos reservados. &nbsp;·&nbsp;
   <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
   <a href="/faq">FAQ</a> &nbsp;·&nbsp;
   <a href="/planos">Planos</a>
@@ -3416,9 +3367,9 @@ nav{display:flex;align-items:center;justify-content:space-between;padding:14px 3
 .nav-links a:hover{color:var(--green);border-color:var(--green-brd);background:var(--green-soft)}
 .nav-links a.nav-active{color:var(--green)!important;border-color:var(--green-brd)!important;background:var(--green-soft)!important}
 .nav-links a.nav-active::after{display:none}.nav-links a.nav-active::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 10px #00ff8780;flex-shrink:0}
-footer.wsm-footer{text-align:center;padding:20px 24px;font-size:13px;color:var(--muted2);font-family:'Syne',sans-serif;border-top:1px solid var(--border);flex-shrink:0}
-footer.wsm-footer a{color:var(--muted2);text-decoration:none;transition:color .2s}
-footer.wsm-footer a:hover{color:var(--green)}
+footer.WSM-footer{text-align:center;padding:20px 24px;font-size:13px;color:var(--muted2);font-family:'Syne',sans-serif;border-top:1px solid var(--border);flex-shrink:0}
+footer.WSM-footer a{color:var(--muted2);text-decoration:none;transition:color .2s}
+footer.WSM-footer a:hover{color:var(--green)}
 main{max-width:740px;margin:0 auto;padding:60px 28px 90px;flex:1;position:relative;z-index:2}
 /* hero */
 .hero{margin-bottom:48px}
@@ -3468,7 +3419,7 @@ main{max-width:740px;margin:0 auto;padding:60px 28px 90px;flex:1;position:relati
 
   <div class="section">
     <h2>📋 Visão Geral</h2>
-    <p>Esta Política descreve como o <strong>WSM</strong> coleta, utiliza e protege seus dados ao usar o serviço de licenciamento da extensão${new Date().getFullYear()} WSM.</p>
+    <p>Esta Política descreve como o <strong>WSM</strong> coleta, utiliza e protege seus dados ao usar o serviço de licenciamento da extensão WSM.</p>
     <p>Ao ativar ou consultar sua chave de acesso, você concorda com estes termos, em conformidade com a <strong>Lei Geral de Proteção de Dados (LGPD — Lei nº 13.709/2018)</strong>.</p>
   </div>
 
@@ -3536,8 +3487,8 @@ main{max-width:740px;margin:0 auto;padding:60px 28px 90px;flex:1;position:relati
     <a class="contact-btn" href="https://wa.me/5521996771552?text=LR!%20Tenho%20uma%20d%C3%BAvida%20sobre%20privacidade." target="_blank" rel="noopener">💬 Falar com o Suporte</a>
   </div>
 </main>
-<footer class="wsm-footer">
-  © ${new Date().getFullYear()}${new Date().getFullYear()} WSM. Todos os direitos reservados. &nbsp;·&nbsp;
+<footer class="WSM-footer">
+  © ${new Date().getFullYear()} WSM. Todos os direitos reservados. &nbsp;·&nbsp;
   <a href="/privacidade">Privacidade</a> &nbsp;·&nbsp;
   <a href="/faq">FAQ</a> &nbsp;·&nbsp;
   <a href="/planos">Planos</a>
@@ -4202,48 +4153,304 @@ async function runInternalSecurityAudit() {
   return { ok: true, results, ts: new Date().toISOString() };
 }
 
-// ─── WaTiDy Extension API adapters ──────────────────────────────────────────
-function wtRequireAccessToken(req) {
-  if (!WT_ACCESS_TOKEN) return true;
-  const t = (req.headers['access-token'] || req.headers['x-access-token'] || '').trim();
-  return t === WT_ACCESS_TOKEN;
+// ── WaTiDy DOM Config ──────────────────────────────────────────────────────────
+const DOM_DEFAULTS = {
+  "version": "2.0.6",
+  "selectors": {
+    "main": { "chatList": "div[data-testid='chat-list']", "chatListItem": "div[data-testid='list-item-title']", "messageList": "div[role='application']", "messageItem": "div.message-in, div.message-out", "messageText": "span.selectable-text", "inputBox": "div[data-testid='conversation-compose-box-input']", "sendBtn": "button[data-testid='compose-btn-send']", "searchBox": "div[data-testid='search-container'] input", "contactName": "span[data-testid='conversation-info-header-chat-title']", "contactAvatar": "img[data-testid='chat-avatar-chatlist']" }
+  }
+};
+
+function loadDomDefaults() {
+  return JSON.parse(JSON.stringify(DOM_DEFAULTS));
 }
-function wtBuildFreeAuthResponse() {
-  return {
-    success: true,
-    user: { name: 'Usuário Gratuito', email: 'free@watidy.local', id: FREE_AUTH_KEY, user_status: 'free', profile_image: '' },
-    auth_google: false,
-    user_status: 'free',
-    bearer_token: FREE_AUTH_KEY,
-  };
+
+function buildDomConfig(overrides = {}) {
+  const base = loadDomDefaults();
+  if (overrides && typeof overrides === 'object') {
+    Object.assign(base.selectors, overrides.selectors || {});
+  }
+  return base;
 }
-function wtBuildAuthResponse(keyCode) {
-  const k = keys[keyCode] || {};
-  const secret = APP_SECRET || WT_ACCESS_TOKEN || 'wt-secret';
-  const bearer = crypto.createHmac('sha256', secret).update(keyCode).digest('hex').slice(0, 40);
+
+function buildConfigJson(overrides = {}) {
   return {
-    success: true,
-    user: {
-      name: k.label || keyCode,
-      email: keyCode + '@watidy.local',
-      id: keyCode,
-      user_status: 'active',
-      profile_image: '',
+    remote_code: {
+      version: REMOTE_CODE_VERSION,
+      ambiente: 'production',
+      url: '/api/code?version=' + REMOTE_CODE_VERSION,
     },
-    auth_google: false,
-    user_status: 'active',
-    bearer_token: bearer,
+    dom_selector: buildDomConfig(overrides),
   };
 }
+
 function wppUpdate() {
-  const baseUrl = (process.env.BASE_URL || '').replace(/\/$/, '');
-  const merged = { ...DOM_DEFAULTS };
-  merged.update_path = baseUrl + '/api/urls/update';
-  merged.update_path_new = baseUrl + '/api/services/update';
-  merged.update_path_active = 'true';
-  return merged;
+  return { success: true, version: WPP_VERSION, update: false, message: 'WaTiDy server — modulo atualizado' };
 }
-// ─────────────────────────────────────────────────────────────────────────────
+
+function requireAccessToken(req) {
+  const token = (req.headers['access-token'] || '').trim();
+  return token === criptKey;
+}
+
+function parseBearer(req) {
+  const auth = req.headers['authorization'] || '';
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  return m ? m[1].trim() : '';
+}
+
+function normKey(raw) {
+  return String(raw || '').trim().toLowerCase().slice(0, 48);
+}
+
+function generateKeyCode() {
+  const hex = () => crypto.randomBytes(3).toString('hex');
+  return `wt-${hex()}-${hex()}-${hex()}`;
+}
+
+async function findKeyByBearer(bearer) {
+  const b = String(bearer || '').trim();
+  if (!b || !_mongoDb) return null;
+  try {
+    return await _mongoDb.collection('licenses').findOne({
+      $or: [{ bearer: b }, { code: normKey(b) }, { access_token_plugin: b }, { bearer_token: b }],
+    });
+  } catch (err) {
+    console.error('[WSM] findKeyByBearer:', err.message);
+    return null;
+  }
+}
+
+async function findLicenseByCode(code) {
+  const k = normKey(code);
+  if (!k || !_mongoDb) return null;
+  try {
+    return await _mongoDb.collection('licenses').findOne({ code: k });
+  } catch (err) {
+    console.error('[WSM] findLicenseByCode:', err.message);
+    return null;
+  }
+}
+
+async function updateLicense(code, patch) {
+  if (!_mongoDb) return false;
+  try {
+    await _mongoDb.collection('licenses').updateOne({ code: normKey(code) }, { $set: patch });
+    return true;
+  } catch (err) {
+    console.error('[WSM] updateLicense:', err.message);
+    return false;
+  }
+}
+
+async function getOrCreateFreeKey(extensionId, ip) {
+  const seed = String(extensionId || ip || 'anonymous');
+  const code = normKey('wt-free-' + crypto.createHash('sha256').update(seed).digest('hex').slice(0, 16));
+  const existing = await findLicenseByCode(code);
+  if (existing) return { code, rec: existing };
+  const now = new Date().toISOString();
+  const rec = {
+    code, bearer: code, user_id: 0, label: 'Usuario Gratuito',
+    email: code + '@watidy.local', active: true, premium: false,
+    expiresAt: null, expireDays: 0, maxUses: -1, phones: [], uses: 0,
+    note: 'Auto-registro free', bearer_token: code, access_token_plugin: code,
+    createdAt: now, lastUsed: null, lastIp: null, lastPhone: null,
+  };
+  try { await _mongoDb.collection('licenses').insertOne(rec); } catch (_) {}
+  return { code, rec };
+}
+
+function licKeyExpired(rec) {
+  if (!rec || !rec.expiresAt) return false;
+  return new Date(rec.expiresAt) < new Date();
+}
+
+function keyStatus(rec) {
+  if (!rec || !rec.active) return 'blocked';
+  if (licKeyExpired(rec)) return 'expired';
+  return rec.premium ? 'active' : 'free';
+}
+
+function buildUserPremium(code, rec) {
+  return {
+    active: rec.active && !licKeyExpired(rec),
+    premium: !!rec.premium,
+    expiresAt: rec.expiresAt || null,
+    plan: rec.premium ? 'pro' : 'free',
+    code,
+  };
+}
+
+function keyToUser(code, rec) {
+  return {
+    user_id: String(rec.user_id || 0),
+    name: rec.label || 'Usuario',
+    email: rec.email || (code + '@watidy.local'),
+    wl_id: wlId,
+    bearer_token: rec.bearer_token || code,
+    access_token_plugin: rec.access_token_plugin || code,
+    user_premium: buildUserPremium(code, rec),
+    dataCadastro: rec.createdAt || new Date().toISOString(),
+    whatsapp_registro: rec.lastPhone || '',
+    whatsapp_plugin: rec.lastPhone || '',
+    path: '', afiliado: '', campanhaID: '', start_form: true,
+    cookies: { _fbc: '', _fbp: '', _ga: '', _ttclid: '', _ttp: '' },
+  };
+}
+
+const EMPTY_AUTH_GOOGLE = { success: false, token: '', email: '', name: '' };
+
+async function authSuccess(code, rec) {
+  const st = keyStatus(rec);
+  if (st === 'blocked') return { ok: false, msg_id: 'user_blocked' };
+  if (st === 'expired') return { ok: false, msg_id: 'license_expired' };
+  const lastUsed = new Date().toISOString();
+  await updateLicense(code, { lastUsed });
+  rec.lastUsed = lastUsed;
+  return {
+    ok: true,
+    body: {
+      success: true,
+      user: keyToUser(code, rec),
+      auth_google: EMPTY_AUTH_GOOGLE,
+      user_status: st === 'active' ? 'active' : 'free',
+    },
+  };
+}
+
+// ── WaTiDy Client Portal ───────────────────────────────────────────────────────
+const CLIENT_PANEL_RE = /^\/([a-z0-9]{16,32})\/(auth-painel|login|recovery|auth-plugin|redirect-plugin-register|register)\/?$/i;
+
+function renderClientLogin(storeId) {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WSM — Portal do Cliente</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e8e8f4}.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.logo{font-size:24px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;margin-bottom:24px}label{display:block;text-align:left;font-size:12px;color:#8a8aaa;text-transform:uppercase;margin-bottom:8px}input{width:100%;padding:12px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:8px;color:#00ff87;font-family:monospace;font-size:14px;outline:none;margin-bottom:16px}input:focus{border-color:#00ff87}.btn{width:100%;padding:14px;background:#00ff87;border:none;border-radius:8px;color:#000;font-weight:800;font-size:15px;cursor:pointer;transition:opacity .2s}.btn:hover{opacity:.85}.err{background:#ff475715;border:1px solid #ff4757;border-radius:8px;color:#ff4757;padding:11px 14px;font-size:13px;margin-bottom:14px}</style>
+</head><body>
+<div class="card">
+  <div class="logo">⚡ WSM</div>
+  <div class="sub">Login — ${escHtml(storeId)}</div>
+  <form method="POST" action="/${escHtml(storeId)}/login">
+    <label>Email ou Chave</label>
+    <input type="text" name="credential" autocomplete="off" placeholder="sua@chave.com ou wt-xxxxx-xxxxx-xxxxx">
+    <label>Senha</label>
+    <input type="password" name="password">
+    <button type="submit" class="btn">Entrar</button>
+  </form>
+</div>
+</body></html>`;
+}
+
+function renderClientRecovery(storeId) {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WSM — Recuperação</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e8e8f4}.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.logo{font-size:24px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;margin-bottom:24px}label{display:block;text-align:left;font-size:12px;color:#8a8aaa;text-transform:uppercase;margin-bottom:8px}input{width:100%;padding:12px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:8px;color:#00ff87;font-family:monospace;font-size:14px;outline:none;margin-bottom:16px}input:focus{border-color:#00ff87}.btn{width:100%;padding:14px;background:#00ff87;border:none;border-radius:8px;color:#000;font-weight:800;font-size:15px;cursor:pointer;transition:opacity .2s}.btn:hover{opacity:.85}</style>
+</head><body>
+<div class="card">
+  <div class="logo">⚡ WSM</div>
+  <div class="sub">Recuperação de Acesso — ${escHtml(storeId)}</div>
+  <form method="POST" action="/${escHtml(storeId)}/recovery">
+    <label>Email</label>
+    <input type="email" name="email" autocomplete="email" placeholder="seu@email.com">
+    <button type="submit" class="btn">Enviar Link</button>
+  </form>
+</div>
+</body></html>`;
+}
+
+function renderClientRegister(storeId) {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WSM — Cadastro</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e8e8f4}.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:100%;max-width:420px;text-align:center}.logo{font-size:24px;font-weight:800;color:#00ff87;margin-bottom:8px}.sub{color:#8a8aaa;font-size:13px;margin-bottom:24px}label{display:block;text-align:left;font-size:12px;color:#8a8aaa;text-transform:uppercase;margin-bottom:8px}input{width:100%;padding:12px 14px;background:#0a0a0f;border:1.5px solid #1e1e2e;border-radius:8px;color:#00ff87;font-family:monospace;font-size:14px;outline:none;margin-bottom:16px}input:focus{border-color:#00ff87}.btn{width:100%;padding:14px;background:#00ff87;border:none;border-radius:8px;color:#000;font-weight:800;font-size:15px;cursor:pointer;transition:opacity .2s}.btn:hover{opacity:.85}</style>
+</head><body>
+<div class="card">
+  <div class="logo">⚡ WSM</div>
+  <div class="sub">Cadastro — ${escHtml(storeId)}</div>
+  <form method="POST" action="/${escHtml(storeId)}/register">
+    <label>Nome</label>
+    <input type="text" name="name" autocomplete="name" placeholder="Seu nome">
+    <label>Email</label>
+    <input type="email" name="email" autocomplete="email" placeholder="seu@email.com">
+    <label>Senha</label>
+    <input type="password" name="password" autocomplete="new-password">
+    <button type="submit" class="btn">Criar Conta</button>
+  </form>
+</div>
+</body></html>`;
+}
+
+function renderClientAuthPainel(storeId, token, page, rec) {
+  const st = rec ? keyStatus(rec) : 'blocked';
+  const user = rec ? keyToUser(rec.code || '', rec) : null;
+  const premium = rec ? buildUserPremium(rec.code || '', rec) : null;
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WSM — Painel</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e8e8f4}.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:100%;max-width:500px}.logo{font-size:24px;font-weight:800;color:#00ff87;margin-bottom:8px;text-align:center}.info{margin-top:16px;background:#0a0a0f;border:1px solid #1e1e2e;border-radius:8px;padding:16px}.row{display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px}.lbl{color:#8a8aaa}.val{color:#e8e8f4;font-weight:700}.badge-active{color:#00ff87}.badge-blocked{color:#ff4757}.badge-expired{color:#ffa500}</style>
+</head><body>
+<div class="card">
+  <div class="logo">⚡ WSM</div>
+  <div class="info">
+    <div class="row"><span class="lbl">Store</span><span class="val">${escHtml(storeId)}</span></div>
+    <div class="row"><span class="lbl">Status</span><span class="val ${st === 'active' ? 'badge-active' : st === 'blocked' ? 'badge-blocked' : 'badge-expired'}">${escHtml(st)}</span></div>
+    ${user ? `<div class="row"><span class="lbl">Nome</span><span class="val">${escHtml(user.name)}</span></div>` : ''}
+    ${user ? `<div class="row"><span class="lbl">Email</span><span class="val">${escHtml(user.email)}</span></div>` : ''}
+    ${premium ? `<div class="row"><span class="lbl">Plano</span><span class="val">${escHtml(premium.plan)}</span></div>` : ''}
+    ${premium && premium.expiresAt ? `<div class="row"><span class="lbl">Expira</span><span class="val">${escHtml(new Date(premium.expiresAt).toLocaleDateString('pt-BR'))}</span></div>` : ''}
+  </div>
+</div>
+</body></html>`;
+}
+
+async function handleClientPanel(req, res, pathname, url) {
+  const m = CLIENT_PANEL_RE.exec(pathname);
+  if (!m) return false;
+  const storeId = m[1];
+  const action  = m[2].toLowerCase();
+  if (action === 'login' || action === 'auth-painel') {
+    if (req.method === 'GET') {
+      sendHtml(res, renderClientLogin(storeId));
+      return true;
+    }
+    if (req.method === 'POST') {
+      const body = await parseBody(req);
+      const credential = normKey(body.credential || body.email || body.key || '');
+      const rec = await findLicenseByCode(credential);
+      if (!rec) {
+        sendJson(res, { success: false, msg_id: 'invalid_credential' }, 401);
+        return true;
+      }
+      const result = await authSuccess(credential, rec);
+      sendJson(res, result.ok ? result.body : { success: false, msg_id: result.msg_id });
+      return true;
+    }
+  }
+  if (action === 'recovery') {
+    sendHtml(res, renderClientRecovery(storeId));
+    return true;
+  }
+  if (action === 'register' || action === 'redirect-plugin-register') {
+    sendHtml(res, renderClientRegister(storeId));
+    return true;
+  }
+  if (action === 'auth-plugin') {
+    if (req.method === 'POST') {
+      const body = await parseBody(req);
+      const credential = normKey(body.credential || body.code || body.key || '');
+      const rec = await findLicenseByCode(credential);
+      if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_credential' }, 401); return true; }
+      const result = await authSuccess(credential, rec);
+      sendJson(res, result.ok ? result.body : { success: false, msg_id: result.msg_id });
+      return true;
+    }
+    sendHtml(res, renderClientLogin(storeId));
+    return true;
+  }
+  return false;
+}
+
 async function handleRequest(req, res) {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const p   = url.pathname;
@@ -4292,161 +4499,738 @@ async function handleRequest(req, res) {
     if (p === '/analytics' || p.startsWith('/analytics/')) { res.writeHead(404); res.end('Not found'); return; }
   }
 
-  if ((p === R_EXT+'/auth/' || p === R_EXT+'/auth') && req.method === 'GET') {
-    const callback = url.searchParams.get('callback') || '';
-    sendHtml(res, renderExtensionLogin({ callback })); return;
+  // ── WaTiDy Client Panel ──────────────────────────────────────────────────────
+  if (await handleClientPanel(req, res, p, url)) return;
+
+  // ── WaTiDy Extension API ─────────────────────────────────────────────────────
+  if (p === '/api/urls/install/' + chromeStoreId || p.startsWith('/api/urls/install/')) {
+    sendJson(res, { success: true, url: installUrl }); return;
   }
-
-  if (p === R_EXT+'/auth/verify' && req.method === 'POST') {
-    if (!checkRateLimit(ip, 'login')) {
-      const mins = getRateLimitWait(ip, 'login');
-      sendHtml(res, renderExtensionLogin({ callback: '', error: `⏳ Muitas tentativas. Aguarde ${mins} minuto(s).` }), 429);
-      return;
-    }
-    const form     = await parseFormBody(req);
-    const mode     = (form.get('mode') || '').trim().toLowerCase();
-    const keyCode  = sanitizeId(form.get('key'), 32);
-    const callback = form.get('callback') || '';
-
-    if (mode === 'free') {
-      addLog({ keyCode: FREE_AUTH_KEY, label: 'Gratuito', phone: '-', ip, wppVersion: '-', action: 'free_login' }).catch(() => {});
-      redirectExtensionCallback(res, callback, 'free');
-      return;
-    }
-
-    if (!keyCode) {
-      sendHtml(res, renderExtensionLogin({ callback, error: '❌ Digite sua chave de ativação.' }));
-      return;
-    }
-    if (!await ensureKeyLoaded(keyCode)) {
-      await addLog({ keyCode, label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' });
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '❌ Chave não encontrada. Verifique ou entre em contato com o vendedor.' }));
-      return;
-    }
-    if (isKeyExpired(keys[keyCode])) {
-      keys[keyCode].active = false;
-      await addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'expired' });
-      saveKey(keyCode);
-      fireWebhook('key_expired', keyCode, 'Expiração detectada no login');
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '⏰ Chave expirada. Use "Entrar Gratuitamente" para acessar backups ou renove sua chave.' }));
-      return;
-    }
-    if (!keys[keyCode].active) {
-      await addLog({ keyCode, label: keys[keyCode].label, phone: '-', ip, wppVersion: '-', action: 'login_blocked' });
-      sendHtml(res, renderExtensionLogin({ callback, keyVal: keyCode, error: '🚫 Chave bloqueada. Use "Entrar Gratuitamente" para acessar backups ou contate o vendedor.' }));
-      return;
-    }
-    keys[keyCode].lastUsed = new Date().toISOString();
-    keys[keyCode].lastIp   = ip;
-    saveKey(keyCode);
-    redirectExtensionCallback(res, callback, 'pro', keyCode);
-    return;
+  if (p === '/api/urls/update' && (req.method === 'GET' || req.method === 'POST')) {
+    sendJson(res, wppUpdate()); return;
   }
-
-  // ── WaTiDy Extension JSON API ───────────────────────────────────────────────
+  if (p === '/api/services/update' && (req.method === 'GET' || req.method === 'POST')) {
+    sendJson(res, wppUpdate()); return;
+  }
   if (p === '/api/external/is_instaled' && req.method === 'POST') {
     sendJson(res, { success: true }); return;
   }
-  if (p === '/api/external/ping') {
-    sendJson(res, { success: true, server: 'wsm', version: '10.0.0', storage: 'mongodb' }); return;
+  if (p === '/api/external/ping' && req.method === 'GET') {
+    sendJson(res, { success: true, server: 'watidy', version: '1.0.0' }); return;
   }
-  if ((p === '/api/urls/update' || p === '/api/services/update') && (req.method === 'GET' || req.method === 'POST')) {
-    sendJson(res, wppUpdate()); return;
+  if (p === '/api/code' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+    res.end('/* WaTiDy remote code stub */\n'); return;
   }
-  if (p === '/_/' || p.startsWith('/_/?')) {
-    sendJson(res, wppUpdate()); return;
+  if (p === '/_/') {
+    sendJson(res, buildConfigJson()); return;
   }
-  if (p.match(/^\/api\/urls\/install\//)) {
-    sendJson(res, { success: true, url: 'https://web.whatsapp.com' }); return;
-  }
-  if (p.match(/^\/api\/urls\/uninstall\//)) {
-    sendJson(res, { success: true, url: (process.env.BASE_URL || '') + '/obrigado' }); return;
-  }
-  if (p.match(/^\/api\/urls\/active-notes\//)) {
-    sendJson(res, { success: true, path_note_update: { redirect: false } }); return;
-  }
-  if (p === '/api/code' || p.startsWith('/api/code?')) {
-    const baseUrl = (process.env.BASE_URL || '').replace(/\/$/, '');
-    sendJson(res, { version: REMOTE_CODE_VERSION, ambiente: 'production', url: baseUrl + '/api/code?version=' + REMOTE_CODE_VERSION }); return;
-  }
-  if (p === `/api/services/initial-data/${CHROME_STORE_ID}`) {
-    sendJson(res, { webhooks: [], meet: {}, urls: {}, migration: {} }); return;
-  }
-  // Endpoints abaixo exigem access-token da extensão
-  if (p.startsWith('/api/auth/') || p.startsWith('/api/user/')) {
-    if (!wtRequireAccessToken(req)) {
-      sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403); return;
+
+  // Routes requiring access-token
+  if (p.startsWith('/api/auth/') || p.startsWith('/api/user/') || p === '/api/services/initial-data') {
+    if (!requireAccessToken(req)) { sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403); return; }
+
+    if (p === '/api/auth/login-bearer/' + chromeStoreId && req.method === 'GET') {
+      if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
+      const bearer = parseBearer(req);
+      const rec = await findKeyByBearer(bearer);
+      const code = rec ? (rec.code || '') : null;
+      if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_token' }); return; }
+      const result = await authSuccess(code, rec);
+      if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }); return; }
+      sendJson(res, result.body); return;
     }
-    if (p === `/api/auth/login-bearer/${CHROME_STORE_ID}` && req.method === 'GET') {
-      if (!checkRateLimit(ip, 'ext_key')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
-      const authH = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-      if (!authH) { sendJson(res, { success: false, msg_id: 'invalid_token' }); return; }
-      const secret = APP_SECRET || WT_ACCESS_TOKEN || 'wt-secret';
-      let foundCode = null;
-      for (const code of Object.keys(keys)) {
-        if (crypto.createHmac('sha256', secret).update(code).digest('hex').slice(0, 40) === authH) { foundCode = code; break; }
-      }
-      if (!foundCode || !keys[foundCode] || !keys[foundCode].active) { sendJson(res, { success: false, msg_id: 'invalid_token' }); return; }
-      addLog({ keyCode: foundCode, label: keys[foundCode].label || '-', phone: '-', ip, wppVersion: '-', action: 'login_bearer' }).catch(() => {});
-      sendJson(res, wtBuildAuthResponse(foundCode)); return;
-    }
-    if (p === `/api/auth/register-free/${CHROME_STORE_ID}` && req.method === 'POST') {
-      if (!checkRateLimit(ip, 'ext_key')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
-      addLog({ keyCode: FREE_AUTH_KEY, label: 'Gratuito', phone: '-', ip, wppVersion: '-', action: 'free_login' }).catch(() => {});
-      sendJson(res, wtBuildFreeAuthResponse()); return;
-    }
-    if ((p === `/api/auth/validation/${CHROME_STORE_ID}` || p === `/api/auth/login/${CHROME_STORE_ID}`) && req.method === 'POST') {
-      if (!checkRateLimit(ip, 'ext_key')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
+
+    if (p === '/api/auth/register-free/' + chromeStoreId && req.method === 'POST') {
+      if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
       const body = await parseBody(req);
-      const rawKey = (body.access_token_plugin || body.chave || body.senha || body.email || '').toLowerCase();
-      const keyCode = sanitizeId(rawKey, 32);
-      if (!keyCode) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return; }
-      if (!await ensureKeyLoaded(keyCode)) {
-        addLog({ keyCode, label: '-', phone: '-', ip, wppVersion: '-', action: 'key_not_found' }).catch(() => {});
-        sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return;
-      }
-      if (isKeyExpired(keys[keyCode])) {
-        keys[keyCode].active = false; saveKey(keyCode).catch(() => {});
-        addLog({ keyCode, label: keys[keyCode].label || '-', phone: '-', ip, wppVersion: '-', action: 'expired' }).catch(() => {});
-        sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return;
-      }
-      if (!keys[keyCode].active) {
-        addLog({ keyCode, label: keys[keyCode].label || '-', phone: '-', ip, wppVersion: '-', action: 'login_blocked' }).catch(() => {});
-        sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return;
-      }
-      const phone = body.whatsapp_plugin || body.phone || '-';
-      if (!keys[keyCode].phones) keys[keyCode].phones = keys[keyCode].lastPhone ? [keys[keyCode].lastPhone] : [];
-      const hasPhone = phone && phone !== '-';
-      if (hasPhone && !keys[keyCode].phones.includes(phone)) { keys[keyCode].phones.push(phone); keys[keyCode].uses = keys[keyCode].phones.length; }
-      if (hasPhone) keys[keyCode].lastPhone = phone;
-      keys[keyCode].lastUsed = new Date().toISOString(); keys[keyCode].lastIp = ip;
-      saveKey(keyCode).catch(() => {});
-      addLog({ keyCode, label: keys[keyCode].label || '-', phone, ip, wppVersion: '-', action: 'validation_ok' }).catch(() => {});
-      sendJson(res, wtBuildAuthResponse(keyCode)); return;
+      const { code, rec } = await getOrCreateFreeKey(body.extension_id || body.device_id, ip);
+      const result = await authSuccess(code, rec);
+      if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }); return; }
+      sendJson(res, result.body); return;
     }
-    if (p === '/api/user/update' && req.method === 'POST') {
+
+    if (p === '/api/auth/validation/' + chromeStoreId && req.method === 'POST') {
+      if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
       const body = await parseBody(req);
-      const bearerH = (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
-      const secret = APP_SECRET || WT_ACCESS_TOKEN || 'wt-secret';
-      let foundCode = null;
-      if (bearerH) {
-        for (const code of Object.keys(keys)) {
-          if (crypto.createHmac('sha256', secret).update(code).digest('hex').slice(0, 40) === bearerH) { foundCode = code; break; }
+      const keyCode = normKey(body.access_token_plugin || body.chave || body.senha || body.email || '');
+      const phone = String(body.phone || body.whatsapp || '').trim();
+      const rec = await findLicenseByCode(keyCode);
+      if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return; }
+
+      if (phone && phone !== '-') {
+        const phones = Array.isArray(rec.phones) ? rec.phones : [];
+        const maxUses = rec.maxUses != null ? rec.maxUses : -1;
+        const isNewPhone = !phones.includes(phone);
+        if (isNewPhone) {
+          if (maxUses > 0 && phones.length >= maxUses) {
+            sendJson(res, { success: false, msg_id: 'limit_reached' }); return;
+          }
+          phones.push(phone);
+          await updateLicense(keyCode, { phones, uses: phones.length, lastPhone: phone, lastIp: ip });
+          rec.phones = phones; rec.uses = phones.length; rec.lastPhone = phone;
         }
       }
-      if (!foundCode) { sendJson(res, { success: false, msg_id: 'invalid_token' }); return; }
-      const phone = body.whatsapp_plugin || body.whatsapp_registro;
-      if (phone) {
-        if (!keys[foundCode].phones) keys[foundCode].phones = [];
-        if (!keys[foundCode].phones.includes(phone)) keys[foundCode].phones.push(phone);
-        keys[foundCode].lastPhone = phone;
-      }
-      if (body.name) keys[foundCode].label = body.name;
-      saveKey(foundCode).catch(() => {});
-      sendJson(res, { success: true, user: { name: keys[foundCode].label || foundCode, email: foundCode + '@watidy.local' } }); return;
+
+      const result = await authSuccess(keyCode, rec);
+      if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }); return; }
+      sendJson(res, result.body); return;
     }
-    sendJson(res, { success: false, msg_id: 'not_found' }, 404); return;
   }
+
+  if (p === R_ADMIN+'/login' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'login')) {
+      const mins = getRateLimitWait(ip, 'login');
+      sendHtml(res, renderAdminLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429); return;
+    }
+    const form   = await parseFormBody(req);
+    const _u  = Buffer.from(form.get('user') || '');
+    const _au = Buffer.from(ADMIN_USER || '');
+    let credOk = false;
+    try {
+      // Deriva hash da senha submetida com o mesmo salt do boot — timing-safe
+      const _submittedHash = crypto.scryptSync(form.get('pass') || '', _adminPassSalt, 64, { N: 16384, r: 8, p: 1 });
+      credOk = _u.length === _au.length &&
+        crypto.timingSafeEqual(_u.length ? _u : Buffer.alloc(1), _au.length ? _au : Buffer.alloc(1)) &&
+        crypto.timingSafeEqual(_submittedHash, _adminPassHash);
+    } catch { credOk = false; }
+    const totpOk = verifyTOTP(TOTP_SECRET, (form.get('totp') || '').trim());
+    if (credOk && totpOk) {
+      rateLimitMap.delete(ip + ':login'); // limpa contador após login bem-sucedido
+      const token = generateToken();
+      sessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
+      res.setHeader('Set-Cookie', `wt_admin=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
+      res.writeHead(302, { Location: R_ADMIN }); res.end();
+    } else {
+      const msg = credOk && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
+      addSecurityAlert('BRUTE_FORCE', `Admin login falhou — ${credOk?'2FA inválido':'credencial errada'} · user="${String(form.get('user')||'').slice(0,20)}"`, ip);
+      sendHtml(res, renderAdminLogin(msg));
+    }
+    return;
+  }
+
+  if (p === R_ADMIN+'/logout') {
+    res.setHeader('Set-Cookie', 'wt_admin=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
+    res.writeHead(302, { Location: R_ADMIN }); res.end(); return;
+  }
+
+  if (p === R_ADMIN || p === R_ADMIN+'/') {
+    if (!isAdminSession(req)) { sendHtml(res, renderAdminLogin()); return; }
+    sendHtml(res, renderAdminDashboard()); return;
+  }
+
+  if (p === R_MOD+'/login' && req.method === 'POST') {
+    if (MODS.length === 0) { res.writeHead(404); res.end('Not found'); return; }
+    if (!checkRateLimit(ip, 'login')) {
+      const mins = getRateLimitWait(ip, 'login');
+      sendHtml(res, renderModLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429); return;
+    }
+    const form        = await parseFormBody(req);
+    const inputUser   = form.get('user') || '';
+    const inputPass   = form.get('pass') || '';
+    const inputTotp   = (form.get('totp') || '').trim();
+    const matchedMod = MODS.find(m => {
+      try {
+        const bu = Buffer.from(m.user), bi = Buffer.from(inputUser);
+        const bp = Buffer.from(m.pass), bip = Buffer.from(inputPass);
+        return bu.length === bi.length && bp.length === bip.length &&
+          crypto.timingSafeEqual(bu, bi) && crypto.timingSafeEqual(bp, bip);
+      } catch { return false; }
+    });
+    const totpOk = matchedMod ? verifyTOTP(matchedMod.totp, inputTotp) : false;
+    if (matchedMod && totpOk) {
+      rateLimitMap.delete(ip + ':login');
+      const token = generateToken();
+      modSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString(), modName: matchedMod.name };
+      res.setHeader('Set-Cookie', `wt_mod=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
+      res.writeHead(302, { Location: R_MOD }); res.end();
+    } else {
+      const msg = matchedMod && !totpOk ? 'Código 2FA inválido ou expirado' : 'Usuário ou senha incorretos';
+      addSecurityAlert('BRUTE_FORCE', `Mod login falhou — ${matchedMod?'2FA inválido':'user não encontrado'} · user="${String(inputUser).slice(0,20)}"`, ip);
+      sendHtml(res, renderModLogin(msg));
+    }
+    return;
+  }
+
+  if (p === R_MOD+'/logout') {
+    res.setHeader('Set-Cookie', 'wt_mod=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
+    res.writeHead(302, { Location: R_MOD }); res.end(); return;
+  }
+
+  if (p === R_MOD || p === R_MOD+'/') {
+    if (MODS.length === 0) { res.writeHead(404); res.end('Not found'); return; }
+    if (!isModSession(req)) { sendHtml(res, renderModLogin()); return; }
+    const _mc2 = (req.headers.cookie || '').match(/wt_mod=([a-f0-9]+)/);
+    const _ms2 = _mc2 ? modSessions[_mc2[1]] : null;
+    sendHtml(res, renderModDashboard(_ms2 ? _ms2.modName : 'Moderador')); return;
+  }
+
+  if (p === R_MOD+'/api/keys' && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _modCookie = (req.headers.cookie || '').match(/wt_mod=([a-f0-9]+)/);
+    const _modSess   = _modCookie ? modSessions[_modCookie[1]] : null;
+    const modName    = _modSess ? _modSess.modName : 'Moderador';
+    const body = await parseBody(req);
+    if (!body.label || !String(body.label).trim()) { sendJson(res, { error: 'label obrigatório' }, 400); return; }
+    const code = generateCode();
+    const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body);
+    const maxUses = Math.max(1, parseInt(body.maxUses) || MAX_USES);
+    keys[code] = {
+      label: String(body.label).trim().slice(0, 60),
+      active: true, createdAt: new Date().toISOString(),
+      uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
+      deviceId: null, wppVersion: null, note: '[Mod: '+modName+']',
+      expiresAt, expireDuration: expireDuration || null,
+      maxUses, warnCount: 0,
+    };
+    saveKey(code);
+    sendJson(res, { ok: true, key: code }); return;
+  }
+
+  if (p === R_MOD+'/api/my-keys' && req.method === 'GET') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const _mc = (req.headers.cookie || '').match(/wt_mod=([a-f0-9]+)/);
+    const myModName = (_mc && modSessions[_mc[1]]) ? modSessions[_mc[1]].modName : null;
+    if (!myModName) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    try {
+      const db  = await getMongoDb();
+      const doc = await db.collection('store').findOne({ _id: 'keys' });
+      const dbKeys = (doc && doc.data) ? doc.data : {};
+      const search = '[Mod: ' + myModName + ']';
+      const myKeys = Object.entries(dbKeys)
+        .filter(([, k]) => k.note && k.note.includes(search))
+        .map(([code, k]) => ({
+          code, label: k.label, maxUses: k.maxUses,
+          active: k.active && !isKeyExpired(k),
+          expiresAt: k.expiresAt || null,
+          deferred: !!(k.expireDuration && !k.expiresAt),
+          createdAt: k.createdAt || '', note: k.note || '',
+        }))
+        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+      sendJson(res, { ok: true, keys: myKeys, modName: myModName }); return;
+    } catch(e) {
+      console.error('[DB] my-keys:', e.message);
+      sendJson(res, { error: 'db_error' }, 500); return;
+    }
+  }
+
+  if (p.startsWith(R_MOD+'/api/keys/') && p.endsWith('/note') && req.method === 'POST') {
+    if (!isModSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const codeFromUrl = sanitizeId(decodeURIComponent(p.slice((R_MOD+'/api/keys/').length, -'/note'.length)), 30);
+    if (!codeFromUrl) { sendJson(res, { error: 'not found' }, 404); return; }
+    if (!await ensureKeyLoaded(codeFromUrl)) { sendJson(res, { error: 'not found' }, 404); return; }
+    const _mc3 = (req.headers.cookie || '').match(/wt_mod=([a-f0-9]+)/);
+    const _ms3 = _mc3 ? modSessions[_mc3[1]] : null;
+    const _myName3 = _ms3 ? _ms3.modName : null;
+    if (_myName3 && !((keys[codeFromUrl].note||'').includes('[Mod: '+_myName3+']'))) {
+      sendJson(res, { error: 'acesso negado' }, 403); return;
+    }
+    const body = await parseBody(req);
+    const newNote = String(body.note||'').slice(0, 400);
+    const modPrefix = ((keys[codeFromUrl].note||'').match(/^\[Mod: [^\]]+\]/) || [''])[0];
+    keys[codeFromUrl].note = (modPrefix + (newNote ? ' ' + newNote : '')).trim().slice(0, 500);
+    saveKey(codeFromUrl);
+    sendJson(res, { ok: true }); return;
+  }
+
+  function extractCode(pattern) {
+    const match = p.match(pattern);
+    if (!match) return null;
+    const code = decodeURIComponent(match[1]);
+    if (!/^[a-z0-9_\-]{1,30}$/.test(code)) return null;
+    return code;
+  }
+  const RA = R_ADMIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+  if (p === R_ADMIN+'/api/data' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    sendJson(res, {
+      ...getKeyStats(),
+      keysHtml: getKeysHtmlCached(),
+      logsHtml: buildLogsHtml(),
+    }); return;
+  }
+
+  if (p === R_ADMIN+'/api/keys' && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const body = await parseBody(req);
+    const code = generateCode();
+    const { expiresAt, expireDuration } = parseKeyExpiryFromBody(body, { allowMinutes: true });
+    const maxUses = (body.maxUses !== undefined) ? parseInt(body.maxUses) : MAX_USES;
+    keys[code] = {
+      label: (typeof body.label === 'string' ? body.label.trim().slice(0, 60) : '') || 'Cliente', active: true, createdAt: new Date().toISOString(),
+      uses: 0, phones: [], lastUsed: null, lastIp: null, lastPhone: null,
+      deviceId: null, wppVersion: null, note: '',
+      expiresAt, expireDuration: expireDuration || null,
+      maxUses: isNaN(maxUses) ? MAX_USES : maxUses, warnCount: 0,
+      modules: { ...DEFAULT_MODULES },
+    };
+    saveKey(code);
+    sendJson(res, { ok: true, key: code }); return;
+  }
+
+  const codeToggle = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/toggle$`));
+  if (codeToggle && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const k = await adminGetKey(codeToggle);
+    if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
+    k.active = !k.active;
+    saveKey(codeToggle);
+    if (!k.active) fireWebhook('key_blocked', codeToggle, 'Bloqueio manual pelo admin');
+    sendJson(res, { ok: true, active: k.active }); return;
+  }
+
+  const codeRenew = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/renew$`));
+  if (codeRenew && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const kRenew = await adminGetKey(codeRenew);
+    if (!kRenew) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    const days=parseInt(body.days||0), hours=parseInt(body.hours||0), mins=parseInt(body.mins||0);
+    if (!days && !hours && !mins) { sendJson(res, { error: 'nenhum tempo informado' }, 400); return; }
+    const addMs = ((days*1440)+(hours*60)+mins)*60000;
+    const base  = (kRenew.expiresAt && !isKeyExpired(kRenew))
+      ? new Date(kRenew.expiresAt).getTime() : Date.now();
+    kRenew.expiresAt = new Date(base+addMs).toISOString();
+    kRenew.expireDuration = null;
+    kRenew.active = true;
+    saveKey(codeRenew);
+    await addLog({ keyCode: codeRenew, label: kRenew.label, phone: '-', ip, wppVersion: '-', action: 'renewed' });
+    sendJson(res, { ok: true, expiresAt: kRenew.expiresAt }); return;
+  }
+
+  const codeMaxUses = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/max-uses$`));
+  if (codeMaxUses && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const kMu = await adminGetKey(codeMaxUses);
+    if (!kMu) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    const maxUses = parseInt(body.maxUses);
+    if (isNaN(maxUses) || maxUses < -1) { sendJson(res, { error: 'invalid' }, 400); return; }
+    kMu.maxUses = maxUses;
+    saveKey(codeMaxUses);
+    sendJson(res, { ok: true, maxUses }); return;
+  }
+
+  const codeLabel = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/label$`));
+  if (codeLabel && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const kLbl = await adminGetKey(codeLabel);
+    if (!kLbl) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body  = await parseBody(req);
+    const label = String(body.label||'').trim().slice(0, 60);
+    if (!label) { sendJson(res, { error: 'label vazio' }, 400); return; }
+    kLbl.label = label;
+    saveKey(codeLabel).catch(()=>{});
+    sendJson(res, { ok: true, label }); return;
+  }
+
+  const codePhonesGet = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/phones$`));
+  if (codePhonesGet && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const kPh = await adminGetKey(codePhonesGet);
+    if (!kPh) { sendJson(res, { error: 'not found' }, 404); return; }
+    sendJson(res, { ok: true, phones: kPh.phones || [] }); return;
+  }
+
+  const codePhonesDelete = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/phones$`));
+  if (codePhonesDelete && req.method === 'DELETE') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const kPhDel = await adminGetKey(codePhonesDelete);
+    if (!kPhDel) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    if (body.all) {
+      clearAllPhonesFromKey(kPhDel);
+    } else if (body.phone) {
+      removePhoneFromKey(kPhDel, body.phone);
+    } else { sendJson(res, { error: 'informe phone ou all:true' }, 400); return; }
+    saveKey(codePhonesDelete).catch(()=>{});
+    sendJson(res, { ok: true, phones: kPhDel.phones }); return;
+  }
+
+  const codeResetWarn = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/reset-warn$`));
+  if (codeResetWarn && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const kRw = await adminGetKey(codeResetWarn);
+    if (!kRw) { sendJson(res, { error: 'not found' }, 404); return; }
+    kRw.warnCount = 0;
+    saveKey(codeResetWarn);
+    sendJson(res, { ok: true }); return;
+  }
+
+  if (p === R_ADMIN+'/api/keys/batch' && req.method === 'DELETE') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const body = await parseBody(req);
+    const rawCodes = Array.isArray(body.codes) ? body.codes : [];
+    if (!rawCodes.length) { sendJson(res, { error: 'nenhum código enviado' }, 400); return; }
+    const validCodes = rawCodes.map(c => sanitizeId(String(c || ''), 40)).filter(c => c && keys[c]);
+    for (const c of validCodes) {
+      delete keys[c];
+      await deleteKeyFromDb(c);
+    }
+    invalidateKeysHtmlCache();
+    sendJson(res, { ok: true, deleted: validCodes.length }); return;
+  }
+
+  const codeNote = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/note$`));
+  if (codeNote && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const kNote = await adminGetKey(codeNote);
+    if (!kNote) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    kNote.note = String(body.note||'').slice(0, 500);
+    saveKey(codeNote);
+    sendJson(res, { ok: true }); return;
+  }
+
+
+  const codeAssignMod = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/assign-mod$`));
+  if (codeAssignMod && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const k = await adminGetKey(codeAssignMod);
+    if (!k) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body    = await parseBody(req);
+    const modName = String(body.modName || '').trim().slice(0, 60);
+    let note = (k.note || '').replace(/\[Mod: [^\]]+\]\s*/g, '').trim();
+    if (modName) note = '[Mod: ' + modName + ']' + (note ? ' ' + note : '');
+    k.note = note.slice(0, 500);
+    saveKey(codeAssignMod);
+    sendJson(res, { ok: true, modName, note: k.note }); return;
+  }
+
+  const codeDelete = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)$`));
+  if (codeDelete && req.method === 'DELETE') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    delete keys[codeDelete];
+    await deleteKeyFromDb(codeDelete);
+    sendJson(res, { ok: true }); return;
+  }
+
+  if (p === R_ADMIN+'/api/logs' && req.method === 'DELETE') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const body = await parseBody(req);
+    if (body.date !== undefined) {
+      // Valida formato estritamente: YYYY-MM-DD (10 chars). String vazia ou objeto
+      // causariam startsWith("") == true deletando TUDO, ou TypeError em null.date.
+      const dateStr = typeof body.date === 'string' ? body.date : '';
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        sendJson(res, { error: 'date inválida — use YYYY-MM-DD' }, 400); return;
+      }
+      // Converte o prefixo de data para UTC compensando o fuso de exibição (BRT = UTC-3).
+      // Logs são gravados em UTC; o admin vê em São Paulo. O filtro precisa cobrir
+      // o dia completo em BRT: das 03:00 UTC do dia até 03:00 UTC do dia seguinte.
+      const dayStartUTC = new Date(dateStr + 'T03:00:00.000Z');
+      const dayEndUTC   = new Date(dayStartUTC.getTime() + 24 * 60 * 60 * 1000);
+      logs = logs.filter(l => {
+        if (typeof l.timestamp !== 'string') return true; // preserva entradas sem timestamp
+        const t = new Date(l.timestamp);
+        return isNaN(t) || t < dayStartUTC || t >= dayEndUTC;
+      });
+    } else {
+      logs = [];
+    }
+    await saveLogs();
+    sendJson(res, { ok: true, remaining: logs.length }); return;
+  }
+
+  if (p === R_ADMIN+'/api/logs' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const dateParam = url.searchParams.get('date') || '';
+    const q         = (url.searchParams.get('q') || '').toLowerCase().slice(0, 100);
+
+    let filtered = logs;
+    if (dateParam) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
+        sendJson(res, { error: 'date inválida — use YYYY-MM-DD' }, 400); return;
+      }
+      // Filtra pelo dia completo em BRT (UTC-3): cobre 03:00 UTC do dia até 03:00 UTC do próximo
+      const dayStartUTC = new Date(dateParam + 'T03:00:00.000Z');
+      const dayEndUTC   = new Date(dayStartUTC.getTime() + 24 * 60 * 60 * 1000);
+      filtered = logs.filter(l => {
+        if (typeof l.timestamp !== 'string') return false;
+        const t = new Date(l.timestamp);
+        return !isNaN(t) && t >= dayStartUTC && t < dayEndUTC;
+      });
+    }
+    if (q) {
+      filtered = filtered.filter(l =>
+        (l.keyCode||'').toLowerCase().includes(q) ||
+        (l.ip||'').toLowerCase().includes(q) ||
+        (l.phone||'').toLowerCase().includes(q) ||
+        (l.label||'').toLowerCase().includes(q)
+      );
+    }
+    sendJson(res, { ok: true, logsHtml: buildLogsHtml(filtered) }); return;
+  }
+
+  const codeModules = extractCode(new RegExp(`^${RA}/api/keys/([^/]+)/modules$`));
+  if (codeModules && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const kMod = await adminGetKey(codeModules);
+    if (!kMod) { sendJson(res, { error: 'not found' }, 404); return; }
+    const body = await parseBody(req);
+    const moduleName = sanitizeId(String(body.module || ''), 20);
+    const enabled    = !!body.enabled;
+    if (!AVAILABLE_MODULES.includes(moduleName)) { sendJson(res, { error: 'modulo_invalido', module: moduleName }, 400); return; }
+    if (!kMod.modules) kMod.modules = { ...DEFAULT_MODULES };
+    kMod.modules[moduleName] = enabled;
+    saveKey(codeModules);
+    sendJson(res, { ok: true, module: moduleName, enabled, modules: kMod.modules }); return;
+  }
+
+  if (p === R_ADMIN+'/api/export/csv' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const header = 'Chave,Cliente,Status,Validade,Usos,Telefone,Último IP,Último Acesso,Criada em,Expira em,ZapSaver,Nota';
+    const rows = Object.entries(keys).map(([code, k]) => {
+      const stLabel = getKeyDisplayStatus(k).toUpperCase();
+      const cols = [
+        code, k.label, stLabel,
+        k.expiresAt ? new Date(k.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : (k.expireDuration ? 'Ao 1º uso' : 'Sem expiração'),
+        `${(k.phones||[]).length}/${k.maxUses===-1?'Ilimitado':(k.maxUses>0?k.maxUses:MAX_USES)}`,
+        k.lastPhone||'', k.lastIp||'',
+        k.lastUsed ? new Date(k.lastUsed).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '',
+        new Date(k.createdAt||Date.now()).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}),
+        k.expiresAt ? new Date(k.expiresAt).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : 'Sem expiração',
+        (k.modules && k.modules.zapSaver) ? 'SIM' : 'NAO',
+        (k.note||'').replace(/,/g,';')
+      ];
+      return cols.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',');
+    });
+    const csv = [header, ...rows].join('\r\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="wsm-chaves-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.writeHead(200); res.end('\uFEFF' + csv); return;
+  }
+
+  if (p === R_ANALYTICS+'/login' && req.method === 'POST') {
+    if (!ANALYTICS_PASS) { res.writeHead(404); res.end('Not found'); return; }
+    if (!checkRateLimit(ip, 'login')) {
+      const mins = getRateLimitWait(ip, 'login');
+      sendHtml(res, renderAnalyticsLogin(`⏳ Muitas tentativas. Aguarde ${mins} minuto(s).`), 429); return;
+    }
+    const form = await parseFormBody(req);
+    const _anp=Buffer.from(form.get('pass')||''), _anap=Buffer.from(ANALYTICS_PASS||'');
+    if (_anp.length===_anap.length && crypto.timingSafeEqual(_anp.length?_anp:Buffer.alloc(1),_anap.length?_anap:Buffer.alloc(1)) && ANALYTICS_PASS) {
+      const token = generateToken();
+      analyticsSessions[token] = { expiresAt: new Date(Date.now() + 8*60*60*1000).toISOString() };
+      res.setHeader('Set-Cookie', `wt_an=${token}; Path=/; HttpOnly; SameSite=Strict; Secure`);
+      res.writeHead(302, { Location: R_ANALYTICS }); res.end();
+    } else {
+      addSecurityAlert('BRUTE_FORCE', 'Analytics login falhou — senha incorreta', ip);
+      sendHtml(res, renderAnalyticsLogin('Senha incorreta.'));
+    }
+    return;
+  }
+
+  if (p === R_ANALYTICS+'/logout') {
+    res.setHeader('Set-Cookie', 'wt_an=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Strict; Secure');
+    res.writeHead(302, { Location: R_ANALYTICS }); res.end(); return;
+  }
+
+  if ((p === R_ANALYTICS || p === R_ANALYTICS+'/') && req.method === 'GET') {
+    if (!ANALYTICS_PASS) { res.writeHead(404); res.end('Not found'); return; }
+    if (!isAnalyticsSession(req)) {
+      clearAnalyticsCookie(res); // limpa cookie inválido (ex: após reinício do servidor)
+      sendHtml(res, renderAnalyticsLogin()); return;
+    }
+    sendHtml(res, await renderAnalyticsDashboard()); return;
+  }
+
+  if (p === R_ANALYTICS+'/export/csv' && req.method === 'GET') {
+    if (!isAnalyticsSession(req)) { res.writeHead(302, { Location: R_ANALYTICS }); res.end(); return; }
+    const payments = await getPayments({ limit: 10000 });
+    const header = 'Data,Cliente,Email,Telefone,Produto,Valor,Status,Chave,Método';
+    const rows = payments.map(p => {
+      const fmtDate = iso => iso ? new Date(iso).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo'}) : '';
+      return [
+        fmtDate(p.paidAt), p.clientName, p.clientEmail, p.clientPhone,
+        p.productName, (p.amount||0).toFixed(2).replace('.',','),
+        p.approved ? 'APROVADO' : 'REJEITADO',
+        p.keyCode || '', p.paymentMethod || ''
+      ].map(v => `"${String(v||'').replace(/"/g,'""')}"`).join(',');
+    });
+    const csv = [header, ...rows].join('\r\n');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="wsm-pagamentos-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.writeHead(200); res.end('\uFEFF' + csv); return;
+  }
+
+  if (p === R_ANALYTICS+'/api/stats' && req.method === 'GET') {
+    if (!isAnalyticsSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const stats = await getPaymentStats();
+    sendJson(res, stats || {}); return;
+  }
+
+  if (p === '/payt/webhook' && req.method === 'POST') {
+    const rawBody = await readRawBody(req, WEBHOOK_BODY_SIZE);
+    if (rawBody === null) { res.writeHead(413); res.end('Payload Too Large'); return; }
+
+    let payload;
+    try { payload = JSON.parse(rawBody); }
+    catch { try { payload = Object.fromEntries(new URLSearchParams(rawBody).entries()); } catch { res.writeHead(400); res.end('Bad Request'); return; } }
+
+    if (PAYT_SECRET) {
+      const headerToken = req.headers['x-payt-token'] || req.headers['x-webhook-token'] || '';
+      const bodyKey     = payload.integration_key || '';
+      const validHeader = !headerToken || headerToken === PAYT_SECRET;
+      const validBody   = !bodyKey     || bodyKey   === PAYT_SECRET;
+      if (!validHeader || !validBody) {
+        console.warn('[PAYT] Token/integration_key inválido — ignorado');
+        addSecurityAlert('WEBHOOK_INVALID_TOKEN', `x-payt-token inválido recebido — status="${payload.status||'?'}" tx="${String(payload.transaction_id||'').slice(0,30)}"`, ip);
+        res.writeHead(401); res.end('Unauthorized'); return;
+      }
+    }
+
+    if (payload.test === true) {
+      res.writeHead(200); res.end('test_ignored'); return;
+    }
+
+    const status   = String(payload.status || payload.payment_status || payload.sale_status || '').toLowerCase();
+    const APPROVED = ['venda_paga','approved','paid','completed','finished','aprovada','finalizada','active','confirmed'];
+    const approved = APPROVED.some(s => status === s || status.includes(s));
+
+    const txId = String(payload.transaction_id || payload.sale_id || payload.cart_id || payload.id || '').trim();
+
+    const customer    = payload.customer || payload.buyer || payload.client || {};
+    const clientName  = customer.name        || customer.full_name     || payload.customer_name  || payload.buyer_name || 'Cliente';
+    const clientEmail = customer.email       || payload.customer_email || payload.buyer_email    || payload.email      || '';
+    const clientPhone = customer.phone       || customer.cellphone     || customer.phone_number  || payload.customer_phone || '';
+
+    let productNameRaw = '-';
+    let amount = 0;
+    if (Array.isArray(payload.products) && payload.products.length > 0) {
+      productNameRaw = payload.products.map(pr => pr.name || pr.title || '').filter(Boolean).join(' + ') || '-';
+      amount = payload.products.reduce((s, pr) => s + (parseFloat(String(pr.price||pr.value||0).replace(',','.')) || 0), 0);
+    }
+    if (productNameRaw === '-') {
+      const offer = payload.offer || payload.product || {};
+      productNameRaw = offer.name || offer.title || payload.product_name || payload.offer_name || payload.plan_name || '-';
+    }
+    if (!amount) {
+      const raw = payload.amount || payload.value || payload.price || payload.sale_amount || payload.total || 0;
+      amount = parseFloat(String(raw).replace(',','.')) || 0;
+    }
+    const paymentMethod  = payload.payment_method || payload.charge_type || payload.method || payload.payment_type || '-';
+    const productNameLow = productNameRaw.toLowerCase();
+
+    if (!approved) {
+      if (txId) savePayment({ txId, status: status||'unknown', approved: false, clientName, clientEmail, clientPhone, productName: productNameRaw, amount, paymentMethod, keyCode: null, paidAt: new Date().toISOString(), rawStatus: status }).catch(()=>{});
+      res.writeHead(200); res.end('ignored'); return;
+    }
+
+    if (txId) {
+      if (Object.values(keys).some(k => k.note && (k.note.includes('payt_tx:'+txId) || k.note.includes('renovado_payt_tx:'+txId)))) {
+        res.writeHead(200); res.end('ok'); return;
+      }
+      try {
+        const _db = await getMongoDb();
+        const _ex = await _db.collection('payments').findOne({ txId, approved: true });
+        if (_ex) { res.writeHead(200); res.end('ok'); return; }
+      } catch(e) { console.warn('[PAYT] Erro idempotencia:', e.message); }
+    }
+
+    let maxUses = 3;
+    if      (productNameLow.match(/\b1\b|individual|solo|basico|starter/)) maxUses = 1;
+    else if (productNameLow.match(/\b5\b|multi|team|equipe|avancado/))     maxUses = 5;
+    else if (productNameLow.match(/\b3\b|trio|standard|padrao/))           maxUses = 3;
+
+    let existingCode = null;
+    if (clientEmail) {
+      existingCode = Object.keys(keys).find(c => {
+        const emailMatch = (keys[c].note||'').match(/Email: ([^\s|]+)/);
+        return emailMatch && emailMatch[1].toLowerCase() === clientEmail.toLowerCase() && keys[c].active;
+      });
+    }
+
+    const now        = new Date();
+    const durationMs = 31 * 24 * 60 * 60 * 1000;
+
+    if (existingCode) {
+      const k    = keys[existingCode];
+      const base = (k.expiresAt && new Date(k.expiresAt) > now) ? new Date(k.expiresAt) : now;
+      k.expiresAt = new Date(base.getTime() + durationMs).toISOString();
+      k.active    = true;
+      k.note      = k.note + (txId ? ' | renovado_payt_tx:'+txId : ' | renovado');
+      saveKey(existingCode);
+      await savePayment({ txId: txId||existingCode, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:existingCode, maxUses, renewed:true, paidAt:now.toISOString(), rawStatus:status });
+      res.writeHead(200); res.end('ok'); return;
+    }
+
+    const code    = generateCode();
+    const expires = new Date(now.getTime() + durationMs);
+    keys[code] = { label:'PAYT - '+clientName, active:true, phones:[], uses:0, maxUses, expiresAt:expires.toISOString(), expireDuration:durationMs, createdAt:now.toISOString(), lastUsed:null, lastIp:null, lastPhone:null, deviceId:null, wppVersion:null, warnCount:0, note:'Pedido automatico Payt | Email: '+clientEmail+(txId?' | payt_tx:'+txId:'') };
+    saveKey(code);
+    await savePayment({ txId:txId||code, status:'approved', approved:true, clientName, clientEmail, clientPhone, productName:productNameRaw, amount, paymentMethod, keyCode:code, maxUses, renewed:false, paidAt:now.toISOString(), rawStatus:status });
+    res.writeHead(200); res.end('ok'); return;
+  }
+
+  if (p === '/client/status' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    const _cl = parseInt(req.headers['content-length'] || '0', 10);
+    if (_cl > 256) { sendJson(res, { error: 'payload_too_large' }, 400); return; }
+    const body = await parseBody(req);
+    const _rawKey = (typeof body.key === 'string' ? body.key : '').trim().toLowerCase();
+    if (!/^[a-z0-9\-]{20}$/.test(_rawKey)) { sendJson(res, { error: 'invalid_key' }, 400); return; }
+    const code = sanitizeId(_rawKey, 20);
+    if (!code) { sendJson(res, { error: 'not_found' }, 404); return; }
+    if (!await ensureKeyLoaded(code)) { sendJson(res, { error: 'not_found' }, 404); return; }
+    const k = keys[code];
+
+    sendJson(res, {
+      label:       k.label || 'Cliente',
+      active:      k.active && !isKeyExpired(k),
+      expired:     isKeyExpired(k),
+      expiresAt:   k.expiresAt || null,
+      activatedAt: k.activatedAt || null,
+      lastUsed:    k.lastUsed || null,
+      phones:      (k.phones || []).length,
+      phoneList:   (k.phones || []).map((ph, i) => ({ idx: i, display: ph })),
+      maxUses:     k.maxUses === -1 ? null : (k.maxUses > 0 ? k.maxUses : MAX_USES),
+      hoursLeft:   hoursUntilExpiry(k),
+      daysLeft:    daysUntilExpiry(k),
+      deferred:    !!(k.expireDuration && !k.expiresAt),
+      warnCount:   k.warnCount || 0,
+    }); return;
+  }
+
+  if (p === '/client/remove-phone' && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    const _clRm = parseInt(req.headers['content-length'] || '0', 10);
+    if (_clRm > 256) { sendJson(res, { error: 'payload_too_large' }, 400); return; }
+    const body    = await parseBody(req);
+    const _rawRmKey = (typeof body.key === 'string' ? body.key : '').trim().toLowerCase();
+    if (!/^[a-z0-9\-]{20}$/.test(_rawRmKey)) { sendJson(res, { error: 'invalid_key' }, 400); return; }
+    const keyCode = sanitizeId(_rawRmKey, 20);
+    const phoneIdx = body.phoneIdx != null ? parseInt(body.phoneIdx) : -1;
+    const phoneTxt = (body.phone||'').trim();
+    if (!keyCode) { sendJson(res, { error: 'not_found' }, 404); return; }
+    if (phoneIdx < 0 && !phoneTxt) { sendJson(res, { error: 'phone obrigatorio' }, 400); return; }
+    if (!await ensureKeyLoaded(keyCode)) { sendJson(res, { error: 'not_found' }, 404); return; }
+    const phones = keys[keyCode].phones || [];
+    const phone = resolvePhoneToRemove(phones, { phoneIdx, phoneTxt });
+    if (!phone) { sendJson(res, { error: 'numero nao encontrado' }, 404); return; }
+    removePhoneFromKey(keys[keyCode], phone);
+    saveKey(keyCode).catch(()=>{});
+    sendJson(res, { ok: true, phones: keys[keyCode].phones }); return;
+  }
+
+  if (req.method === 'GET' && (p === '/dashboard/backup-fixer' || p === '/dashboard/converter')) {
+    res.writeHead(302, { Location: 'https://app.watidy.com.br' + p }); res.end(); return;
+  }
+
+  if (p === '/faq' && req.method === 'GET') {
+    sendHtml(res, renderFaqPage()); return;
+  }
+
+  if (p === '/planos' && req.method === 'GET') {
+    sendHtml(res, renderPlanosPage()); return;
+  }
+
+  if (p === '/privacidade' && req.method === 'GET') {
+    sendHtml(res, renderPrivacyPage()); return;
+  }
+
+  // ── Label validation endpoint (usado pelo pentest interno) ──────────────
   // ── Motor de Pentest Interno (admin-gated) ──────────────────────────────
   if (p === R_ADMIN + '/api/pentest/run' && req.method === 'POST') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
@@ -4520,7 +5304,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
       `🔐 HMAC: ${APP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | 2FA: ${TOTP_SECRET ? 'ATIVO' : '⚠ INATIVO'} | Payt: ${PAYT_SECRET ? 'ATIVO' : '⚠ INATIVO'}\n` +
       `🔑 Admin: ${R_ADMIN} | User: ${ADMIN_USER}\n` +
       `👮 Mod:   ${MODS.length > 0 ? R_MOD+' | '+MODS.length+' mod(s): '+MODS.map(m=>m.name).join(', ') : '⚠ inativo'}\n` +
-      `📊 Analytics: ${ANALYTICS_PASS ? 'ATIVO' : '⚠ INATIVO'} | Extension: ${R_EXT}/v3/key | Webhook: ${WEBHOOK_URL || 'não configurado'}\n` +
+      `📊 Analytics: ${ANALYTICS_PASS ? 'ATIVO' : '⚠ INATIVO'} | Webhook: ${WEBHOOK_URL || 'não configurado'}\n` +
       `🗂  Logs: retenção ${LOG_RETENTION_DAYS}d (LGPD) | máx ${LOG_MAX} em memória`
     );
 
