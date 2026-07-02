@@ -4154,32 +4154,61 @@ async function runInternalSecurityAudit() {
 
 // ── WaTiDy DOM Config ──────────────────────────────────────────────────────────
 const DOM_DEFAULTS = {
-  "version": "2.0.6",
-  "selectors": {
-    "main": { "chatList": "div[data-testid='chat-list']", "chatListItem": "div[data-testid='list-item-title']", "messageList": "div[role='application']", "messageItem": "div.message-in, div.message-out", "messageText": "span.selectable-text", "inputBox": "div[data-testid='conversation-compose-box-input']", "sendBtn": "button[data-testid='compose-btn-send']", "searchBox": "div[data-testid='search-container'] input", "contactName": "span[data-testid='conversation-info-header-chat-title']", "contactAvatar": "img[data-testid='chat-avatar-chatlist']" }
-  }
+  app:                    { model: 'querySelector',     selector: ['#app'] },
+  afiliadoMain:           { model: 'querySelector',     selector: ['body > div'] },
+  paneSide:               { model: 'Element',           selector: '#pane-side' },
+  waPage:                 { model: 'querySelector',     selector: ['div.two'] },
+  two:                    { model: 'Element',           selector: 'two' },
+  menuLateral:            { model: 'querySelector',     selector: ['div.two > div:nth-child(5)'] },
+  closeChat:              { model: 'Element',           selector: 'x10l6tqk' },
+  chatListInput:          { model: 'querySelector',     selector: ['.lexical-rich-text-input > div'] },
+  searchInput:            { model: 'querySelector',     selector: ["[data-icon='search']"] },
+  downAba:                { model: 'querySelector',     selector: ['header > div > div > div > div > span > div > div:nth-child(1)', 'header > div._ak0w'] },
+  chatListHeader:         { model: 'querySelector',     selector: ['header > header > div > span > div'] },
+  searchCamp:             { model: 'querySelector',     selector: ["#side div[data-testid='chat-list-search-container']"] },
+  chatName:               { model: 'querySelector',     selector: ['#main > header > div.x78zum5 > div > div > div > div'] },
+  menuVertical:           { model: 'querySelector',     selector: ['#main ._amm9', '#main .x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh'] },
+  menuHorizontal:         { model: 'querySelector',     selector: ['#main > header > div.x1c4vz4f > div'] },
+  menuFooter:             { model: 'querySelector',     selector: ['footer ._ak1m'] },
+  respostaRapida:         { model: 'querySelector',     selector: ['footer > div'] },
+  footerTextArea:         { model: 'querySelector',     selector: ['footer div[contenteditable=true]'] },
+  mainAudio:              { model: 'querySelector',     selector: ['footer > div.copyable-area > div'] },
+  assChat:                { model: 'querySelector',     selector: ['#main > div.x1n2onr6.x1vjfegm.x1cqoux5.x14yy4lh'] },
+  assInput:               { model: 'querySelector',     selector: ['#main > footer > div.copyable-area > div > span > div > div > div'] },
+  assBtn:                 { model: 'querySelector',     selector: ['#main > footer > div.copyable-area > div > span > div > div > div > div:nth-child(6)'] },
+  assEmoji:               { model: 'querySelector',     selector: ["#main > footer > div.copyable-area > div > span > div > div._ak1m > div > button[tabindex='-1']"] },
+  assCitacao:             { model: 'querySelector',     selector: ['footer div.x9f619.x1okw0bk > button > div > div > div:nth-child(1)'] },
+  listMensages:           { model: 'querySelector',     selector: ["div[data-scrolltracepolicy='wa.web.conversation.messages']"] },
+  allMensages:            { model: 'querySelectorAll',  selector: ['#main div > div[data-id]'] },
+  assistenteChat:         { model: 'querySelector',     selector: ['#main > footer'] },
+  trasferidos:            { model: 'querySelector',     selector: ["#side div[tabindex='-1']"] },
+  notification:           { model: 'querySelector',     selector: ['#side > div:nth-child(2)'] },
+  quotedMsg:              { model: 'querySelector',     selector: ['#main > footer > div.x10l6tqk.x13vifvy.x1o0tod.xh8yej3 > div > div > div > span > div'] },
+  listChats:              { model: 'querySelector',     selector: ['#pane-side > div > div > div'] },
+  listChatsUsers:         { model: 'querySelectorAll',  selector: ['#pane-side > div > div > div > div  div[aria-selected]', "#pane-side > div > div > div div[role='button'] > div"] },
+  listChatAtendimento:    { model: 'Element',           selector: "div div[data-testid='cell-frame-secondary'] div[role='gridcell']" },
+  insertAtendente:        { model: 'Element',           selector: 'x10l6tqk xh8yej3 x1g42fcv' },
+  updateChatList:         { model: 'querySelector',     selector: ['#side div._ai04 > button'] },
+  chatList:               { model: 'querySelector',     selector: ['div.two > div._aigw'] },
+  observerFooter:         { model: 'querySelector',     selector: ['#main > span:nth-child(8)', '#main > :last-child'] },
+  observerFooterNewModel: { model: 'querySelector',     selector: ['#main > span:nth-child(7)', '#main > span:nth-child(8)', '#main > span:nth-child(9)'] },
+  whatsModal:             { model: 'querySelector',     selector: ['#app > div > div > span:nth-child(3)'] },
+  whats:                  { model: 'querySelector',     selector: ['#app > div > div.x78zum5.xdt5ytf.x5yr21d > div > header > div > div:nth-child(2) > div', 'header > div > div:nth-child(2) > div'] },
+  actionMonitor:          { model: 'querySelector',     selector: ['#main header'] },
+  footerIconsLeft:        { model: 'querySelector',     selector: ['#main > footer > div.copyable-area > div > span > div > div > div'] },
+  side:                   { model: 'querySelector',     selector: ['#side'] },
+  chatFilters:            { model: 'querySelectorAll',  selector: ["#side > div[aria-label='chat-list-filters'] button"] },
+  theme:                  { model: 'querySelector',     selector: ['.os-win'] },
 };
 
-function loadDomDefaults() {
-  return JSON.parse(JSON.stringify(DOM_DEFAULTS));
-}
-
-function buildDomConfig(overrides = {}) {
-  const base = loadDomDefaults();
-  if (overrides && typeof overrides === 'object') {
-    Object.assign(base.selectors, overrides.selectors || {});
-  }
-  return base;
-}
-
-function buildConfigJson(overrides = {}) {
+function buildConfigJson() {
   return {
     remote_code: {
       version: REMOTE_CODE_VERSION,
       ambiente: 'production',
       url: '/api/code?version=' + REMOTE_CODE_VERSION,
     },
-    dom_selector: buildDomConfig(overrides),
+    dom_selector: DOM_DEFAULTS,
   };
 }
 
@@ -4340,6 +4369,124 @@ async function authSuccess(code, rec) {
       user_status: st === 'active' ? 'active' : 'free',
     },
   };
+}
+
+// ── WaTiDy Install / Uninstall Pages ──────────────────────────────────────────
+function renderInstallPage() {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WaTiDy — Instalado com Sucesso!</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0f172a 100%);color:#fff;overflow:hidden}
+.bg-circles{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.bg-circles span{position:absolute;border-radius:50%;opacity:.08;animation:float 8s ease-in-out infinite}
+.bg-circles span:nth-child(1){width:400px;height:400px;background:#3ddc84;top:-100px;left:-100px;animation-delay:0s}
+.bg-circles span:nth-child(2){width:300px;height:300px;background:#1c55ed;bottom:-80px;right:-80px;animation-delay:2s}
+.bg-circles span:nth-child(3){width:200px;height:200px;background:#3ddc84;top:50%;left:50%;transform:translate(-50%,-50%);animation-delay:4s}
+@keyframes float{0%,100%{transform:scale(1) translateY(0)}50%{transform:scale(1.1) translateY(-20px)}}
+.card{position:relative;background:rgba(255,255,255,.05);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.1);border-radius:24px;padding:48px 40px;max-width:480px;width:90%;text-align:center;box-shadow:0 32px 64px rgba(0,0,0,.4)}
+.icon-wrap{width:80px;height:80px;margin:0 auto 24px;background:linear-gradient(135deg,#3ddc84,#16a34a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:36px;box-shadow:0 0 40px rgba(61,220,132,.4);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 40px rgba(61,220,132,.4)}50%{box-shadow:0 0 60px rgba(61,220,132,.7)}}
+h1{font-size:26px;font-weight:700;margin-bottom:8px;background:linear-gradient(90deg,#3ddc84,#60efff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{color:rgba(255,255,255,.6);font-size:15px;margin-bottom:32px;line-height:1.6}
+.steps{text-align:left;background:rgba(255,255,255,.04);border-radius:12px;padding:20px;margin-bottom:28px}
+.step{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
+.step:last-child{margin-bottom:0}
+.step-num{width:26px;height:26px;min-width:26px;background:linear-gradient(135deg,#3ddc84,#16a34a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#0f172a}
+.step-text{font-size:14px;color:rgba(255,255,255,.8);line-height:1.5}
+.btn{display:inline-block;margin-top:4px;padding:14px 32px;background:linear-gradient(135deg,#3ddc84,#16a34a);color:#0f172a;font-weight:700;font-size:15px;border-radius:12px;text-decoration:none;transition:transform .2s,box-shadow .2s}
+.btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(61,220,132,.4)}
+.badge{margin-top:20px;font-size:12px;color:rgba(255,255,255,.35)}
+</style></head><body>
+<div class="bg-circles"><span></span><span></span><span></span></div>
+<div class="card">
+  <div class="icon-wrap">&#10003;</div>
+  <h1>WaTiDy Instalado!</h1>
+  <p class="subtitle">Sua extensao foi instalada com sucesso.<br>Siga os passos abaixo para comecar a usar.</p>
+  <div class="steps">
+    <div class="step"><div class="step-num">1</div><div class="step-text">Abra o <strong>WhatsApp Web</strong> no seu navegador</div></div>
+    <div class="step"><div class="step-num">2</div><div class="step-text">Clique no icone do WaTiDy na barra de extensoes</div></div>
+    <div class="step"><div class="step-num">3</div><div class="step-text">Insira sua chave de ativacao e clique em <strong>Ativar Agora</strong></div></div>
+    <div class="step"><div class="step-num">4</div><div class="step-text">Aproveite todos os recursos premium do WaTiDy!</div></div>
+  </div>
+  <a class="btn" href="https://web.whatsapp.com" target="_blank">Abrir WhatsApp Web</a>
+  <div class="badge">WaTiDy &mdash; Automacao inteligente para WhatsApp</div>
+</div>
+</body></html>`;
+}
+
+function renderUninstallPage() {
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WaTiDy — Ate logo!</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a 0%,#1a1a2e 50%,#0f172a 100%);color:#fff;overflow:hidden}
+.stars{position:fixed;inset:0;pointer-events:none}
+.star{position:absolute;width:2px;height:2px;background:#fff;border-radius:50%;opacity:0;animation:twinkle 3s ease-in-out infinite}
+@keyframes twinkle{0%,100%{opacity:0;transform:scale(1)}50%{opacity:.8;transform:scale(1.5)}}
+.card{position:relative;background:rgba(255,255,255,.05);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.1);border-radius:24px;padding:48px 40px;max-width:480px;width:90%;text-align:center;box-shadow:0 32px 64px rgba(0,0,0,.5)}
+.wave{font-size:56px;animation:wave 2s ease-in-out infinite;display:inline-block;transform-origin:bottom right}
+@keyframes wave{0%,100%{transform:rotate(0deg)}20%{transform:rotate(-15deg)}40%{transform:rotate(10deg)}60%{transform:rotate(-10deg)}80%{transform:rotate(5deg)}}
+h1{font-size:26px;font-weight:700;margin:20px 0 8px;background:linear-gradient(90deg,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.subtitle{color:rgba(255,255,255,.6);font-size:15px;margin-bottom:28px;line-height:1.6}
+.msg-box{background:rgba(255,255,255,.04);border-left:3px solid #a78bfa;border-radius:8px;padding:16px 18px;margin-bottom:28px;text-align:left;font-size:14px;color:rgba(255,255,255,.75);line-height:1.7}
+.feedback{margin-bottom:24px}
+.feedback p{font-size:13px;color:rgba(255,255,255,.5);margin-bottom:10px}
+.stars-rating{display:flex;gap:6px;justify-content:center}
+.star-btn{font-size:28px;cursor:pointer;transition:transform .15s;filter:grayscale(1);opacity:.5}
+.star-btn:hover,.star-btn.active{filter:none;opacity:1;transform:scale(1.2)}
+.btn{display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#a78bfa,#7c3aed);color:#fff;font-weight:700;font-size:15px;border-radius:12px;text-decoration:none;transition:transform .2s,box-shadow .2s;margin-right:10px}
+.btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(167,139,250,.4)}
+.btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7)}
+.btn-ghost:hover{box-shadow:0 8px 24px rgba(255,255,255,.1)}
+.badge{margin-top:24px;font-size:12px;color:rgba(255,255,255,.25)}
+</style></head><body>
+<div class="stars" id="stars"></div>
+<div class="card">
+  <div class="wave">&#128075;</div>
+  <h1>Nos vemos em breve!</h1>
+  <p class="subtitle">O WaTiDy foi desinstalado do seu navegador.<br>Sentiremos sua falta por aqui.</p>
+  <div class="msg-box">
+    Obrigado por ter usado o WaTiDy! Se algo nao funcionou como esperado, adorariamos saber o que aconteceu para poder melhorar. Sua opiniao e muito importante para nos.
+  </div>
+  <div class="feedback">
+    <p>Como foi sua experiencia com o WaTiDy?</p>
+    <div class="stars-rating" id="rating">
+      <span class="star-btn" data-v="1">&#9733;</span>
+      <span class="star-btn" data-v="2">&#9733;</span>
+      <span class="star-btn" data-v="3">&#9733;</span>
+      <span class="star-btn" data-v="4">&#9733;</span>
+      <span class="star-btn" data-v="5">&#9733;</span>
+    </div>
+  </div>
+  <a class="btn" href="https://web.whatsapp.com" target="_blank">Reinstalar</a>
+  <a class="btn btn-ghost" href="mailto:suporte@watidy.com.br">Enviar Feedback</a>
+  <div class="badge">WaTiDy &mdash; Ate a proxima!</div>
+</div>
+<script>
+(function(){
+  var c=document.getElementById('stars');
+  for(var i=0;i<80;i++){
+    var s=document.createElement('div');
+    s.className='star';
+    s.style.left=Math.random()*100+'%';
+    s.style.top=Math.random()*100+'%';
+    s.style.animationDelay=Math.random()*3+'s';
+    s.style.animationDuration=(2+Math.random()*2)+'s';
+    c.appendChild(s);
+  }
+  var btns=document.querySelectorAll('.star-btn');
+  btns.forEach(function(b){
+    b.addEventListener('click',function(){
+      var v=parseInt(b.dataset.v);
+      btns.forEach(function(x){x.classList.toggle('active',parseInt(x.dataset.v)<=v);});
+    });
+  });
+})();
+</script>
+</body></html>`;
 }
 
 // ── WaTiDy Client Portal ───────────────────────────────────────────────────────
@@ -4503,7 +4650,7 @@ async function handleRequest(req, res) {
       return o||'*';
     })(),
     'Access-Control-Allow-Methods': 'POST,GET,OPTIONS,DELETE',
-    'Access-Control-Allow-Headers': 'Content-Type,x-app-date,x-app-sig,x-app-ts',
+    'Access-Control-Allow-Headers': 'Content-Type,x-app-date,x-app-sig,x-app-ts,access-token,x-access-token,Authorization',
     'Access-Control-Max-Age':       '86400',
     'Vary':                         'Origin',
     'X-Content-Type-Options':       'nosniff',
@@ -4521,6 +4668,14 @@ async function handleRequest(req, res) {
     if (p === '/admin' || p.startsWith('/admin/')) { res.writeHead(404); res.end('Not found'); return; }
     if (p === '/mod'  || p.startsWith('/mod/'))   { res.writeHead(404); res.end('Not found'); return; }
     if (p === '/analytics' || p.startsWith('/analytics/')) { res.writeHead(404); res.end('Not found'); return; }
+  }
+
+  // ── Install / Uninstall Pages ────────────────────────────────────────────────
+  if ((p === '/install' || p === '/bem-vindo' || p === '/obrigado-pela-instalacao') && req.method === 'GET') {
+    sendHtml(res, renderInstallPage()); return;
+  }
+  if ((p === '/obrigado' || p === '/desinstalado' || p === '/ate-logo') && req.method === 'GET') {
+    sendHtml(res, renderUninstallPage()); return;
   }
 
   // ── WaTiDy Client Panel ──────────────────────────────────────────────────────
@@ -4545,6 +4700,21 @@ async function handleRequest(req, res) {
   }
   if (p === '/_/') {
     sendJson(res, buildConfigJson()); return;
+  }
+
+  if (p.startsWith('/api/services/initial-data') && req.method === 'GET') {
+    sendJson(res, {
+      success: true,
+      webhooks: [],
+      meet: {},
+      urls: {},
+      migration: {},
+      meta_oficial_config: {},
+      customization: { name: wlId, primary_color: '#3ddc84' },
+    }); return;
+  }
+  if (p.startsWith('/api/notify/get/') && req.method === 'GET') {
+    sendJson(res, { success: true, notify: [] }); return;
   }
 
   // Routes requiring access-token (chromeStoreId suffix accepted but not validated)
@@ -4598,21 +4768,6 @@ async function handleRequest(req, res) {
       sendJson(res, result.body); return;
     }
 
-    if (p.startsWith('/api/services/initial-data') && req.method === 'GET') {
-      sendJson(res, {
-        success: true,
-        webhooks: [],
-        meet: {},
-        urls: {},
-        migration: {},
-        meta_oficial_config: {},
-        customization: { name: wlId, primary_color: '#3ddc84' },
-      }); return;
-    }
-
-    if (p.startsWith('/api/notify/get/') && req.method === 'GET') {
-      sendJson(res, { success: true, notify: [] }); return;
-    }
   }
 
   if (p === R_ADMIN+'/login' && req.method === 'POST') {
