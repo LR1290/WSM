@@ -1429,7 +1429,6 @@ async function createKey(){
 function copyKey(){const key=document.getElementById('result-key').textContent;navigator.clipboard.writeText(key).then(()=>toast('Chave copiada!')).catch(()=>{const ta=document.createElement('textarea');ta.value=key;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);toast('Chave copiada!');});}
 
 function fmtDate(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'})+' '+d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
-// escHtml comprehensive defined above (line ~1085) — this duplicate removed
 
 const ACHIEVEMENTS=[
   {id:'first_key',icon:'🔑',name:'Primeira Chave',desc:'Crie sua primeira chave',req:k=>k.total>=1},
@@ -4528,13 +4527,10 @@ async function handleRequest(req, res) {
   if (await handleClientPanel(req, res, p, url)) return;
 
   // ── WaTiDy Extension API ─────────────────────────────────────────────────────
-  if (p === '/api/urls/install/' + chromeStoreId || p.startsWith('/api/urls/install/')) {
+  if (p.startsWith('/api/urls/install/') || p === '/api/urls/install') {
     sendJson(res, { success: true, url: installUrl }); return;
   }
-  if (p === '/api/urls/update' && (req.method === 'GET' || req.method === 'POST')) {
-    sendJson(res, wppUpdate()); return;
-  }
-  if (p === '/api/services/update' && (req.method === 'GET' || req.method === 'POST')) {
+  if ((p === '/api/urls/update' || p === '/api/services/update') && (req.method === 'GET' || req.method === 'POST')) {
     sendJson(res, wppUpdate()); return;
   }
   if (p === '/api/external/is_instaled' && req.method === 'POST') {
@@ -4551,22 +4547,21 @@ async function handleRequest(req, res) {
     sendJson(res, buildConfigJson()); return;
   }
 
-  // Routes requiring access-token
-  if (p.startsWith('/api/auth/') || p.startsWith('/api/user/') || p === '/api/services/initial-data') {
+  // Routes requiring access-token (chromeStoreId suffix accepted but not validated)
+  if (p.startsWith('/api/auth/') || p.startsWith('/api/user/') || p.startsWith('/api/services/') || p.startsWith('/api/notify/')) {
     if (!requireAccessToken(req)) { sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403); return; }
 
-    if (p === '/api/auth/login-bearer/' + chromeStoreId && req.method === 'GET') {
+    if (p.startsWith('/api/auth/login-bearer/') && req.method === 'GET') {
       if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
       const bearer = parseBearer(req);
       const rec = await findKeyByBearer(bearer);
-      const code = rec ? (rec.code || '') : null;
       if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_token' }); return; }
-      const result = await authSuccess(code, rec);
+      const result = await authSuccess(rec.code || '', rec);
       if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }); return; }
       sendJson(res, result.body); return;
     }
 
-    if (p === '/api/auth/register-free/' + chromeStoreId && req.method === 'POST') {
+    if (p.startsWith('/api/auth/register-free/') && req.method === 'POST') {
       if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
       const body = await parseBody(req);
       const { code, rec } = await getOrCreateFreeKey(body.extension_id || body.device_id, ip);
@@ -4575,7 +4570,7 @@ async function handleRequest(req, res) {
       sendJson(res, result.body); return;
     }
 
-    if (p === '/api/auth/validation/' + chromeStoreId && req.method === 'POST') {
+    if (p.startsWith('/api/auth/validation/') && req.method === 'POST') {
       if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
       const body = await parseBody(req);
       let keyCode = normKey(body.access_token_plugin || body.chave || body.senha || body.email || '');
@@ -4601,6 +4596,22 @@ async function handleRequest(req, res) {
       const result = await authSuccess(keyCode, rec);
       if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }); return; }
       sendJson(res, result.body); return;
+    }
+
+    if (p.startsWith('/api/services/initial-data') && req.method === 'GET') {
+      sendJson(res, {
+        success: true,
+        webhooks: [],
+        meet: {},
+        urls: {},
+        migration: {},
+        meta_oficial_config: {},
+        customization: { name: wlId, primary_color: '#3ddc84' },
+      }); return;
+    }
+
+    if (p.startsWith('/api/notify/get/') && req.method === 'GET') {
+      sendJson(res, { success: true, notify: [] }); return;
     }
   }
 
@@ -5318,19 +5329,19 @@ async function handleRequest(req, res) {
     const body = await parseBody(req);
     const rawLabel = body && body.label !== undefined ? body.label : undefined;
     if (rawLabel !== undefined && rawLabel !== null && typeof rawLabel === 'object') {
-      sendJson(res, { success: false, error: 'nosql_injection_detected' }, 400); return;
+      sendJson(res, { ok: false, error: 'nosql_injection_detected' }, 400); return;
     }
     const labelStr = String(rawLabel || '').trim();
     if (labelStr.length > 60) {
-      sendJson(res, { success: false, error: 'label_too_long', max: 60 }, 400); return;
+      sendJson(res, { ok: false, error: 'label_too_long', max: 60 }, 400); return;
     }
-    if (!labelStr) { sendJson(res, { success: false, error: 'label_required' }, 400); return; }
-    sendJson(res, { success: true, label: escHtml(labelStr) }); return;
+    if (!labelStr) { sendJson(res, { ok: false, error: 'label_required' }, 400); return; }
+    sendJson(res, { ok: true, label: escHtml(labelStr) }); return;
   }
   if (p === R_EXT + '/v3/labels' && req.method === 'GET') {
     const token = req.headers['x-access-token'] || req.headers['authorization'] || '';
-    if (!token) { sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403); return; }
-    sendJson(res, { success: true, labels: [] }); return;
+    if (!token) { sendJson(res, { ok: false, msg_id: 'invalid_access_token' }, 403); return; }
+    sendJson(res, { ok: true, labels: [] }); return;
   }
 
   const CLIENT_PATHS = ['/', '/plans/manage', '/plans/new', '/dashboard/chaves'];
