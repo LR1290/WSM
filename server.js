@@ -4579,8 +4579,8 @@ function renderClientAuthPainel(storeId, token, page, rec) {
   const lastPhone = escHtml(rec && rec.lastPhone ? rec.lastPhone : phones.length > 0 ? phones[phones.length-1] : '—');
   const uses = phones.length;
   const maxUses = rec && rec.maxUses > 0 ? rec.maxUses : '∞';
-  const serverUrl = escHtml(process.env.BACKEND_URL || 'https://wspeed-2y4o.onrender.com/');
   const keyMasked = keyCode.length > 8 ? keyCode.substring(0, 4) + '•'.repeat(keyCode.length - 8) + keyCode.substring(keyCode.length - 4) : keyCode;
+  const keyDisplay = escHtml(keyCode);
 
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -4608,16 +4608,19 @@ body{background:var(--bg);min-height:100vh;font-family:monospace;color:var(--tx)
 .card{background:var(--c1);border:1px solid var(--brd);border-radius:var(--rs);padding:18px 20px}
 .card-lbl{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--mu);margin-bottom:8px;font-family:sans-serif;font-weight:700}
 .card-val{font-size:15px;color:var(--tx);font-weight:700;word-break:break-all;font-family:monospace}
+.copy-btn{background:none;border:none;cursor:pointer;color:var(--mu);font-size:12px;padding:2px 6px;border-radius:4px;transition:color .15s}
+.copy-btn:hover{color:var(--g)}
+.key-row{display:flex;align-items:center;gap:6px}
 .card-val.green{color:var(--g)}
 .phones-sec{background:var(--c1);border:1px solid var(--brd);border-radius:var(--rs);padding:18px 20px;margin-bottom:16px}
 .phones-lbl{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--mu);margin-bottom:12px;font-family:sans-serif;font-weight:700}
 .phone-list{display:flex;flex-wrap:wrap;gap:8px}
 .phone-chip{background:var(--c2);border:1px solid var(--brd2);border-radius:6px;padding:6px 12px;font-size:13px;color:var(--tx);font-family:monospace}
 .phone-empty{font-size:13px;color:var(--mu2)}
-.server-sec{background:var(--c1);border:1px solid var(--brd);border-radius:var(--rs);padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-.server-dot{width:8px;height:8px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--gb);flex-shrink:0}
-.server-label{font-size:12px;color:var(--mu);font-family:sans-serif;flex:1}
-.server-url{font-size:12px;color:var(--g);font-family:monospace;word-break:break-all}
+.server-sec{background:var(--c1);border:1px solid var(--brd);border-radius:var(--rs);padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;gap:12px}
+.server-dot{width:8px;height:8px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--gb);animation:pulse 2s infinite;flex-shrink:0}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.server-label{font-size:13px;color:var(--g);font-family:sans-serif;font-weight:600}
 .footer{text-align:center;font-size:12px;color:var(--mu2);padding:24px;font-family:sans-serif}
 @media(max-width:500px){.hero{padding:20px}.wrap{padding:16px 12px}}
 </style></head><body>
@@ -4633,7 +4636,7 @@ body{background:var(--bg);min-height:100vh;font-family:monospace;color:var(--tx)
     <div class="avatar">${name.charAt(0).toUpperCase()}</div>
     <div class="hero-info">
       <div class="hero-name">${name}</div>
-      <div class="hero-key">${keyMasked}</div>
+      <div class="hero-key">${keyDisplay}</div>
       <div class="hero-badges">
         <span class="badge" style="color:${statusColor};border-color:${statusColor}40;background:${statusColor}12">${statusLabel}</span>
         <span class="badge" style="color:${planColor};border-color:${planColor}40;background:${planColor}12">${plan}</span>
@@ -4643,7 +4646,10 @@ body{background:var(--bg);min-height:100vh;font-family:monospace;color:var(--tx)
   <div class="grid">
     <div class="card">
       <div class="card-lbl">Chave de Acesso</div>
-      <div class="card-val" title="${keyCode}">${keyMasked}</div>
+      <div class="key-row">
+        <div class="card-val" id="kv">${keyDisplay}</div>
+        <button class="copy-btn" onclick="navigator.clipboard.writeText('${keyDisplay}').then(()=>{this.textContent='✓';setTimeout(()=>this.textContent='⎘',1200)})" title="Copiar chave">⎘</button>
+      </div>
     </div>
     <div class="card">
       <div class="card-lbl">Plano</div>
@@ -4673,8 +4679,7 @@ body{background:var(--bg);min-height:100vh;font-family:monospace;color:var(--tx)
   </div>` : ''}
   <div class="server-sec">
     <div class="server-dot"></div>
-    <div class="server-label">Servidor WSM conectado</div>
-    <div class="server-url">${serverUrl}</div>
+    <div class="server-label">Sistema operante</div>
   </div>
 </div>
 <div class="footer">© ${new Date().getFullYear()} WSM. Todos os direitos reservados.</div>
