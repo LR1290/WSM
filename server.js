@@ -4245,7 +4245,7 @@ function _synthRec(k, kv) {
     premium: !!kv.premium, expiresAt: kv.expiresAt || null,
     phones: Array.isArray(kv.phones) ? kv.phones : [],
     uses: kv.uses || 0, maxUses: kv.maxUses != null ? kv.maxUses : -1,
-    email: k + '@wsm.local', bearer_token: k, access_token_plugin: k,
+    email: k, bearer_token: k, access_token_plugin: k,
     user_id: 0, createdAt: kv.createdAt || new Date().toISOString(),
     lastPhone: kv.lastPhone || '', lastIp: kv.lastIp || '', lastUsed: kv.lastUsed || null,
   };
@@ -4307,7 +4307,7 @@ async function getOrCreateFreeKey(extensionId, ip) {
   const now = new Date().toISOString();
   const rec = {
     code, bearer: code, user_id: 0, label: 'Usuario Gratuito',
-    email: code + '@wsm.local', active: true, premium: false,
+    email: code, active: true, premium: false,
     expiresAt: null, expireDays: 0, maxUses: -1, phones: [], uses: 0,
     note: 'Auto-registro free', bearer_token: code, access_token_plugin: code,
     createdAt: now, lastUsed: null, lastIp: null, lastPhone: null,
@@ -4350,7 +4350,7 @@ function keyToUser(code, rec) {
   return {
     user_id: String(rec.user_id || 0),
     name: rec.label || 'Usuario',
-    email: rec.email || (code + '@wsm.local'),
+    email: rec.email || code,
     wl_id: wlId,
     bearer_token: rec.bearer_token || code,
     access_token_plugin: rec.access_token_plugin || code,
