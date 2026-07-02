@@ -4566,24 +4566,118 @@ function renderClientRegister(storeId) {
 
 function renderClientAuthPainel(storeId, token, page, rec) {
   const st = rec ? keyStatus(rec, rec.code || '') : 'blocked';
-  const user = rec ? keyToUser(rec.code || '', rec) : null;
   const premium = rec ? buildUserPremium(rec.code || '', rec) : null;
+  const name = escHtml(rec ? (rec.label || rec.code || 'Usuário') : '—');
+  const keyCode = escHtml(rec ? (rec.code || token) : token);
+  const plan = premium ? (premium.premium ? 'PREMIUM' : 'Gratuito') : '—';
+  const planColor = premium && premium.premium ? '#00ff87' : '#ffa500';
+  const statusLabel = st === 'active' ? 'Ativa' : st === 'free' ? 'Gratuita' : st === 'expired' ? 'Expirada' : 'Bloqueada';
+  const statusColor = st === 'active' || st === 'free' ? '#00ff87' : st === 'expired' ? '#ffa500' : '#ff4757';
+  const expiresAt = rec && rec.expiresAt ? new Date(rec.expiresAt).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+  const createdAt = rec && rec.createdAt ? new Date(rec.createdAt).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+  const phones = rec && Array.isArray(rec.phones) ? rec.phones : [];
+  const lastPhone = escHtml(rec && rec.lastPhone ? rec.lastPhone : phones.length > 0 ? phones[phones.length-1] : '—');
+  const uses = phones.length;
+  const maxUses = rec && rec.maxUses > 0 ? rec.maxUses : '∞';
+  const serverUrl = escHtml(process.env.BACKEND_URL || 'https://wspeed-2y4o.onrender.com/');
+  const keyMasked = keyCode.length > 8 ? keyCode.substring(0, 4) + '•'.repeat(keyCode.length - 8) + keyCode.substring(keyCode.length - 4) : keyCode;
+
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WSM — Painel</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0a0a0f;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:monospace;color:#e8e8f4}.card{background:#111118;border:1px solid #1e1e2e;border-radius:18px;padding:40px 36px;width:100%;max-width:500px}.logo{font-size:24px;font-weight:800;color:#00ff87;margin-bottom:8px;text-align:center}.info{margin-top:16px;background:#0a0a0f;border:1px solid #1e1e2e;border-radius:8px;padding:16px}.row{display:flex;justify-content:space-between;margin-bottom:10px;font-size:13px}.lbl{color:#8a8aaa}.val{color:#e8e8f4;font-weight:700}.badge-active{color:#00ff87}.badge-blocked{color:#ff4757}.badge-expired{color:#ffa500}</style>
-</head><body>
-<div class="card">
-  <div class="logo">⚡ WSM</div>
-  <div class="info">
-    <div class="row"><span class="lbl">Store</span><span class="val">${escHtml(storeId)}</span></div>
-    <div class="row"><span class="lbl">Status</span><span class="val ${st === 'active' ? 'badge-active' : st === 'blocked' ? 'badge-blocked' : 'badge-expired'}">${escHtml(st)}</span></div>
-    ${user ? `<div class="row"><span class="lbl">Nome</span><span class="val">${escHtml(user.name)}</span></div>` : ''}
-    ${user ? `<div class="row"><span class="lbl">Email</span><span class="val">${escHtml(user.email)}</span></div>` : ''}
-    ${premium ? `<div class="row"><span class="lbl">Plano</span><span class="val">${escHtml(premium.plan)}</span></div>` : ''}
-    ${premium && premium.expiresAt ? `<div class="row"><span class="lbl">Expira</span><span class="val">${escHtml(new Date(premium.expiresAt).toLocaleDateString('pt-BR'))}</span></div>` : ''}
+<title>WSM — Minha Conta</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--g:#00ff87;--gs:#00ff8720;--gb:#00ff8740;--bg:#0d0d14;--c1:#111118;--c2:#16161e;--brd:#1e1e30;--brd2:#28283a;--tx:#e8e8f4;--mu:#9494aa;--mu2:#6a6a82;--red:#ff4757;--warn:#ffa500;--r:14px;--rs:8px}
+body{background:var(--bg);min-height:100vh;font-family:monospace;color:var(--tx);-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--gb);border-radius:10px}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;background:var(--c1);border-bottom:1px solid var(--brd);position:sticky;top:0;z-index:50}
+.topbar-logo{font-size:20px;font-weight:800;color:var(--g);letter-spacing:-0.5px;font-family:sans-serif}
+.topbar-sub{font-size:11px;color:var(--mu);letter-spacing:1.5px;text-transform:uppercase;font-family:sans-serif;margin-top:1px}
+.logout-btn{padding:8px 18px;background:transparent;border:1px solid var(--brd2);border-radius:6px;color:var(--mu);font-size:12px;cursor:pointer;font-family:sans-serif;transition:all .2s}
+.logout-btn:hover{border-color:var(--red);color:var(--red)}
+.wrap{max-width:960px;margin:0 auto;padding:28px 20px}
+.hero{background:var(--c1);border:1px solid var(--brd);border-radius:var(--r);padding:28px 32px;margin-bottom:16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.avatar{width:56px;height:56px;border-radius:50%;background:var(--gs);border:2px solid var(--gb);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:var(--g);font-family:sans-serif;flex-shrink:0}
+.hero-info{flex:1;min-width:0}
+.hero-name{font-size:22px;font-weight:800;color:var(--tx);font-family:sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hero-key{font-size:12px;color:var(--mu);letter-spacing:2px;margin-top:4px;font-family:monospace}
+.hero-badges{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.badge{display:inline-flex;align-items:center;gap:5px;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:sans-serif;border:1px solid}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:16px}
+.card{background:var(--c1);border:1px solid var(--brd);border-radius:var(--rs);padding:18px 20px}
+.card-lbl{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--mu);margin-bottom:8px;font-family:sans-serif;font-weight:700}
+.card-val{font-size:15px;color:var(--tx);font-weight:700;word-break:break-all;font-family:monospace}
+.card-val.green{color:var(--g)}
+.phones-sec{background:var(--c1);border:1px solid var(--brd);border-radius:var(--rs);padding:18px 20px;margin-bottom:16px}
+.phones-lbl{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--mu);margin-bottom:12px;font-family:sans-serif;font-weight:700}
+.phone-list{display:flex;flex-wrap:wrap;gap:8px}
+.phone-chip{background:var(--c2);border:1px solid var(--brd2);border-radius:6px;padding:6px 12px;font-size:13px;color:var(--tx);font-family:monospace}
+.phone-empty{font-size:13px;color:var(--mu2)}
+.server-sec{background:var(--c1);border:1px solid var(--brd);border-radius:var(--rs);padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.server-dot{width:8px;height:8px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--gb);flex-shrink:0}
+.server-label{font-size:12px;color:var(--mu);font-family:sans-serif;flex:1}
+.server-url{font-size:12px;color:var(--g);font-family:monospace;word-break:break-all}
+.footer{text-align:center;font-size:12px;color:var(--mu2);padding:24px;font-family:sans-serif}
+@media(max-width:500px){.hero{padding:20px}.wrap{padding:16px 12px}}
+</style></head><body>
+<div class="topbar">
+  <div>
+    <div class="topbar-logo">⚡ WSM</div>
+    <div class="topbar-sub">Minha Conta</div>
+  </div>
+  <button class="logout-btn" onclick="window.location.href='/${storeId}/login'">Sair</button>
+</div>
+<div class="wrap">
+  <div class="hero">
+    <div class="avatar">${name.charAt(0).toUpperCase()}</div>
+    <div class="hero-info">
+      <div class="hero-name">${name}</div>
+      <div class="hero-key">${keyMasked}</div>
+      <div class="hero-badges">
+        <span class="badge" style="color:${statusColor};border-color:${statusColor}40;background:${statusColor}12">${statusLabel}</span>
+        <span class="badge" style="color:${planColor};border-color:${planColor}40;background:${planColor}12">${plan}</span>
+      </div>
+    </div>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <div class="card-lbl">Chave de Acesso</div>
+      <div class="card-val" title="${keyCode}">${keyMasked}</div>
+    </div>
+    <div class="card">
+      <div class="card-lbl">Plano</div>
+      <div class="card-val green">${plan}</div>
+    </div>
+    <div class="card">
+      <div class="card-lbl">Dispositivos Usados</div>
+      <div class="card-val">${uses} / ${maxUses}</div>
+    </div>
+    <div class="card">
+      <div class="card-lbl">Expira em</div>
+      <div class="card-val">${expiresAt}</div>
+    </div>
+    <div class="card">
+      <div class="card-lbl">Cadastrado em</div>
+      <div class="card-val">${createdAt}</div>
+    </div>
+    <div class="card">
+      <div class="card-lbl">Último número</div>
+      <div class="card-val">${lastPhone}</div>
+    </div>
+  </div>
+  ${phones.length > 0 ? `
+  <div class="phones-sec">
+    <div class="phones-lbl">Números registrados (${phones.length})</div>
+    <div class="phone-list">${phones.map(p => `<div class="phone-chip">+${escHtml(p)}</div>`).join('')}</div>
+  </div>` : ''}
+  <div class="server-sec">
+    <div class="server-dot"></div>
+    <div class="server-label">Servidor WSM conectado</div>
+    <div class="server-url">${serverUrl}</div>
   </div>
 </div>
+<div class="footer">© ${new Date().getFullYear()} WSM. Todos os direitos reservados.</div>
 </body></html>`;
 }
 
@@ -4594,6 +4688,11 @@ async function handleClientPanel(req, res, pathname, url) {
   const action  = m[2].toLowerCase();
   if (action === 'login' || action === 'auth-painel') {
     if (req.method === 'GET') {
+      const token = normKey(url.searchParams.get('token') || '');
+      if (token) {
+        const rec = await findLicenseByCode(token);
+        if (rec) { sendHtml(res, renderClientAuthPainel(storeId, token, null, rec)); return true; }
+      }
       sendHtml(res, renderClientLogin(storeId));
       return true;
     }
@@ -4781,6 +4880,40 @@ async function handleRequest(req, res) {
     }
 
   }
+
+      // POST /api/user/update — client-side rename (Editar Perfil)
+    if (p === '/api/user/update' && req.method === 'POST') {
+      const keyCode = normKey(parseBearer(req));
+      if (!keyCode) { sendJson(res, { success: false, msg_id: 'no_token' }, 401); return; }
+      const rec = await findLicenseByCode(keyCode);
+      if (!rec || !rec.active) { sendJson(res, { success: false, msg_id: 'invalid_token' }, 401); return; }
+      const body = await parseBody(req);
+      const newName = String(body.full_name || body.name || '').trim().slice(0, 80);
+      if (!newName) { sendJson(res, { success: false, msg_id: 'invalid_name' }, 400); return; }
+      await updateLicense(keyCode, { label: newName });
+      sendJson(res, { success: true, name: newName }); return;
+    }
+
+    // POST /api/client/phone — register WhatsApp phone used on login
+    if (p === '/api/client/phone' && req.method === 'POST') {
+      const keyCode = normKey(parseBearer(req));
+      if (!keyCode) { sendJson(res, { success: false, msg_id: 'no_token' }, 401); return; }
+      const rec = await findLicenseByCode(keyCode);
+      if (!rec || !rec.active) { sendJson(res, { success: false, msg_id: 'invalid_token' }, 401); return; }
+      const body = await parseBody(req);
+      const phone = String(body.phone || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
+      if (!phone) { sendJson(res, { success: false, msg_id: 'invalid_phone' }, 400); return; }
+      const phones = Array.isArray(rec.phones) ? rec.phones : [];
+      if (!phones.includes(phone)) {
+        const maxUses = rec.maxUses != null ? rec.maxUses : -1;
+        if (maxUses > 0 && phones.length >= maxUses) { sendJson(res, { success: false, msg_id: 'limit_reached' }, 403); return; }
+        phones.push(phone);
+        await updateLicense(keyCode, { phones, uses: phones.length, lastPhone: phone, lastIp: ip });
+      } else {
+        await updateLicense(keyCode, { lastPhone: phone, lastIp: ip });
+      }
+      sendJson(res, { success: true }); return;
+    }
 
   if (p === R_ADMIN+'/login' && req.method === 'POST') {
     if (!checkRateLimit(ip, 'login')) {
