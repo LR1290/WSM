@@ -4318,18 +4318,27 @@ function licKeyExpired(rec) {
   return new Date(rec.expiresAt) < new Date();
 }
 
-function keyStatus(rec) {
+function isPremiumKey(code, rec) {
+  // Chaves explicitamente marcadas como plano gratuito
+  if (code === FREE_AUTH_KEY) return false;
+  if (rec.plan_id === FREE_PLAN_ID || rec.plan_id === FREE_OWNER_ID) return false;
+  // Qualquer outra chave ativa é premium (admin cria sem o campo premium=true)
+  return true;
+}
+
+function keyStatus(rec, code) {
   if (!rec || !rec.active) return 'blocked';
   if (licKeyExpired(rec)) return 'expired';
-  return rec.premium ? 'active' : 'free';
+  return isPremiumKey(code, rec) ? 'active' : 'free';
 }
 
 function buildUserPremium(code, rec) {
+  const premium = isPremiumKey(code, rec);
   return {
     active: rec.active && !licKeyExpired(rec),
-    premium: !!rec.premium,
+    premium,
     expiresAt: rec.expiresAt || null,
-    plan: rec.premium ? 'pro' : 'free',
+    plan: premium ? 'pro' : 'free',
     code,
   };
 }
@@ -4354,7 +4363,7 @@ function keyToUser(code, rec) {
 const EMPTY_AUTH_GOOGLE = { success: false, token: '', email: '', name: '' };
 
 async function authSuccess(code, rec) {
-  const st = keyStatus(rec);
+  const st = keyStatus(rec, code);
   if (st === 'blocked') return { ok: false, msg_id: 'user_blocked' };
   if (st === 'expired') return { ok: false, msg_id: 'license_expired' };
   const lastUsed = new Date().toISOString();
@@ -4366,7 +4375,7 @@ async function authSuccess(code, rec) {
       success: true,
       user: keyToUser(code, rec),
       auth_google: EMPTY_AUTH_GOOGLE,
-      user_status: st === 'active' ? 'active' : 'free',
+      user_status: st,
     },
   };
 }
@@ -4553,7 +4562,7 @@ function renderClientRegister(storeId) {
 }
 
 function renderClientAuthPainel(storeId, token, page, rec) {
-  const st = rec ? keyStatus(rec) : 'blocked';
+  const st = rec ? keyStatus(rec, rec.code || '') : 'blocked';
   const user = rec ? keyToUser(rec.code || '', rec) : null;
   const premium = rec ? buildUserPremium(rec.code || '', rec) : null;
   return `<!DOCTYPE html><html lang="pt-BR"><head>
