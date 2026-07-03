@@ -2174,7 +2174,7 @@ body{background:var(--bg);color:var(--tx);font-family:'Inter','Segoe UI',system-
 a{color:inherit;text-decoration:none}
 button{font-family:inherit}
 /* Garante que todo conteúdo fique acima do canvas animado (z-index:0) */
-header,nav,.admin-content,.modal-bg,.toast{position:relative;z-index:2}
+header,.admin-content,.modal-bg,.toast{position:relative;z-index:2}
 header{position:sticky}
 /* ── Header ── */
 header{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:var(--hdr);border-bottom:1px solid var(--brd);background:rgba(8,8,8,.96);top:0;z-index:50;box-shadow:0 1px 0 var(--brd),0 2px 16px #00000060;backdrop-filter:blur(8px)}
@@ -2484,6 +2484,29 @@ td.td-status{white-space:nowrap;overflow:hidden}
   </div>
   </div>
 
+
+<!-- ── PAINEL CHANGELOG ── -->
+<div class="sec-panel" data-panel="changelog">
+<div class="sec">
+  <div class="sh"><div class="st"><span class="st-accent">📝</span> Changelog — Atualizações</div></div>
+  <div style="padding:16px;display:grid;gap:12px">
+    <div style="background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:16px;display:grid;gap:10px">
+      <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:4px">Adicionar entrada</div>
+      <input id="cl-title" class="inp" placeholder="Título (ex: Versão 7.4.3.58)" style="width:100%">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <input id="cl-version" class="inp" placeholder="Versão (ex: 7.4.3.58)">
+        <input id="cl-date" class="inp" type="date">
+      </div>
+      <textarea id="cl-items" class="inp" rows="4" placeholder="Uma mudança por linha&#10;Ex: Corrigido bug nas respostas rápidas&#10;Ex: Melhorado carregamento inicial" style="width:100%;resize:vertical"></textarea>
+      <button class="btn" onclick="submitChangelog()">➕ Adicionar ao Changelog</button>
+    </div>
+    <div class="ov"><table>
+      <thead><tr><th>Título</th><th>Versão</th><th>Data</th><th>Itens (prévia)</th><th></th></tr></thead>
+      <tbody id="changelog-tb"><tr><td colspan="5" class="empty">Carregando...</td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+</div>
 </div><!-- /admin-content -->
 </div><!-- /admin-wrap -->
 
@@ -3025,28 +3048,7 @@ async function deleteChangelog(id){
 }
 </script>
 
-<!-- ── PAINEL CHANGELOG ── -->
-<div class="sec-panel" data-panel="changelog">
-<div class="sec">
-  <div class="sh"><div class="st"><span class="st-accent">📝</span> Changelog — Atualizações</div></div>
-  <div style="padding:16px;display:grid;gap:12px">
-    <div style="background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:16px;display:grid;gap:10px">
-      <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:4px">Adicionar entrada</div>
-      <input id="cl-title" class="inp" placeholder="Título (ex: Versão 7.4.3.58)" style="width:100%">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <input id="cl-version" class="inp" placeholder="Versão (ex: 7.4.3.58)">
-        <input id="cl-date" class="inp" type="date">
-      </div>
-      <textarea id="cl-items" class="inp" rows="4" placeholder="Uma mudança por linha&#10;Ex: Corrigido bug nas respostas rápidas&#10;Ex: Melhorado carregamento inicial" style="width:100%;resize:vertical"></textarea>
-      <button class="btn" onclick="submitChangelog()">➕ Adicionar ao Changelog</button>
-    </div>
-    <div class="ov"><table>
-      <thead><tr><th>Título</th><th>Versão</th><th>Data</th><th>Itens (prévia)</th><th></th></tr></thead>
-      <tbody id="changelog-tb"><tr><td colspan="5" class="empty">Carregando...</td></tr></tbody>
-    </table></div>
-  </div>
-</div>
-</div>
+
 <script>
 (function(){
   // Inicializa data do dia para o campo date
