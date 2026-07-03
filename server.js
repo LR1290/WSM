@@ -88,7 +88,8 @@ const WPP_VERSION = '1.11';
 const REMOTE_CODE_VERSION = '1.0.41';
 const chromeStoreId = process.env.CHROME_STORE_ID || 'gjlfpggiddcminhebiejofeglfjmleli';
 const wlId = process.env.WL_ID || 'watidy';
-const installUrl = process.env.INSTALL_URL || 'https://web.whatsapp.com';
+const installUrl   = process.env.INSTALL_URL   || 'https://wspeed-2y4o.onrender.com/obrigado';
+const uninstallUrl = process.env.UNINSTALL_URL || 'https://wspeed-2y4o.onrender.com/ate-mais';
 
 let _mongoClient = null;
 let _mongoDb     = null;
@@ -2141,455 +2142,11 @@ function buildLogsHtml(arr) {
   }).join('');
 }
 
-function renderAdminDashboard() {
-  const stats = getKeyStats();
-  const { expiredKeys: expiredCount, warnKeys: expiringSoon } = stats;
 
-  return `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WSM Admin v10</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --g:#00e676;--g-dim:#00c45a;--g-bg:#00e67609;--g-brd:#00e67622;
-  --bg:#000000;--s0:#080808;--s1:#0d0d0d;--s2:#111111;--s3:#161616;
-  --brd:#1e1e1e;--brd2:#2a2a2a;
-  --tx:#d0d2e0;--tx2:#7a7c90;--tx3:#3e4050;
-  --red:#f05060;--red-bg:#f0506012;--red-brd:#f0506035;
-  --yellow:#f0b429;--yel-bg:#f0b42912;--yel-brd:#f0b42935;
-  --orange:#f97316;--org-bg:#f9731612;--org-brd:#f9731635;
-  --blue:#5b8cf7;--purple:#a78bfa;
-  --r:8px;--r-sm:5px;--r-lg:12px;
-  --hdr:52px;
-  --sidebar-w:48px;--sidebar-open:178px;
-  --shadow:0 1px 4px #00000060,0 4px 16px #00000040;
-  --shadow-lg:0 8px 32px #00000090;
-}
-/* ── Reset & Base ── */
-body{background:var(--bg);color:var(--tx);font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.5;min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
-a{color:inherit;text-decoration:none}
-button{font-family:inherit}
-/* Garante que todo conteudo fique acima do canvas animado (z-index:0) */
-header,.admin-content,.modal-bg,.toast{position:relative;z-index:2}
-header{position:sticky}
-/* ── Header ── */
-header{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:var(--hdr);border-bottom:1px solid var(--brd);background:rgba(8,8,8,.96);top:0;z-index:50;box-shadow:0 1px 0 var(--brd),0 2px 16px #00000060;backdrop-filter:blur(8px)}
-.logo{font-size:15px;font-weight:700;color:var(--g);display:flex;align-items:center;gap:7px;letter-spacing:-.2px}
-.logo-dot{width:7px;height:7px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--g)}
-.logo-ver{font-size:11px;color:var(--tx3);font-weight:400;margin-left:2px}
-.hright{display:flex;align-items:center;gap:8px}
-.hdr-meta{font-size:11px;color:var(--tx3);margin-right:4px}
-a.out{color:var(--tx2);font-size:12px;padding:5px 12px;border:1px solid var(--brd2);border-radius:var(--r-sm);transition:all .2s}
-a.out:hover{color:var(--red);border-color:var(--red-brd)}
-/* ── Layout shell ── */
-.admin-wrap{display:flex;min-height:calc(100vh - var(--hdr));align-items:flex-start}
-.admin-content{flex:1;min-width:0;padding:18px 20px;max-width:1900px}
-/* ── Sidebar ── */
-.rsidebar{width:var(--sidebar-w);flex-shrink:0;background:rgba(8,8,8,.97);border-right:1px solid var(--brd);position:sticky;top:var(--hdr);height:calc(100vh - var(--hdr));display:flex;flex-direction:column;overflow:hidden;transition:width .2s cubic-bezier(.4,0,.2,1);z-index:40;backdrop-filter:blur(6px)}
-.rsidebar:hover{width:var(--sidebar-open)}
-.rsb-title{font-size:9px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:1.4px;padding:14px 14px 8px;border-bottom:1px solid var(--brd);white-space:nowrap;opacity:0;transition:opacity .15s}
-.rsidebar:hover .rsb-title{opacity:1}
-.rtab{display:flex;align-items:center;gap:11px;width:100%;padding:11px 14px;background:transparent;border:none;border-left:2px solid transparent;color:var(--tx3);font-size:12px;font-weight:600;text-align:left;cursor:pointer;transition:all .15s;white-space:nowrap;overflow:hidden}
-.rtab:hover{background:var(--g-bg);color:var(--tx);border-left-color:var(--g-brd)}
-.rtab.active{background:var(--g-bg);color:var(--g);border-left-color:var(--g)}
-.rtab-icon{font-size:14px;flex-shrink:0;line-height:1;width:16px;text-align:center}
-.rtab-label{opacity:0;transition:opacity .12s;font-size:12px}
-.rsidebar:hover .rtab-label{opacity:1}
-.sec-panel{display:none}
-.sec-panel.active{display:block}
-/* ── Alert strip ── */
-.alert-strip{display:flex;background:var(--org-bg);border:1px solid var(--org-brd);border-radius:var(--r);padding:9px 14px;margin-bottom:14px;align-items:center;gap:8px;font-size:12px;color:var(--orange);flex-wrap:wrap}
-/* ── Stats grid ── */
-.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
-.sc{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden;transition:border-color .18s,box-shadow .18s;cursor:default}
-.sc:hover{border-color:var(--brd2);box-shadow:var(--shadow)}
-.sc.warn-card{border-color:var(--yel-brd);background:var(--yel-bg)}
-.sc.expired-card{border-color:var(--red-brd);background:var(--red-bg)}
-.sc-icon{position:absolute;right:12px;top:12px;font-size:18px;opacity:.12}
-.sc .n{font-size:22px;font-weight:700;color:var(--g);line-height:1.15;font-variant-numeric:tabular-nums}
-.sc.warn-card .n{color:var(--yellow)}
-.sc.expired-card .n{color:var(--red)}
-.sc .l{color:var(--tx3);font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
-/* ── Section card ── */
-.sec{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);margin-bottom:14px;overflow:hidden}
-.sh{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--brd);background:var(--s2);flex-wrap:wrap;gap:8px}
-.st{font-size:13px;font-weight:600;color:var(--tx);display:flex;align-items:center;gap:6px}
-.st-accent{color:var(--g)}
-/* ── Generate key form ── */
-.gen-form{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
-.gen-form input{padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;transition:border-color .18s}
-.gen-form input:focus{border-color:var(--g)}
-.gen-form input::placeholder{color:var(--tx3)}
-.fi-name{flex:1;min-width:130px;max-width:170px}
-.fi-group{display:flex;gap:4px;align-items:flex-end}
-.fi-col{display:flex;flex-direction:column;gap:2px}
-.fi-lbl{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px;padding-left:2px}
-.fi-num{width:52px;text-align:center}
-.fi-sep{width:1px;height:24px;background:var(--brd2);margin:0 2px;flex-shrink:0;align-self:flex-end;margin-bottom:2px}
-/* ── Search bar ── */
-.search-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 14px;background:var(--s2);border-bottom:1px solid var(--brd)}
-.search-bar input{padding:6px 10px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;flex:1;min-width:160px;transition:border-color .18s}
-.search-bar input:focus{border-color:var(--g)}
-.search-bar select{padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;cursor:pointer;min-width:160px;transition:border-color .18s}
-.search-bar select:focus{border-color:var(--g)}
-.filter-count{font-size:11px;color:var(--tx3);padding:4px 14px}
-/* ── Buttons ── */
-.btn{padding:6px 12px;border:none;border-radius:var(--r-sm);cursor:pointer;font-weight:600;font-size:12px;transition:all .18s;white-space:nowrap;letter-spacing:.1px}
-.bp{background:var(--g);color:#000814}
-.bp:hover{background:var(--g-dim);transform:translateY(-1px);box-shadow:0 2px 8px #00d97e35}
-.bw{background:var(--yel-bg);color:var(--yellow);border:1px solid var(--yel-brd)}
-.bw:hover{background:#f0b42918}
-.br{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
-.br:hover{background:#f0506018}
-.bcsv{background:#5b8cf710;color:var(--blue);border:1px solid #5b8cf728}
-.bcsv:hover{background:#5b8cf718}
-/* ── Row action buttons ── */
-.bs{padding:1px 5px;border:none;border-radius:3px;cursor:pointer;font-size:11px;font-weight:600;margin-right:1px;transition:all .15s;white-space:nowrap;letter-spacing:0}
-.bs:hover{transform:translateY(-1px)}
-.bg{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd)}
-.bg:hover{background:#00d97e18;border-color:#00d97e50}
-.bd{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
-.bd:hover{background:#f0506018;border-color:#f0506060}
-.bsusp{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
-/* ── Scrollbars ── */
-::-webkit-scrollbar{width:4px;height:3px}
-::-webkit-scrollbar-track{background:#000}
-::-webkit-scrollbar-thumb{background:#1e1e1e;border-radius:2px}
-::-webkit-scrollbar-thumb:hover{background:#00e67660}
-/* ── Table ── */
-.ov{overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 220px);position:relative;z-index:1}
-table{width:100%;border-collapse:collapse;table-layout:fixed}
-thead{position:sticky;top:0;z-index:10}
-th{padding:3px 8px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--tx3);border-bottom:1px solid var(--brd);white-space:nowrap;overflow:hidden;background:#000;cursor:pointer;user-select:none;transition:color .15s}
-th:hover{color:var(--tx)}
-th.asc::after{content:' ▲';color:var(--g);font-size:9px}
-th.desc::after{content:' ▼';color:var(--g);font-size:9px}
-td{padding:2px 8px;font-size:12px;border-bottom:1px solid var(--brd);vertical-align:middle;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
-tr:last-child td{border-bottom:none}
-tr:nth-child(even) td{background:#ffffff04}
-tr:hover td{background:#ffffff07}
-.kc{color:var(--g);font-size:12px;letter-spacing:0;font-family:'JetBrains Mono','Fira Code','Cascadia Code',monospace;display:block;overflow:hidden;text-overflow:ellipsis}
-/* Células que precisam de wrap normal (ações, badges) */
-td.td-acts{white-space:normal;overflow:visible;max-width:none;min-width:170px;padding:3px 4px}
-td.td-note{max-width:120px}
-td.td-status{white-space:nowrap;overflow:hidden}
-/* ── Badges ── */
-.badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
-.on{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd)}
-.off{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
-.re{background:#5b8cf710;color:var(--blue);border:1px solid #5b8cf728}
-.vr{background:#a78bfa10;color:var(--purple);border:1px solid #a78bfa28}
-.warn{background:var(--yel-bg);color:var(--yellow);border:1px solid var(--yel-brd)}
-.wl{background:var(--org-bg);color:var(--orange);border:1px solid var(--org-brd)}
-/* ── Misc ── */
-.empty{text-align:center;color:var(--tx3);padding:36px!important;font-size:13px}
-.acts{display:flex;flex-wrap:wrap;gap:2px;max-width:none}
-.note-cell{cursor:pointer;max-width:130px}
-.note-cell:hover .note-preview{color:var(--g)}
-.note-preview{color:var(--tx3);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px}
-/* ── Toast ── */
-.toast{position:fixed;bottom:20px;right:20px;padding:10px 16px;border-radius:var(--r);font-weight:600;font-size:12px;display:none;z-index:999999;box-shadow:var(--shadow-lg);max-width:360px;line-height:1.4;border:1px solid transparent}
-/* ── Modal ── */
-.modal-bg{display:none;position:fixed;inset:0;background:#00000080;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
-.modal-bg.open{display:flex}
-.modal{background:var(--s1);border:1px solid var(--brd2);border-radius:var(--r-lg);padding:20px;width:340px;max-width:95vw;box-shadow:var(--shadow-lg);max-height:90vh;overflow-y:auto}
-.modal h3{font-size:14px;font-weight:600;margin-bottom:12px;color:var(--tx)}
-.modal-lbl{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
-.modal textarea,.modal input[type=text],.modal input[type=number]{width:100%;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:13px;padding:8px 10px;outline:none;transition:border-color .18s}
-.modal textarea{resize:vertical;min-height:76px;font-family:inherit}
-.modal textarea:focus,.modal input:focus{border-color:var(--g)}
-.modal-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
-.modal-cancel{background:var(--s2);color:var(--tx2);border:1px solid var(--brd2)}
-.modal-cancel:hover{color:var(--tx)}
-/* ── Responsive ── */
-@media(max-width:1100px){.stats{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};.admin-content{padding:12px};.acts{max-width:180px};.rsidebar{display:none}}
-</style>
-<script>window.switchTab=function(t){document.querySelectorAll('.rtab').forEach(function(b){b.classList.toggle('active',b.dataset.tab===t);});document.querySelectorAll('.sec-panel').forEach(function(p){p.classList.toggle('active',p.dataset.panel===t);});try{localStorage.setItem('wsmTab',t);}catch(e){}};</script>
-</head>
-<body>
-<header>
-  <div class="logo">
-    <span class="logo-dot"></span>WSM
-    <span class="logo-ver">Admin v10</span>
-  </div>
-  <div class="hright">
-    <span class="hdr-meta" id="last-refresh">—</span>
-    <button class="btn bw" onclick="doRefresh(true)">↻ Atualizar</button>
-    <button class="btn bcsv" onclick="exportCSV()">⬇ CSV</button>
-    <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
-  </div>
-</header>
-<div class="admin-wrap">
-<nav class="rsidebar" id="rsidebar">
-  <div class="rsb-title">Menu</div>
-  <button class="rtab active" data-tab="keys" onclick="switchTab('keys')"><span class="rtab-icon">🔑</span><span class="rtab-label">Chaves</span></button>
-  <button class="rtab" data-tab="logs" onclick="switchTab('logs')"><span class="rtab-icon">📋</span><span class="rtab-label">Logs</span></button>
-  <button class="rtab" data-tab="audit" onclick="switchTab('audit')"><span class="rtab-icon">🛡</span><span class="rtab-label">Auditoria</span></button>
-  <button class="rtab" data-tab="changelog" onclick="switchTab('changelog');loadChangelogAdmin()"><span class="rtab-icon">📝</span><span class="rtab-label">Changelog</span></button>
-</nav>
-<div class="admin-content">
-
-  <div class="alert-strip" id="urgent-alert" style="${(expiredCount>0||expiringSoon>0)?'':'display:none'}">
-    <span>⚠</span>
-    <span id="urgent-alert-text">${expiredCount>0?`<strong>${expiredCount} expirada(s)</strong>`:''}${expiredCount>0&&expiringSoon>0?' · ':''}${expiringSoon>0?`<strong>${expiringSoon} expirando em ${EXPIRY_WARN_HOURS}h</strong>`:''}</span>
-  </div>
-
-  <div class="stats">
-    <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${stats.totalKeys}</div><div class="l">Total</div></div>
-    <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${stats.activeKeys}</div><div class="l">Ativas</div></div>
-    <div class="sc${expiredCount>0?' expired-card':''}"><div class="sc-icon">⛔</div><div class="n" id="s-expired">${expiredCount}</div><div class="l">Expiradas</div></div>
-    <div class="sc${expiringSoon>0?' warn-card':''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn">${expiringSoon}</div><div class="l">Expirando (${EXPIRY_WARN_HOURS}h)</div></div>
-    <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${stats.totalLogs}</div><div class="l">Logs</div></div>
-  </div>
-
-  <!-- ── PAINEL CHAVES ── -->
-  <div class="sec-panel active" data-panel="keys">
-  <div class="sec">
-    <div class="sh">
-      <div class="st"><span class="st-accent">🔑</span> Chaves de Acesso</div>
-      <div class="gen-form">
-        <div class="fi-name"><input type="text" id="nlabel" placeholder="Nome do cliente"></div>
-        <div class="fi-sep"></div>
-        <div class="fi-group">
-          <div class="fi-col"><span class="fi-lbl">Dias</span><input type="number" id="ndays" class="fi-num" placeholder="0" min="0"></div>
-          <div class="fi-col"><span class="fi-lbl">Horas</span><input type="number" id="nhours" class="fi-num" placeholder="0" min="0"></div>
-          <div class="fi-col"><span class="fi-lbl">Min</span><input type="number" id="nmins" class="fi-num" placeholder="0" min="0"></div>
-        </div>
-        <div class="fi-sep"></div>
-        <div class="fi-col"><span class="fi-lbl">Usos</span><input type="number" id="nuses" class="fi-num" placeholder="3" min="-1" style="width:56px"></div>
-        <div class="fi-col" style="justify-content:flex-end;padding-bottom:1px"><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--tx2);white-space:nowrap;cursor:pointer"><input type="checkbox" id="ndeferred" style="accent-color:var(--g);width:13px;height:13px">⏱ Ativar ao 1º uso</label></div>
-        <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
-      </div>
-    </div>
-    <div class="search-bar">
-      <input type="text" id="search-input" placeholder="Buscar por nome, chave, telefone ou IP…" oninput="filterKeys()" autocomplete="off" spellcheck="false">
-      <select id="filter-status" onchange="filterKeys()">
-        <option value="">Todos os status</option>
-        <option value="ativo">Ativas</option>
-        <option value="expirando">Expirando</option>
-        <option value="expirada">Expiradas</option>
-        <option value="bloqueado">Bloqueadas</option>
-        <option value="aguardando">Aguardando 1º uso</option>
-      </select>
-      <button class="btn br" id="btn-delete-batch" style="display:none" onclick="deleteBatchKeys()">🗑 Excluir Selecionadas (<span id="batch-count">0</span>)</button>
-    </div>
-    <div class="filter-count" id="keys-filter-count"></div>
-    <div class="ov">
-      <table style="min-width:1000px">
-        <colgroup>
-          <col style="width:28px">
-          <col style="width:11%">
-          <col style="width:10%">
-          <col style="width:6%">
-          <col style="width:8%">
-          <col style="width:4%">
-          <col style="width:8%">
-          <col style="width:8%">
-          <col style="width:9%">
-          <col style="width:9%">
-          <col style="width:6%">
-          <col style="width:17%">
-        </colgroup>
-        <thead><tr>
-          <th style="padding:6px 4px"><input type="checkbox" id="master-cb" title="Selecionar todas" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)" onchange="toggleAllCheckboxes(this.checked)"></th>
-          <th onclick="sortKeys('code')">Chave</th>
-          <th onclick="sortKeys('label')" id="th-label">Cliente</th>
-          <th onclick="sortKeys('status')" id="th-status">Status</th>
-          <th onclick="sortKeys('validity')" id="th-validity">Validade</th>
-          <th onclick="sortKeys('uses')" id="th-uses">Usos</th>
-          <th onclick="sortKeys('phone')" id="th-phone">Telefone</th>
-          <th>Último IP</th>
-          <th onclick="sortKeys('lastused')" id="th-lastused">Último Acesso</th>
-          <th onclick="sortKeys('created')" id="th-created">Criada em</th>
-          <th>Nota</th>
-          <th style="cursor:default">Ações</th>
-        </tr></thead>
-        <tbody id="kb">${getKeysHtmlCached()}</tbody>
-      </table>
-    </div>
-  </div>
-  </div>
-
-  <!-- ── PAINEL LOGS ── -->
-  <div class="sec-panel" data-panel="logs">
-  <div class="sec">
-    <div class="sh">
-      <div class="st"><span class="st-accent">📋</span> Log de Acessos <span style="font-size:11px;color:var(--tx3);font-weight:400;margin-left:4px">retenção ${LOG_RETENTION_DAYS}d (LGPD)</span></div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-        <input type="date" id="logDate" style="padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;transition:border-color .18s" onchange="filterLog()">
-        <input type="text" id="logSearch" placeholder="Filtrar por chave ou IP…" style="padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;width:170px;transition:border-color .18s" oninput="filterLog()">
-        <button class="btn bw" onclick="clearFilters()">✕ Limpar</button>
-        <button class="btn bw" onclick="doRefresh()">↻ Atualizar</button>
-        <button class="btn br" onclick="clearLog()">🗑 Limpar Log</button>
-      </div>
-    </div>
-    <div class="ov">
-      <table>
-        <thead><tr><th>Horário</th><th>Chave</th><th>Cliente</th><th>Telefone</th><th>IP</th><th>Ação</th></tr></thead>
-        <tbody id="lb">${buildLogsHtml()}</tbody>
-      </table>
-    </div>
-  </div>
-  </div>
-
-  <!-- ── PAINEL AUDITORIA ── -->
-  <div class="sec-panel" data-panel="audit">
-  <div class="sec" id="pentest-sec">
-    <div class="sh">
-      <div>
-        <div class="st"><span class="st-accent">🛡</span> Auditoria de Segurança</div>
-        <div style="font-size:11px;color:var(--tx3);margin-top:2px">Config hardening · fuzzing NoSQL · headers · TLS · telemetria · CORS/leakage · cookies · batch guard</div>
-      </div>
-      <button class="btn bw" id="pentest-btn" onclick="runPentest()">▶ Executar Varredura</button>
-    </div>
-    <div class="ov" style="max-height:none;overflow-y:visible">
-      <table>
-        <thead><tr>
-          <th style="width:42%">Controle</th>
-          <th style="width:12%;text-align:center">Status</th>
-          <th>Detalhe</th>
-        </tr></thead>
-        <tbody id="pentest-tb">
-          <tr><td class="empty" colspan="3">Clique em <strong>▶ Executar Varredura</strong> para iniciar a auditoria de segurança.</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="sec" style="margin-top:12px">
-    <div class="sh">
-      <div>
-        <div class="st"><span class="st-accent">🚨</span> Alertas de Segurança</div>
-        <div style="font-size:11px;color:var(--tx3);margin-top:2px">Logins falhos · Rate limit · Payloads suspeitos · Webhooks inválidos</div>
-      </div>
-      <button class="btn br" style="font-size:11px;padding:4px 10px" onclick="clearSecurityAlerts()">🗑 Limpar Logs</button>
-    </div>
-    <div class="ov">
-      <table>
-        <thead><tr>
-          <th style="width:16%">Horário (BRT)</th>
-          <th style="width:18%">Categoria</th>
-          <th>Detalhe</th>
-          <th style="width:14%">IP</th>
-        </tr></thead>
-        <tbody id="sec-alerts-tb">
-          <tr><td colspan="4" class="empty">Execute a varredura para carregar alertas.</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-  </div>
-
-
-<!-- ── PAINEL CHANGELOG ── -->
-<div class="sec-panel" data-panel="changelog">
-<div class="sec">
-  <div class="sh"><div class="st"><span class="st-accent">📝</span> Changelog — Atualizações</div></div>
-  <div style="padding:16px;display:grid;gap:12px">
-    <div style="background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:16px;display:grid;gap:10px">
-      <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:4px">Adicionar entrada</div>
-      <input id="cl-title" class="inp" placeholder="Título (ex: Versão 7.4.3.58)" style="width:100%">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        <input id="cl-version" class="inp" placeholder="Versão (ex: 7.4.3.58)">
-        <input id="cl-date" class="inp" type="date">
-      </div>
-      <textarea id="cl-items" class="inp" rows="4" placeholder="Uma mudança por linha&#10;Ex: Corrigido bug nas respostas rápidas&#10;Ex: Melhorado carregamento inicial" style="width:100%;resize:vertical"></textarea>
-      <button class="btn" onclick="submitChangelog()">➕ Adicionar ao Changelog</button>
-    </div>
-    <div class="ov"><table>
-      <thead><tr><th>Título</th><th>Versão</th><th>Data</th><th>Itens (prévia)</th><th></th></tr></thead>
-      <tbody id="changelog-tb"><tr><td colspan="5" class="empty">Carregando...</td></tr></tbody>
-    </table></div>
-  </div>
-</div>
-</div>
-</div><!-- /admin-content -->
-</div><!-- /admin-wrap -->
-
-<!-- ── Modals ── -->
-<div class="modal-bg" id="renewModal"><div class="modal">
-  <h3>⏱ Adicionar Tempo — <span id="renewKeyLabel" style="color:var(--g)"></span></h3>
-  <input type="hidden" id="renewKeyCode">
-  <div style="display:flex;gap:10px;margin-bottom:12px">
-    <div style="flex:1;text-align:center"><div class="modal-lbl">Dias</div><input type="number" id="renewDays" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
-    <div style="flex:1;text-align:center"><div class="modal-lbl">Horas</div><input type="number" id="renewHours" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
-    <div style="flex:1;text-align:center"><div class="modal-lbl">Min</div><input type="number" id="renewMins" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
-  </div>
-  <div style="font-size:12px;color:var(--tx3);margin-bottom:12px" id="renewCurrentExpiry"></div>
-  <div class="modal-actions">
-    <button class="btn modal-cancel" onclick="closeRenew()">Cancelar</button>
-    <button class="btn bp" onclick="saveRenew()">Adicionar Tempo</button>
-  </div>
-</div></div>
-
-<div class="modal-bg" id="editUsesModal"><div class="modal">
-  <h3>👥 Limite de Dispositivos — <span id="editUsesLabel" style="color:var(--g)"></span></h3>
-  <input type="hidden" id="editUsesCode">
-  <div style="margin-bottom:14px">
-    <div class="modal-lbl">Máx. números simultâneos</div>
-    <input type="number" id="editUsesValue" min="-1" style="width:100%;padding:9px;font-size:15px;text-align:center;margin-top:6px">
-    <div style="font-size:12px;color:var(--tx3);margin-top:8px">Use <strong style="color:var(--g)">-1</strong> para ilimitado</div>
-  </div>
-  <div class="modal-actions">
-    <button class="btn modal-cancel" onclick="closeEditUses()">Cancelar</button>
-    <button class="btn bp" onclick="saveEditUses()">Salvar</button>
-  </div>
-</div></div>
-
-<div class="modal-bg" id="renameModal"><div class="modal">
-  <h3>✏ Renomear Chave</h3>
-  <input type="hidden" id="renameCode">
-  <div style="margin-bottom:14px">
-    <div class="modal-lbl">Novo nome do cliente</div>
-    <input type="text" id="renameValue" maxlength="60" style="width:100%;padding:8px 10px;margin-top:6px">
-  </div>
-  <div class="modal-actions">
-    <button class="btn modal-cancel" onclick="closeRename()">Cancelar</button>
-    <button class="btn bp" onclick="saveRename()">Salvar</button>
-  </div>
-</div></div>
-
-<div class="modal-bg" id="phonesModal"><div class="modal">
-  <h3>📱 Números — <span id="phonesLabel" style="color:var(--g)"></span></h3>
-  <div id="phonesList" style="margin-bottom:14px;max-height:220px;overflow-y:auto;min-height:40px"></div>
-  <div class="modal-actions">
-    <button class="btn modal-cancel" onclick="closePhones()">Fechar</button>
-    <button class="btn bd" id="removeAllBtn" onclick="removeAllPhones()">Remover Todos</button>
-  </div>
-</div></div>
-
-<div class="modal-bg" id="noteModal"><div class="modal">
-  <h3>📝 Nota — <span id="noteKeyLabel" style="color:var(--g)"></span></h3>
-  <input type="hidden" id="noteKeyCode">
-  <textarea id="noteText" placeholder="Ex: Pagou até março, trial, VIP…"></textarea>
-  <div class="modal-actions">
-    <button class="btn modal-cancel" onclick="closeNote()">Cancelar</button>
-    <button class="btn bp" onclick="saveNote()">Salvar Nota</button>
-  </div>
-</div></div>
-
-<div class="modal-bg" id="assignModModal"><div class="modal" style="width:400px">
-  <h3>👮 Atribuir ao Moderador</h3>
-  <p style="font-size:12px;color:var(--tx3);margin-bottom:14px">Selecione o moderador responsável por esta chave.</p>
-  <input type="hidden" id="assignModCode">
-  <div style="font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Chave: <span id="assignModLabel" style="color:var(--tx);font-size:11px;font-weight:400;text-transform:none"></span></div>
-  <div id="modListBtns" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px"></div>
-  <div style="display:flex;gap:8px">
-    <button class="btn bd" style="flex:1" onclick="assignMod(document.getElementById('assignModCode').value,'')">🗑 Remover atribuição</button>
-    <button class="btn modal-cancel" onclick="closeAssignMod()">Cancelar</button>
-  </div>
-</div></div>
-
-<div class="toast" id="toast"></div>
-
-<script>
-const _RA='${R_ADMIN}';
-const _MODS=${JSON.stringify(MODS.map(m => m.name))};
+// Serves admin panel JS from a dedicated route — keeps JS out of HTML template literals
+function buildAdminDashJs(ra, modsJson) {
+  return `const _RA='${ra}';
+const _MODS=${modsJson};
 
 function toast(msg,ok=true){
   const t=document.getElementById('toast');
@@ -3064,7 +2621,456 @@ async function deleteChangelog(id){
     function drawCvs(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(124,58,237,0.5)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<130){ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(124,58,237,'+(0.12*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}}}requestAnimationFrame(drawCvs);}
     drawCvs();
   }
-})();
+})();`;
+}
+
+function renderAdminDashboard() {
+  const stats = getKeyStats();
+  const { expiredKeys: expiredCount, warnKeys: expiringSoon } = stats;
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WSM Admin v10</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23080810'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --g:#00e676;--g-dim:#00c45a;--g-bg:#00e67609;--g-brd:#00e67622;
+  --bg:#000000;--s0:#080808;--s1:#0d0d0d;--s2:#111111;--s3:#161616;
+  --brd:#1e1e1e;--brd2:#2a2a2a;
+  --tx:#d0d2e0;--tx2:#7a7c90;--tx3:#3e4050;
+  --red:#f05060;--red-bg:#f0506012;--red-brd:#f0506035;
+  --yellow:#f0b429;--yel-bg:#f0b42912;--yel-brd:#f0b42935;
+  --orange:#f97316;--org-bg:#f9731612;--org-brd:#f9731635;
+  --blue:#5b8cf7;--purple:#a78bfa;
+  --r:8px;--r-sm:5px;--r-lg:12px;
+  --hdr:52px;
+  --sidebar-w:48px;--sidebar-open:178px;
+  --shadow:0 1px 4px #00000060,0 4px 16px #00000040;
+  --shadow-lg:0 8px 32px #00000090;
+}
+/* ── Reset & Base ── */
+body{background:var(--bg);color:var(--tx);font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.5;min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit}
+/* Garante que todo conteudo fique acima do canvas animado (z-index:0) */
+header,.admin-content,.modal-bg,.toast{position:relative;z-index:2}
+header{position:sticky}
+/* ── Header ── */
+header{display:flex;align-items:center;justify-content:space-between;padding:0 20px;height:var(--hdr);border-bottom:1px solid var(--brd);background:rgba(8,8,8,.96);top:0;z-index:50;box-shadow:0 1px 0 var(--brd),0 2px 16px #00000060;backdrop-filter:blur(8px)}
+.logo{font-size:15px;font-weight:700;color:var(--g);display:flex;align-items:center;gap:7px;letter-spacing:-.2px}
+.logo-dot{width:7px;height:7px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--g)}
+.logo-ver{font-size:11px;color:var(--tx3);font-weight:400;margin-left:2px}
+.hright{display:flex;align-items:center;gap:8px}
+.hdr-meta{font-size:11px;color:var(--tx3);margin-right:4px}
+a.out{color:var(--tx2);font-size:12px;padding:5px 12px;border:1px solid var(--brd2);border-radius:var(--r-sm);transition:all .2s}
+a.out:hover{color:var(--red);border-color:var(--red-brd)}
+/* ── Layout shell ── */
+.admin-wrap{display:flex;min-height:calc(100vh - var(--hdr));align-items:flex-start}
+.admin-content{flex:1;min-width:0;padding:18px 20px;max-width:1900px}
+/* ── Sidebar ── */
+.rsidebar{width:var(--sidebar-w);flex-shrink:0;background:rgba(8,8,8,.97);border-right:1px solid var(--brd);position:sticky;top:var(--hdr);height:calc(100vh - var(--hdr));display:flex;flex-direction:column;overflow:hidden;transition:width .2s cubic-bezier(.4,0,.2,1);z-index:40;backdrop-filter:blur(6px)}
+.rsidebar:hover{width:var(--sidebar-open)}
+.rsb-title{font-size:9px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:1.4px;padding:14px 14px 8px;border-bottom:1px solid var(--brd);white-space:nowrap;opacity:0;transition:opacity .15s}
+.rsidebar:hover .rsb-title{opacity:1}
+.rtab{display:flex;align-items:center;gap:11px;width:100%;padding:11px 14px;background:transparent;border:none;border-left:2px solid transparent;color:var(--tx3);font-size:12px;font-weight:600;text-align:left;cursor:pointer;transition:all .15s;white-space:nowrap;overflow:hidden}
+.rtab:hover{background:var(--g-bg);color:var(--tx);border-left-color:var(--g-brd)}
+.rtab.active{background:var(--g-bg);color:var(--g);border-left-color:var(--g)}
+.rtab-icon{font-size:14px;flex-shrink:0;line-height:1;width:16px;text-align:center}
+.rtab-label{opacity:0;transition:opacity .12s;font-size:12px}
+.rsidebar:hover .rtab-label{opacity:1}
+.sec-panel{display:none}
+.sec-panel.active{display:block}
+/* ── Alert strip ── */
+.alert-strip{display:flex;background:var(--org-bg);border:1px solid var(--org-brd);border-radius:var(--r);padding:9px 14px;margin-bottom:14px;align-items:center;gap:8px;font-size:12px;color:var(--orange);flex-wrap:wrap}
+/* ── Stats grid ── */
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+.sc{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);padding:14px 16px;position:relative;overflow:hidden;transition:border-color .18s,box-shadow .18s;cursor:default}
+.sc:hover{border-color:var(--brd2);box-shadow:var(--shadow)}
+.sc.warn-card{border-color:var(--yel-brd);background:var(--yel-bg)}
+.sc.expired-card{border-color:var(--red-brd);background:var(--red-bg)}
+.sc-icon{position:absolute;right:12px;top:12px;font-size:18px;opacity:.12}
+.sc .n{font-size:22px;font-weight:700;color:var(--g);line-height:1.15;font-variant-numeric:tabular-nums}
+.sc.warn-card .n{color:var(--yellow)}
+.sc.expired-card .n{color:var(--red)}
+.sc .l{color:var(--tx3);font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
+/* ── Section card ── */
+.sec{background:var(--s1);border:1px solid var(--brd);border-radius:var(--r);margin-bottom:14px;overflow:hidden}
+.sh{display:flex;align-items:center;justify-content:space-between;padding:11px 16px;border-bottom:1px solid var(--brd);background:var(--s2);flex-wrap:wrap;gap:8px}
+.st{font-size:13px;font-weight:600;color:var(--tx);display:flex;align-items:center;gap:6px}
+.st-accent{color:var(--g)}
+/* ── Generate key form ── */
+.gen-form{display:flex;gap:6px;align-items:flex-end;flex-wrap:wrap}
+.gen-form input{padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;transition:border-color .18s}
+.gen-form input:focus{border-color:var(--g)}
+.gen-form input::placeholder{color:var(--tx3)}
+.fi-name{flex:1;min-width:130px;max-width:170px}
+.fi-group{display:flex;gap:4px;align-items:flex-end}
+.fi-col{display:flex;flex-direction:column;gap:2px}
+.fi-lbl{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.4px;padding-left:2px}
+.fi-num{width:52px;text-align:center}
+.fi-sep{width:1px;height:24px;background:var(--brd2);margin:0 2px;flex-shrink:0;align-self:flex-end;margin-bottom:2px}
+/* ── Search bar ── */
+.search-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 14px;background:var(--s2);border-bottom:1px solid var(--brd)}
+.search-bar input{padding:6px 10px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;flex:1;min-width:160px;transition:border-color .18s}
+.search-bar input:focus{border-color:var(--g)}
+.search-bar select{padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;cursor:pointer;min-width:160px;transition:border-color .18s}
+.search-bar select:focus{border-color:var(--g)}
+.filter-count{font-size:11px;color:var(--tx3);padding:4px 14px}
+/* ── Buttons ── */
+.btn{padding:6px 12px;border:none;border-radius:var(--r-sm);cursor:pointer;font-weight:600;font-size:12px;transition:all .18s;white-space:nowrap;letter-spacing:.1px}
+.bp{background:var(--g);color:#000814}
+.bp:hover{background:var(--g-dim);transform:translateY(-1px);box-shadow:0 2px 8px #00d97e35}
+.bw{background:var(--yel-bg);color:var(--yellow);border:1px solid var(--yel-brd)}
+.bw:hover{background:#f0b42918}
+.br{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
+.br:hover{background:#f0506018}
+.bcsv{background:#5b8cf710;color:var(--blue);border:1px solid #5b8cf728}
+.bcsv:hover{background:#5b8cf718}
+/* ── Row action buttons ── */
+.bs{padding:1px 5px;border:none;border-radius:3px;cursor:pointer;font-size:11px;font-weight:600;margin-right:1px;transition:all .15s;white-space:nowrap;letter-spacing:0}
+.bs:hover{transform:translateY(-1px)}
+.bg{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd)}
+.bg:hover{background:#00d97e18;border-color:#00d97e50}
+.bd{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
+.bd:hover{background:#f0506018;border-color:#f0506060}
+.bsusp{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
+/* ── Scrollbars ── */
+::-webkit-scrollbar{width:4px;height:3px}
+::-webkit-scrollbar-track{background:#000}
+::-webkit-scrollbar-thumb{background:#1e1e1e;border-radius:2px}
+::-webkit-scrollbar-thumb:hover{background:#00e67660}
+/* ── Table ── */
+.ov{overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 220px);position:relative;z-index:1}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+thead{position:sticky;top:0;z-index:10}
+th{padding:3px 8px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;color:var(--tx3);border-bottom:1px solid var(--brd);white-space:nowrap;overflow:hidden;background:#000;cursor:pointer;user-select:none;transition:color .15s}
+th:hover{color:var(--tx)}
+th.asc::after{content:' ▲';color:var(--g);font-size:9px}
+th.desc::after{content:' ▼';color:var(--g);font-size:9px}
+td{padding:2px 8px;font-size:12px;border-bottom:1px solid var(--brd);vertical-align:middle;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0}
+tr:last-child td{border-bottom:none}
+tr:nth-child(even) td{background:#ffffff04}
+tr:hover td{background:#ffffff07}
+.kc{color:var(--g);font-size:12px;letter-spacing:0;font-family:'JetBrains Mono','Fira Code','Cascadia Code',monospace;display:block;overflow:hidden;text-overflow:ellipsis}
+/* Células que precisam de wrap normal (ações, badges) */
+td.td-acts{white-space:normal;overflow:visible;max-width:none;min-width:170px;padding:3px 4px}
+td.td-note{max-width:120px}
+td.td-status{white-space:nowrap;overflow:hidden}
+/* ── Badges ── */
+.badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;letter-spacing:.3px;text-transform:uppercase}
+.on{background:var(--g-bg);color:var(--g);border:1px solid var(--g-brd)}
+.off{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
+.re{background:#5b8cf710;color:var(--blue);border:1px solid #5b8cf728}
+.vr{background:#a78bfa10;color:var(--purple);border:1px solid #a78bfa28}
+.warn{background:var(--yel-bg);color:var(--yellow);border:1px solid var(--yel-brd)}
+.wl{background:var(--org-bg);color:var(--orange);border:1px solid var(--org-brd)}
+/* ── Misc ── */
+.empty{text-align:center;color:var(--tx3);padding:36px!important;font-size:13px}
+.acts{display:flex;flex-wrap:wrap;gap:2px;max-width:none}
+.note-cell{cursor:pointer;max-width:130px}
+.note-cell:hover .note-preview{color:var(--g)}
+.note-preview{color:var(--tx3);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px}
+/* ── Toast ── */
+.toast{position:fixed;bottom:20px;right:20px;padding:10px 16px;border-radius:var(--r);font-weight:600;font-size:12px;display:none;z-index:999999;box-shadow:var(--shadow-lg);max-width:360px;line-height:1.4;border:1px solid transparent}
+/* ── Modal ── */
+.modal-bg{display:none;position:fixed;inset:0;background:#00000080;z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+.modal-bg.open{display:flex}
+.modal{background:var(--s1);border:1px solid var(--brd2);border-radius:var(--r-lg);padding:20px;width:340px;max-width:95vw;box-shadow:var(--shadow-lg);max-height:90vh;overflow-y:auto}
+.modal h3{font-size:14px;font-weight:600;margin-bottom:12px;color:var(--tx)}
+.modal-lbl{font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.modal textarea,.modal input[type=text],.modal input[type=number]{width:100%;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:13px;padding:8px 10px;outline:none;transition:border-color .18s}
+.modal textarea{resize:vertical;min-height:76px;font-family:inherit}
+.modal textarea:focus,.modal input:focus{border-color:var(--g)}
+.modal-actions{display:flex;gap:8px;margin-top:12px;justify-content:flex-end}
+.modal-cancel{background:var(--s2);color:var(--tx2);border:1px solid var(--brd2)}
+.modal-cancel:hover{color:var(--tx)}
+/* ── Responsive ── */
+@media(max-width:1100px){.stats{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:750px){.stats{grid-template-columns:1fr 1fr};.admin-content{padding:12px};.acts{max-width:180px};.rsidebar{display:none}}
+</style>
+<script>window.switchTab=function(t){document.querySelectorAll('.rtab').forEach(function(b){b.classList.toggle('active',b.dataset.tab===t);});document.querySelectorAll('.sec-panel').forEach(function(p){p.classList.toggle('active',p.dataset.panel===t);});try{localStorage.setItem('wsmTab',t);}catch(e){}};</script>
+</head>
+<body>
+<header>
+  <div class="logo">
+    <span class="logo-dot"></span>WSM
+    <span class="logo-ver">Admin v10</span>
+  </div>
+  <div class="hright">
+    <span class="hdr-meta" id="last-refresh">—</span>
+    <button class="btn bw" onclick="doRefresh(true)">↻ Atualizar</button>
+    <button class="btn bcsv" onclick="exportCSV()">⬇ CSV</button>
+    <a href="${R_ADMIN}/logout" class="out">↩ Sair</a>
+  </div>
+</header>
+<div class="admin-wrap">
+<nav class="rsidebar" id="rsidebar">
+  <div class="rsb-title">Menu</div>
+  <button class="rtab active" data-tab="keys" onclick="switchTab('keys')"><span class="rtab-icon">🔑</span><span class="rtab-label">Chaves</span></button>
+  <button class="rtab" data-tab="logs" onclick="switchTab('logs')"><span class="rtab-icon">📋</span><span class="rtab-label">Logs</span></button>
+  <button class="rtab" data-tab="audit" onclick="switchTab('audit')"><span class="rtab-icon">🛡</span><span class="rtab-label">Auditoria</span></button>
+  <button class="rtab" data-tab="changelog" onclick="switchTab('changelog');loadChangelogAdmin()"><span class="rtab-icon">📝</span><span class="rtab-label">Changelog</span></button>
+</nav>
+<div class="admin-content">
+
+  <div class="alert-strip" id="urgent-alert" style="${(expiredCount>0||expiringSoon>0)?'':'display:none'}">
+    <span>⚠</span>
+    <span id="urgent-alert-text">${expiredCount>0?`<strong>${expiredCount} expirada(s)</strong>`:''}${expiredCount>0&&expiringSoon>0?' · ':''}${expiringSoon>0?`<strong>${expiringSoon} expirando em ${EXPIRY_WARN_HOURS}h</strong>`:''}</span>
+  </div>
+
+  <div class="stats">
+    <div class="sc"><div class="sc-icon">🔑</div><div class="n" id="s-total">${stats.totalKeys}</div><div class="l">Total</div></div>
+    <div class="sc"><div class="sc-icon">✅</div><div class="n" id="s-active">${stats.activeKeys}</div><div class="l">Ativas</div></div>
+    <div class="sc${expiredCount>0?' expired-card':''}"><div class="sc-icon">⛔</div><div class="n" id="s-expired">${expiredCount}</div><div class="l">Expiradas</div></div>
+    <div class="sc${expiringSoon>0?' warn-card':''}"><div class="sc-icon">⏰</div><div class="n" id="s-warn">${expiringSoon}</div><div class="l">Expirando (${EXPIRY_WARN_HOURS}h)</div></div>
+    <div class="sc"><div class="sc-icon">📋</div><div class="n" id="s-logs">${stats.totalLogs}</div><div class="l">Logs</div></div>
+  </div>
+
+  <!-- ── PAINEL CHAVES ── -->
+  <div class="sec-panel active" data-panel="keys">
+  <div class="sec">
+    <div class="sh">
+      <div class="st"><span class="st-accent">🔑</span> Chaves de Acesso</div>
+      <div class="gen-form">
+        <div class="fi-name"><input type="text" id="nlabel" placeholder="Nome do cliente"></div>
+        <div class="fi-sep"></div>
+        <div class="fi-group">
+          <div class="fi-col"><span class="fi-lbl">Dias</span><input type="number" id="ndays" class="fi-num" placeholder="0" min="0"></div>
+          <div class="fi-col"><span class="fi-lbl">Horas</span><input type="number" id="nhours" class="fi-num" placeholder="0" min="0"></div>
+          <div class="fi-col"><span class="fi-lbl">Min</span><input type="number" id="nmins" class="fi-num" placeholder="0" min="0"></div>
+        </div>
+        <div class="fi-sep"></div>
+        <div class="fi-col"><span class="fi-lbl">Usos</span><input type="number" id="nuses" class="fi-num" placeholder="3" min="-1" style="width:56px"></div>
+        <div class="fi-col" style="justify-content:flex-end;padding-bottom:1px"><label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--tx2);white-space:nowrap;cursor:pointer"><input type="checkbox" id="ndeferred" style="accent-color:var(--g);width:13px;height:13px">⏱ Ativar ao 1º uso</label></div>
+        <button class="btn bp" onclick="generateKey()">+ Gerar Chave</button>
+      </div>
+    </div>
+    <div class="search-bar">
+      <input type="text" id="search-input" placeholder="Buscar por nome, chave, telefone ou IP…" oninput="filterKeys()" autocomplete="off" spellcheck="false">
+      <select id="filter-status" onchange="filterKeys()">
+        <option value="">Todos os status</option>
+        <option value="ativo">Ativas</option>
+        <option value="expirando">Expirando</option>
+        <option value="expirada">Expiradas</option>
+        <option value="bloqueado">Bloqueadas</option>
+        <option value="aguardando">Aguardando 1º uso</option>
+      </select>
+      <button class="btn br" id="btn-delete-batch" style="display:none" onclick="deleteBatchKeys()">🗑 Excluir Selecionadas (<span id="batch-count">0</span>)</button>
+    </div>
+    <div class="filter-count" id="keys-filter-count"></div>
+    <div class="ov">
+      <table style="min-width:1000px">
+        <colgroup>
+          <col style="width:28px">
+          <col style="width:11%">
+          <col style="width:10%">
+          <col style="width:6%">
+          <col style="width:8%">
+          <col style="width:4%">
+          <col style="width:8%">
+          <col style="width:8%">
+          <col style="width:9%">
+          <col style="width:9%">
+          <col style="width:6%">
+          <col style="width:17%">
+        </colgroup>
+        <thead><tr>
+          <th style="padding:6px 4px"><input type="checkbox" id="master-cb" title="Selecionar todas" style="width:13px;height:13px;cursor:pointer;accent-color:var(--g)" onchange="toggleAllCheckboxes(this.checked)"></th>
+          <th onclick="sortKeys('code')">Chave</th>
+          <th onclick="sortKeys('label')" id="th-label">Cliente</th>
+          <th onclick="sortKeys('status')" id="th-status">Status</th>
+          <th onclick="sortKeys('validity')" id="th-validity">Validade</th>
+          <th onclick="sortKeys('uses')" id="th-uses">Usos</th>
+          <th onclick="sortKeys('phone')" id="th-phone">Telefone</th>
+          <th>Último IP</th>
+          <th onclick="sortKeys('lastused')" id="th-lastused">Último Acesso</th>
+          <th onclick="sortKeys('created')" id="th-created">Criada em</th>
+          <th>Nota</th>
+          <th style="cursor:default">Ações</th>
+        </tr></thead>
+        <tbody id="kb">${getKeysHtmlCached()}</tbody>
+      </table>
+    </div>
+  </div>
+  </div>
+
+  <!-- ── PAINEL LOGS ── -->
+  <div class="sec-panel" data-panel="logs">
+  <div class="sec">
+    <div class="sh">
+      <div class="st"><span class="st-accent">📋</span> Log de Acessos <span style="font-size:11px;color:var(--tx3);font-weight:400;margin-left:4px">retenção ${LOG_RETENTION_DAYS}d (LGPD)</span></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input type="date" id="logDate" style="padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;transition:border-color .18s" onchange="filterLog()">
+        <input type="text" id="logSearch" placeholder="Filtrar por chave ou IP…" style="padding:5px 8px;background:var(--bg);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-size:12px;outline:none;width:170px;transition:border-color .18s" oninput="filterLog()">
+        <button class="btn bw" onclick="clearFilters()">✕ Limpar</button>
+        <button class="btn bw" onclick="doRefresh()">↻ Atualizar</button>
+        <button class="btn br" onclick="clearLog()">🗑 Limpar Log</button>
+      </div>
+    </div>
+    <div class="ov">
+      <table>
+        <thead><tr><th>Horário</th><th>Chave</th><th>Cliente</th><th>Telefone</th><th>IP</th><th>Ação</th></tr></thead>
+        <tbody id="lb">${buildLogsHtml()}</tbody>
+      </table>
+    </div>
+  </div>
+  </div>
+
+  <!-- ── PAINEL AUDITORIA ── -->
+  <div class="sec-panel" data-panel="audit">
+  <div class="sec" id="pentest-sec">
+    <div class="sh">
+      <div>
+        <div class="st"><span class="st-accent">🛡</span> Auditoria de Segurança</div>
+        <div style="font-size:11px;color:var(--tx3);margin-top:2px">Config hardening · fuzzing NoSQL · headers · TLS · telemetria · CORS/leakage · cookies · batch guard</div>
+      </div>
+      <button class="btn bw" id="pentest-btn" onclick="runPentest()">▶ Executar Varredura</button>
+    </div>
+    <div class="ov" style="max-height:none;overflow-y:visible">
+      <table>
+        <thead><tr>
+          <th style="width:42%">Controle</th>
+          <th style="width:12%;text-align:center">Status</th>
+          <th>Detalhe</th>
+        </tr></thead>
+        <tbody id="pentest-tb">
+          <tr><td class="empty" colspan="3">Clique em <strong>▶ Executar Varredura</strong> para iniciar a auditoria de segurança.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec" style="margin-top:12px">
+    <div class="sh">
+      <div>
+        <div class="st"><span class="st-accent">🚨</span> Alertas de Segurança</div>
+        <div style="font-size:11px;color:var(--tx3);margin-top:2px">Logins falhos · Rate limit · Payloads suspeitos · Webhooks inválidos</div>
+      </div>
+      <button class="btn br" style="font-size:11px;padding:4px 10px" onclick="clearSecurityAlerts()">🗑 Limpar Logs</button>
+    </div>
+    <div class="ov">
+      <table>
+        <thead><tr>
+          <th style="width:16%">Horário (BRT)</th>
+          <th style="width:18%">Categoria</th>
+          <th>Detalhe</th>
+          <th style="width:14%">IP</th>
+        </tr></thead>
+        <tbody id="sec-alerts-tb">
+          <tr><td colspan="4" class="empty">Execute a varredura para carregar alertas.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  </div>
+
+
+<!-- ── PAINEL CHANGELOG ── -->
+<div class="sec-panel" data-panel="changelog">
+<div class="sec">
+  <div class="sh"><div class="st"><span class="st-accent">📝</span> Changelog — Atualizações</div></div>
+  <div style="padding:16px;display:grid;gap:12px">
+    <div style="background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:16px;display:grid;gap:10px">
+      <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:4px">Adicionar entrada</div>
+      <input id="cl-title" class="inp" placeholder="Título (ex: Versão 7.4.3.58)" style="width:100%">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <input id="cl-version" class="inp" placeholder="Versão (ex: 7.4.3.58)">
+        <input id="cl-date" class="inp" type="date">
+      </div>
+      <textarea id="cl-items" class="inp" rows="4" placeholder="Uma mudança por linha&#10;Ex: Corrigido bug nas respostas rápidas&#10;Ex: Melhorado carregamento inicial" style="width:100%;resize:vertical"></textarea>
+      <button class="btn" onclick="submitChangelog()">➕ Adicionar ao Changelog</button>
+    </div>
+    <div class="ov"><table>
+      <thead><tr><th>Título</th><th>Versão</th><th>Data</th><th>Itens (prévia)</th><th></th></tr></thead>
+      <tbody id="changelog-tb"><tr><td colspan="5" class="empty">Carregando...</td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+</div>
+</div><!-- /admin-content -->
+</div><!-- /admin-wrap -->
+
+<!-- ── Modals ── -->
+<div class="modal-bg" id="renewModal"><div class="modal">
+  <h3>⏱ Adicionar Tempo — <span id="renewKeyLabel" style="color:var(--g)"></span></h3>
+  <input type="hidden" id="renewKeyCode">
+  <div style="display:flex;gap:10px;margin-bottom:12px">
+    <div style="flex:1;text-align:center"><div class="modal-lbl">Dias</div><input type="number" id="renewDays" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><div class="modal-lbl">Horas</div><input type="number" id="renewHours" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
+    <div style="flex:1;text-align:center"><div class="modal-lbl">Min</div><input type="number" id="renewMins" placeholder="0" min="0" style="width:100%;padding:7px;text-align:center"></div>
+  </div>
+  <div style="font-size:12px;color:var(--tx3);margin-bottom:12px" id="renewCurrentExpiry"></div>
+  <div class="modal-actions">
+    <button class="btn modal-cancel" onclick="closeRenew()">Cancelar</button>
+    <button class="btn bp" onclick="saveRenew()">Adicionar Tempo</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="editUsesModal"><div class="modal">
+  <h3>👥 Limite de Dispositivos — <span id="editUsesLabel" style="color:var(--g)"></span></h3>
+  <input type="hidden" id="editUsesCode">
+  <div style="margin-bottom:14px">
+    <div class="modal-lbl">Máx. números simultâneos</div>
+    <input type="number" id="editUsesValue" min="-1" style="width:100%;padding:9px;font-size:15px;text-align:center;margin-top:6px">
+    <div style="font-size:12px;color:var(--tx3);margin-top:8px">Use <strong style="color:var(--g)">-1</strong> para ilimitado</div>
+  </div>
+  <div class="modal-actions">
+    <button class="btn modal-cancel" onclick="closeEditUses()">Cancelar</button>
+    <button class="btn bp" onclick="saveEditUses()">Salvar</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="renameModal"><div class="modal">
+  <h3>✏ Renomear Chave</h3>
+  <input type="hidden" id="renameCode">
+  <div style="margin-bottom:14px">
+    <div class="modal-lbl">Novo nome do cliente</div>
+    <input type="text" id="renameValue" maxlength="60" style="width:100%;padding:8px 10px;margin-top:6px">
+  </div>
+  <div class="modal-actions">
+    <button class="btn modal-cancel" onclick="closeRename()">Cancelar</button>
+    <button class="btn bp" onclick="saveRename()">Salvar</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="phonesModal"><div class="modal">
+  <h3>📱 Números — <span id="phonesLabel" style="color:var(--g)"></span></h3>
+  <div id="phonesList" style="margin-bottom:14px;max-height:220px;overflow-y:auto;min-height:40px"></div>
+  <div class="modal-actions">
+    <button class="btn modal-cancel" onclick="closePhones()">Fechar</button>
+    <button class="btn bd" id="removeAllBtn" onclick="removeAllPhones()">Remover Todos</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="noteModal"><div class="modal">
+  <h3>📝 Nota — <span id="noteKeyLabel" style="color:var(--g)"></span></h3>
+  <input type="hidden" id="noteKeyCode">
+  <textarea id="noteText" placeholder="Ex: Pagou até março, trial, VIP…"></textarea>
+  <div class="modal-actions">
+    <button class="btn modal-cancel" onclick="closeNote()">Cancelar</button>
+    <button class="btn bp" onclick="saveNote()">Salvar Nota</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="assignModModal"><div class="modal" style="width:400px">
+  <h3>👮 Atribuir ao Moderador</h3>
+  <p style="font-size:12px;color:var(--tx3);margin-bottom:14px">Selecione o moderador responsável por esta chave.</p>
+  <input type="hidden" id="assignModCode">
+  <div style="font-size:10px;font-weight:600;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Chave: <span id="assignModLabel" style="color:var(--tx);font-size:11px;font-weight:400;text-transform:none"></span></div>
+  <div id="modListBtns" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px"></div>
+  <div style="display:flex;gap:8px">
+    <button class="btn bd" style="flex:1" onclick="assignMod(document.getElementById('assignModCode').value,'')">🗑 Remover atribuição</button>
+    <button class="btn modal-cancel" onclick="closeAssignMod()">Cancelar</button>
+  </div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script src="${R_ADMIN}/dash.js"></script>
 </script>
 <canvas id="_cvs" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas></body></html>`;
 }
@@ -4986,7 +4992,7 @@ async function handleRequest(req, res) {
   if ((p === '/install' || p === '/bem-vindo' || p === '/obrigado-pela-instalacao') && req.method === 'GET') {
     sendHtml(res, renderInstallPage()); return;
   }
-  if ((p === '/obrigado' || p === '/desinstalado' || p === '/ate-logo') && req.method === 'GET') {
+  if ((p === '/obrigado' || p === '/desinstalado' || p === '/ate-logo' || p === '/ate-mais') && req.method === 'GET') {
     sendHtml(res, renderUninstallPage()); return;
   }
 
@@ -4996,6 +5002,9 @@ async function handleRequest(req, res) {
   // ── WaTiDy Extension API ─────────────────────────────────────────────────────
   if (p.startsWith('/api/urls/install/') || p === '/api/urls/install') {
     sendJson(res, { success: true, url: installUrl }); return;
+  }
+  if (p.startsWith('/api/urls/uninstall/') || p === '/api/urls/uninstall') {
+    sendJson(res, { success: true, url: uninstallUrl }); return;
   }
   if ((p === '/api/urls/update' || p === '/api/services/update') && (req.method === 'GET' || req.method === 'POST')) {
     sendJson(res, wppUpdate()); return;
@@ -5088,17 +5097,21 @@ async function handleRequest(req, res) {
 
   }
 
-      // POST /api/user/update — client-side rename (Editar Perfil)
+      // POST /api/user/update — client-side profile update (name, whatsapp_plugin)
     if (p === '/api/user/update' && req.method === 'POST') {
       const keyCode = normKey(parseBearer(req));
       if (!keyCode) { sendJson(res, { success: false, msg_id: 'no_token' }, 401); return; }
       const rec = await findLicenseByCode(keyCode);
       if (!rec || !rec.active) { sendJson(res, { success: false, msg_id: 'invalid_token' }, 401); return; }
       const body = await parseBody(req);
+      const update = {};
       const newName = String(body.full_name || body.name || '').trim().slice(0, 80);
-      if (!newName) { sendJson(res, { success: false, msg_id: 'invalid_name' }, 400); return; }
-      await updateLicense(keyCode, { label: newName });
-      sendJson(res, { success: true, name: newName }); return;
+      if (newName) update.label = newName;
+      const wp = String(body.whatsapp_plugin || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
+      if (wp) { update.lastPhone = wp; update.lastUsed = new Date().toISOString(); }
+      if (Object.keys(update).length === 0) { sendJson(res, { success: false, msg_id: 'no_fields' }, 400); return; }
+      await updateLicense(keyCode, update);
+      sendJson(res, { success: true, name: newName || undefined }); return;
     }
 
     // POST /api/client/phone — register WhatsApp phone used on login
@@ -5161,6 +5174,13 @@ async function handleRequest(req, res) {
   if (p === R_ADMIN || p === R_ADMIN+'/') {
     if (!isAdminSession(req)) { sendHtml(res, renderAdminLogin()); return; }
     sendHtml(res, renderAdminDashboard()); return;
+  }
+
+  if (p === R_ADMIN+'/dash.js' && req.method === 'GET') {
+    if (!isAdminSession(req)) { res.writeHead(403); res.end('Forbidden'); return; }
+    const js = buildAdminDashJs(R_ADMIN, JSON.stringify(MODS.map(m => m.name)));
+    res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(js); return;
   }
 
   if (p === R_MOD+'/login' && req.method === 'POST') {
