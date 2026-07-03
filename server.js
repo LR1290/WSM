@@ -4688,122 +4688,190 @@ function renderClientAuthPainel(storeId, token, page, rec) {
   const st = rec ? keyStatus(rec, rec.code || '') : 'blocked';
   const premium = rec ? buildUserPremium(rec.code || '', rec) : null;
   const name = escHtml(rec ? (rec.label || rec.code || 'Usuário') : '—');
-  const keyCode = escHtml(rec ? (rec.code || token) : token);
+  const keyCode = rec ? (rec.code || token) : token;
   const plan = premium ? (premium.premium ? 'PREMIUM' : 'Gratuito') : '—';
-  const planColor = premium && premium.premium ? '#00ff87' : '#ffa500';
-  const statusLabel = st === 'active' ? 'Ativa' : st === 'free' ? 'Gratuita' : st === 'expired' ? 'Expirada' : 'Bloqueada';
-  const statusColor = st === 'active' || st === 'free' ? '#00ff87' : st === 'expired' ? '#ffa500' : '#ff4757';
-  const expiresAt = rec && rec.expiresAt ? new Date(rec.expiresAt).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+  const isPremium = premium && premium.premium;
+  const isDeferred = rec && rec.expireDuration && !rec.expiresAt;
+  const statusLabel = isDeferred ? 'Aguardando 1° uso' : (st === 'active' ? 'Ativa' : st === 'free' ? 'Gratuita' : st === 'expired' ? 'Expirada' : 'Bloqueada');
+  const statusColor = isDeferred ? '#7c6fff' : (st === 'active' || st === 'free' ? '#00e676' : st === 'expired' ? '#ffa726' : '#ef5350');
+  const statusBg = isDeferred ? 'rgba(124,111,255,0.1)' : (st === 'active' || st === 'free' ? 'rgba(0,230,118,0.1)' : st === 'expired' ? 'rgba(255,167,38,0.1)' : 'rgba(239,83,80,0.1)');
+  const expiresAt = isDeferred ? 'Ativa ao 1° uso' : (rec && rec.expiresAt ? new Date(rec.expiresAt).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}) : '—');
   const createdAt = rec && rec.createdAt ? new Date(rec.createdAt).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
   const phones = rec && Array.isArray(rec.phones) ? rec.phones : [];
-  const lastPhone = escHtml(rec && rec.lastPhone ? rec.lastPhone : phones.length > 0 ? phones[phones.length-1] : '—');
+  const lastPhone = rec && rec.lastPhone ? rec.lastPhone : phones.length > 0 ? phones[phones.length-1] : '';
   const uses = phones.length;
   const maxUses = rec && rec.maxUses > 0 ? rec.maxUses : '∞';
-  const keyMasked = keyCode.length > 8 ? keyCode.substring(0, 4) + '•'.repeat(keyCode.length - 8) + keyCode.substring(keyCode.length - 4) : keyCode;
+  const devPct = rec && rec.maxUses > 0 ? Math.min(100, Math.round((uses / rec.maxUses) * 100)) : 0;
   const keyDisplay = escHtml(keyCode);
+  const keyMasked = keyCode.length > 12 ? escHtml(keyCode.substring(0,4)) + '••••••••' + escHtml(keyCode.substring(keyCode.length-4)) : escHtml(keyCode);
+  const avatarLetter = name && name !== '—' ? name.charAt(0).toUpperCase() : 'U';
+  const planBadge = isPremium ? '<span class="plan-badge premium">✶ PREMIUM</span>' : '<span class="plan-badge free">GRATUITO</span>';
+  const year = new Date().getFullYear();
+  const keyJs = keyCode.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 
-  return `<!DOCTYPE html><html lang="pt-BR"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WSM — Minha Conta</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d14'/%3E%3Ctext x='50%25' y='54%25' dominant-baseline='middle' text-anchor='middle' font-family='monospace' font-weight='700' font-size='14' fill='%2300ff87'%3EWS%3C/text%3E%3C/svg%3E">
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-:root{--g:#00ff87;--gs:#00ff8720;--gb:#00ff8740;--bg:#0d0d14;--c1:#111118;--c2:#16161e;--brd:#1e1e30;--brd2:#28283a;--tx:#e8e8f4;--mu:#9494aa;--mu2:#6a6a82;--red:#ff4757;--warn:#ffa500;--r:14px;--rs:8px}
-body{background:var(--bg);min-height:100vh;font-family:monospace;color:var(--tx);-webkit-font-smoothing:antialiased}
-::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--gb);border-radius:10px}
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;background:var(--c1);border-bottom:1px solid var(--brd);position:sticky;top:0;z-index:50}
-.topbar-logo{font-size:20px;font-weight:800;color:var(--g);letter-spacing:-0.5px;font-family:sans-serif}
-.topbar-sub{font-size:11px;color:var(--mu);letter-spacing:1.5px;text-transform:uppercase;font-family:sans-serif;margin-top:1px}
-.logout-btn{padding:8px 18px;background:transparent;border:1px solid var(--brd2);border-radius:6px;color:var(--mu);font-size:12px;cursor:pointer;font-family:sans-serif;transition:all .2s}
-.logout-btn:hover{border-color:var(--red);color:var(--red)}
-.wrap{max-width:960px;margin:0 auto;padding:28px 20px}
-.hero{background:var(--c1);border:1px solid var(--brd);border-radius:var(--r);padding:28px 32px;margin-bottom:16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
-.avatar{width:56px;height:56px;border-radius:50%;background:var(--gs);border:2px solid var(--gb);display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;color:var(--g);font-family:sans-serif;flex-shrink:0}
-.hero-info{flex:1;min-width:0}
-.hero-name{font-size:22px;font-weight:800;color:var(--tx);font-family:sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.hero-key{font-size:12px;color:var(--mu);letter-spacing:2px;margin-top:4px;font-family:monospace}
-.hero-badges{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
-.badge{display:inline-flex;align-items:center;gap:5px;padding:5px 14px;border-radius:20px;font-size:12px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;font-family:sans-serif;border:1px solid}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:16px}
-.card{background:var(--c1);border:1px solid var(--brd);border-radius:var(--rs);padding:18px 20px}
-.card-lbl{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--mu);margin-bottom:8px;font-family:sans-serif;font-weight:700}
-.card-val{font-size:15px;color:var(--tx);font-weight:700;word-break:break-all;font-family:monospace}
-.copy-btn{background:none;border:none;cursor:pointer;color:var(--mu);font-size:12px;padding:2px 6px;border-radius:4px;transition:color .15s}
-.copy-btn:hover{color:var(--g)}
-.key-row{display:flex;align-items:center;gap:6px}
-.card-val.green{color:var(--g)}
-.phones-sec{background:var(--c1);border:1px solid var(--brd);border-radius:var(--rs);padding:18px 20px;margin-bottom:16px}
-.phones-lbl{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--mu);margin-bottom:12px;font-family:sans-serif;font-weight:700}
-.phone-list{display:flex;flex-wrap:wrap;gap:8px}
-.phone-chip{background:var(--c2);border:1px solid var(--brd2);border-radius:6px;padding:6px 12px;font-size:13px;color:var(--tx);font-family:monospace}
-.phone-empty{font-size:13px;color:var(--mu2)}
-.server-sec{background:var(--c1);border:1px solid var(--brd);border-radius:var(--rs);padding:16px 20px;margin-bottom:16px;display:flex;align-items:center;gap:12px}
-.server-dot{width:8px;height:8px;border-radius:50%;background:var(--g);box-shadow:0 0 8px var(--gb);animation:pulse 2s infinite;flex-shrink:0}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-.server-label{font-size:13px;color:var(--g);font-family:sans-serif;font-weight:600}
-.footer{text-align:center;font-size:12px;color:var(--mu2);padding:24px;font-family:sans-serif}
-@media(max-width:500px){.hero{padding:20px}.wrap{padding:16px 12px}}
-</style></head><body>
-<div class="topbar">
-  <div>
-    <div class="topbar-logo">⚡ WSM</div>
-    <div class="topbar-sub">Minha Conta</div>
-  </div>
-  <button class="logout-btn" onclick="window.location.href='/${storeId}/login'">Sair</button>
-</div>
-<div class="wrap">
-  <div class="hero">
-    <div class="avatar">${name.charAt(0).toUpperCase()}</div>
-    <div class="hero-info">
-      <div class="hero-name">${name}</div>
-      <div class="hero-key">${keyDisplay}</div>
-      <div class="hero-badges">
-        <span class="badge" style="color:${statusColor};border-color:${statusColor}40;background:${statusColor}12">${statusLabel}</span>
-        <span class="badge" style="color:${planColor};border-color:${planColor}40;background:${planColor}12">${plan}</span>
-      </div>
-    </div>
-  </div>
-  <div class="grid">
-    <div class="card">
-      <div class="card-lbl">Chave de Acesso</div>
-      <div class="key-row">
-        <div class="card-val" id="kv">${keyDisplay}</div>
-        <button class="copy-btn" onclick="navigator.clipboard.writeText('${keyDisplay}').then(()=>{this.textContent='✓';setTimeout(()=>this.textContent='⎘',1200)})" title="Copiar chave">⎘</button>
-      </div>
-    </div>
-    <div class="card">
-      <div class="card-lbl">Plano</div>
-      <div class="card-val green">${plan}</div>
-    </div>
-    <div class="card">
-      <div class="card-lbl">Dispositivos Usados</div>
-      <div class="card-val">${uses} / ${maxUses}</div>
-    </div>
-    <div class="card">
-      <div class="card-lbl">Expira em</div>
-      <div class="card-val">${expiresAt}</div>
-    </div>
-    <div class="card">
-      <div class="card-lbl">Cadastrado em</div>
-      <div class="card-val">${createdAt}</div>
-    </div>
-    <div class="card">
-      <div class="card-lbl">Último número</div>
-      <div class="card-val">${lastPhone}</div>
-    </div>
-  </div>
-  ${phones.length > 0 ? `
-  <div class="phones-sec">
-    <div class="phones-lbl">Números registrados (${phones.length})</div>
-    <div class="phone-list">${phones.map(p => `<div class="phone-chip">+${escHtml(p)}</div>`).join('')}</div>
-  </div>` : ''}
-  <div class="server-sec">
-    <div class="server-dot"></div>
-    <div class="server-label">Sistema operante</div>
-  </div>
-</div>
-<div class="footer">© ${new Date().getFullYear()} WSM. Todos os direitos reservados.</div>
-</body></html>`;
+  const phonesHtml = phones.length === 0
+    ? '<div class="no-phones"><span>Nenhum número registrado ainda</span></div>'
+    : phones.map(function(ph){ return '<div class="phone-chip">+' + escHtml(ph) + '</div>'; }).join('');
+
+  const devBarHtml = rec && rec.maxUses > 0
+    ? '<div class="dev-bar-wrap"><div class="dev-bar-labels"><span>' + devPct + '% usado</span><span>' + (rec.maxUses - uses) + ' disponivel</span></div><div class="dev-bar"><div class="dev-bar-fill" style="width:' + devPct + '%"></div></div></div>'
+    : '';
+  const lastPhoneDisp = lastPhone ? ('+' + escHtml(lastPhone)) : '&mdash;';
+  const expClss = isDeferred ? 'purple' : '';
+
+  const parts = [];
+  parts.push('<!DOCTYPE html><html lang="pt-BR"><head>');
+  parts.push('<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">');
+  parts.push('<title>WaTiDy &mdash; Minha Conta</title>');
+  parts.push('<link rel="preconnect" href="https://fonts.googleapis.com">');
+  parts.push('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>');
+  parts.push('<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Syne:wght@700;800&display=swap" rel="stylesheet">');
+  parts.push('<style>');
+  parts.push('*{box-sizing:border-box;margin:0;padding:0}');
+  parts.push(':root{');
+  parts.push('  --g:#00e676;--gd:rgba(0,230,118,.12);--gb:rgba(0,230,118,.2);');
+  parts.push('  --pu:#7c6fff;--bg:#07070f;--s1:#0d0d1a;--s2:#12121f;--s3:#17172a;');
+  parts.push('  --bd:#1c1c30;--bd2:#252540;--tx:#e4e4f0;--mu:#6e6e8e;--mu2:#454560;');
+  parts.push('  --rd:#ef5350;--am:#ffa726;--fn:"Inter",sans-serif;--fh:"Syne",sans-serif');
+  parts.push('}');
+  parts.push('body{background:var(--bg);min-height:100vh;font-family:var(--fn);color:var(--tx);-webkit-font-smoothing:antialiased;background-image:radial-gradient(ellipse 60% 40% at 50% -10%,rgba(0,230,118,.05) 0%,transparent 70%)}');
+  parts.push('::-webkit-scrollbar{width:4px}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:10px}');
+  parts.push('nav{display:flex;align-items:center;justify-content:space-between;padding:0 24px;height:60px;background:rgba(13,13,26,.85);backdrop-filter:blur(16px);border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:100}');
+  parts.push('.nb{display:flex;align-items:center;gap:10px}');
+  parts.push('.nl{width:32px;height:32px;background:var(--gd);border:1px solid var(--gb);border-radius:8px;display:flex;align-items:center;justify-content:center}');
+  parts.push('.nt{font-family:var(--fh);font-size:17px;font-weight:800;color:var(--tx);letter-spacing:-.3px}');
+  parts.push('.nt b{color:var(--g)}');
+  parts.push('.na{display:flex;align-items:center;gap:10px}');
+  parts.push('.sp{display:flex;align-items:center;gap:6px;padding:5px 12px;background:var(--gd);border:1px solid rgba(0,230,118,.15);border-radius:20px;font-size:11px;font-weight:600;color:var(--g);letter-spacing:.3px}');
+  parts.push('.sp i{width:6px;height:6px;border-radius:50%;background:var(--g);box-shadow:0 0 6px var(--g);animation:bl 2s ease-in-out infinite;font-style:normal;display:inline-block}');
+  parts.push('@keyframes bl{0%,100%{opacity:1}50%{opacity:.3}}');
+  parts.push('.blo{padding:7px 16px;background:transparent;border:1px solid var(--bd2);border-radius:8px;color:var(--mu);font-size:12px;font-weight:500;cursor:pointer;font-family:var(--fn);transition:all .2s}');
+  parts.push('.blo:hover{border-color:var(--rd);color:var(--rd);background:rgba(239,83,80,.06)}');
+  parts.push('.wrap{max-width:900px;margin:0 auto;padding:32px 20px 60px}');
+  parts.push('.hc{position:relative;background:var(--s1);border:1px solid var(--bd);border-radius:20px;padding:32px;margin-bottom:20px;overflow:hidden}');
+  parts.push('.hc::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,230,118,.3),transparent)}');
+  parts.push('.hg{position:absolute;top:-60px;right:-60px;width:220px;height:220px;background:radial-gradient(circle,rgba(0,230,118,.06) 0%,transparent 70%);pointer-events:none}');
+  parts.push('.hi{display:flex;align-items:flex-start;gap:20px;position:relative}');
+  parts.push('.av{width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,rgba(0,230,118,.14),rgba(124,111,255,.1));border:1px solid var(--gb);display:flex;align-items:center;justify-content:center;font-family:var(--fh);font-size:26px;font-weight:800;color:var(--g);flex-shrink:0}');
+  parts.push('.hb{flex:1;min-width:0}');
+  parts.push('.hn{font-family:var(--fh);font-size:24px;font-weight:800;color:var(--tx);letter-spacing:-.5px;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}');
+  parts.push('.hk{font-family:monospace;font-size:12px;color:var(--mu);letter-spacing:1.5px;margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}');
+  parts.push('.hkv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px}');
+  parts.push('.cm{background:none;border:1px solid var(--bd2);border-radius:5px;color:var(--mu);font-size:10px;padding:2px 8px;cursor:pointer;font-family:var(--fn);transition:all .15s}');
+  parts.push('.cm:hover{border-color:var(--g);color:var(--g)}');
+  parts.push('.ht{display:flex;flex-wrap:wrap;gap:8px}');
+  parts.push('.tag{display:inline-flex;align-items:center;padding:5px 13px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;border:1px solid}');
+  parts.push('.pb{display:inline-flex;align-items:center;padding:5px 13px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;border:1px solid}');
+  parts.push('.pb.pm{color:#ffd700;border-color:rgba(255,215,0,.3);background:rgba(255,215,0,.08)}');
+  parts.push('.pb.fr{color:var(--mu);border-color:var(--bd2);background:var(--s2)}');
+  parts.push('.sr{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px;margin-bottom:20px}');
+  parts.push('.sc{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:20px 22px;transition:border-color .2s}');
+  parts.push('.sc:hover{border-color:var(--bd2)}');
+  parts.push('.si{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;background:var(--s2);border:1px solid var(--bd)}');
+  parts.push('.sl{font-size:10px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:var(--mu);margin-bottom:5px}');
+  parts.push('.sv{font-size:18px;font-weight:700;color:var(--tx);letter-spacing:-.3px}');
+  parts.push('.sv.sm{font-size:14px;font-family:monospace;letter-spacing:.5px}');
+  parts.push('.sv.pu{color:var(--pu)}');
+  parts.push('.dbw{margin-top:10px}');
+  parts.push('.dbl{display:flex;justify-content:space-between;font-size:11px;color:var(--mu);margin-bottom:6px}');
+  parts.push('.db{height:4px;background:var(--s3);border-radius:10px;overflow:hidden}');
+  parts.push('.dbf{height:100%;background:linear-gradient(90deg,var(--g),rgba(0,230,118,.4));border-radius:10px}');
+  parts.push('.ks{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:22px;margin-bottom:20px}');
+  parts.push('.st{font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--mu);margin-bottom:16px;display:flex;align-items:center;gap:10px}');
+  parts.push('.st::after{content:"";flex:1;height:1px;background:var(--bd)}');
+  parts.push('.kd{display:flex;align-items:center;gap:10px;background:var(--s2);border:1px solid var(--bd);border-radius:9px;padding:12px 16px}');
+  parts.push('.kt{font-family:monospace;font-size:13px;color:var(--tx);letter-spacing:1.5px;flex:1;word-break:break-all;line-height:1.6}');
+  parts.push('.cb{background:var(--s3);border:1px solid var(--bd2);border-radius:7px;color:var(--mu);font-size:12px;padding:7px 14px;cursor:pointer;font-family:var(--fn);font-weight:500;transition:all .15s;white-space:nowrap}');
+  parts.push('.cb:hover{border-color:var(--g);color:var(--g);background:var(--gd)}');
+  parts.push('.ps{background:var(--s1);border:1px solid var(--bd);border-radius:12px;padding:22px;margin-bottom:20px}');
+  parts.push('.pg{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}');
+  parts.push('.pc{background:var(--s2);border:1px solid var(--bd2);border-radius:8px;padding:7px 14px;font-size:13px;color:var(--tx);font-family:monospace;transition:border-color .15s}');
+  parts.push('.pc:hover{border-color:var(--gb)}');
+  parts.push('.np{color:var(--mu);font-size:13px;padding:4px 0}');
+  parts.push('.ft{text-align:center;padding:28px 20px 20px;font-size:12px;color:var(--mu2)}');
+  parts.push('@media(max-width:600px){.hi{flex-direction:column;gap:14px}.nt{display:none}.hn{font-size:20px}.sr{grid-template-columns:1fr 1fr}.wrap{padding:20px 14px 50px}}');
+  parts.push('</style></head><body>');
+  parts.push('<nav>');
+  parts.push('  <div class="nb">');
+  parts.push('    <div class="nl"><svg width="18" height="18" fill="none" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4" stroke="#00e676" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" stroke="#00e676" stroke-width="1.5"/></svg></div>');
+  parts.push('    <span class="nt">Wa<b>Ti</b>Dy</span>');
+  parts.push('  </div>');
+  parts.push('  <div class="na">');
+  parts.push('    <div class="sp"><i></i>ONLINE</div>');
+  parts.push('    <button class="blo" id="btn-sair">Sair</button>');
+  parts.push('  </div>');
+  parts.push('</nav>');
+  parts.push('<div class="wrap">');
+  parts.push('  <div class="hc">');
+  parts.push('    <div class="hg"></div>');
+  parts.push('    <div class="hi">');
+  parts.push('      <div class="av">' + avatarLetter + '</div>');
+  parts.push('      <div class="hb">');
+  parts.push('        <div class="hn">' + name + '</div>');
+  parts.push('        <div class="hk"><span class="hkv">' + keyMasked + '</span><button class="cm" id="cpb-mini">Copiar</button></div>');
+  parts.push('        <div class="ht">');
+  parts.push('          <span class="tag" style="color:' + statusColor + ';border-color:' + statusColor + ';background:' + statusBg + '">' + statusLabel + '</span>');
+  parts.push('          ' + planBadge);
+  parts.push('        </div>');
+  parts.push('      </div>');
+  parts.push('    </div>');
+  parts.push('  </div>');
+  parts.push('  <div class="sr">');
+  parts.push('    <div class="sc">');
+  parts.push('      <div class="si"><svg width="16" height="16" fill="none" stroke="#00e676" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></svg></div>');
+  parts.push('      <div class="sl">Dispositivos</div>');
+  parts.push('      <div class="sv">' + uses + ' <span style="color:var(--mu);font-size:14px">/ ' + maxUses + '</span></div>');
+  parts.push(devBarHtml);
+  parts.push('    </div>');
+  parts.push('    <div class="sc">');
+  parts.push('      <div class="si"><svg width="16" height="16" fill="none" stroke="' + (isDeferred ? '#7c6fff' : statusColor) + '" stroke-width="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3" stroke-linecap="round" stroke-linejoin="round"/></svg></div>');
+  parts.push('      <div class="sl">Expira em</div>');
+  parts.push('      <div class="sv sm ' + expClss + '">' + expiresAt + '</div>');
+  parts.push('    </div>');
+  parts.push('    <div class="sc">');
+  parts.push('      <div class="si"><svg width="16" height="16" fill="none" stroke="#6e6e8e" stroke-width="1.8" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18" stroke-linecap="round"/></svg></div>');
+  parts.push('      <div class="sl">Cadastrado em</div>');
+  parts.push('      <div class="sv sm">' + createdAt + '</div>');
+  parts.push('    </div>');
+  parts.push('    <div class="sc">');
+  parts.push('      <div class="si"><svg width="16" height="16" fill="none" stroke="#6e6e8e" stroke-width="1.8" viewBox="0 0 24 24"><path d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg></div>');
+  parts.push('      <div class="sl">Ultimo numero</div>');
+  parts.push('      <div class="sv sm">' + lastPhoneDisp + '</div>');
+  parts.push('    </div>');
+  parts.push('  </div>');
+  parts.push('  <div class="ks">');
+  parts.push('    <div class="st">Chave de acesso</div>');
+  parts.push('    <div class="kd">');
+  parts.push('      <div class="kt" id="key-full">' + keyDisplay + '</div>');
+  parts.push('      <button class="cb" id="cpb-main">Copiar chave</button>');
+  parts.push('    </div>');
+  parts.push('  </div>');
+  parts.push('  <div class="ps">');
+  parts.push('    <div class="st">Numeros registrados (' + phones.length + ')</div>');
+  parts.push('    <div class="pg">' + phonesHtml + '</div>');
+  parts.push('  </div>');
+  parts.push('</div>');
+  parts.push('<div class="ft">&copy; ' + year + ' WaTiDy &middot; Todos os direitos reservados</div>');
+  parts.push('<script>');
+  parts.push('(function(){');
+  parts.push('  var KEY = document.getElementById("key-full").textContent;');
+  parts.push('  var LOGOUT = "/' + storeId + '/login";');
+  parts.push('  function doCopy(btn,orig){');
+  parts.push('    navigator.clipboard.writeText(KEY).then(function(){');
+  parts.push('      btn.textContent = "Copiado!";');
+  parts.push('      setTimeout(function(){ btn.textContent = orig; }, 1500);');
+  parts.push('    });');
+  parts.push('  }');
+  parts.push('  var m = document.getElementById("cpb-mini");');
+  parts.push('  if(m) m.addEventListener("click", function(){ doCopy(m,"Copiar"); });');
+  parts.push('  var b = document.getElementById("cpb-main");');
+  parts.push('  if(b) b.addEventListener("click", function(){ doCopy(b,"Copiar chave"); });');
+  parts.push('  var s = document.getElementById("btn-sair");');
+  parts.push('  if(s) s.addEventListener("click", function(){ window.location.href = LOGOUT; });');
+  parts.push('})();');
+  parts.push('<\/script>');
+  parts.push('</body></html>');
+  return parts.join('\n');
 }
 
 async function handleClientPanel(req, res, pathname, url) {
