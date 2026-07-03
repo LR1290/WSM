@@ -2173,7 +2173,7 @@ function renderAdminDashboard() {
 body{background:var(--bg);color:var(--tx);font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.5;min-height:100vh;overflow-x:hidden;-webkit-font-smoothing:antialiased}
 a{color:inherit;text-decoration:none}
 button{font-family:inherit}
-/* Garante que todo conteúdo fique acima do canvas animado (z-index:0) */
+/* Garante que todo conteudo fique acima do canvas animado (z-index:0) */
 header,.admin-content,.modal-bg,.toast{position:relative;z-index:2}
 header{position:sticky}
 /* ── Header ── */
@@ -2309,6 +2309,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
 @media(max-width:1100px){.stats{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:750px){.stats{grid-template-columns:1fr 1fr};.admin-content{padding:12px};.acts{max-width:180px};.rsidebar{display:none}}
 </style>
+<script>window.switchTab=function(t){document.querySelectorAll('.rtab').forEach(function(b){b.classList.toggle('active',b.dataset.tab===t);});document.querySelectorAll('.sec-panel').forEach(function(p){p.classList.toggle('active',p.dataset.panel===t);});try{localStorage.setItem('wsmTab',t);}catch(e){}};</script>
 </head>
 <body>
 <header>
@@ -2903,12 +2904,12 @@ async function toggleModule(code,module,enabled){
 const lr0=document.getElementById('last-refresh');if(lr0)lr0.textContent='Carregado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 filterKeys();
 
-function switchTab(t){
+window.switchTab=function(t){
   document.querySelectorAll('.rtab').forEach(b=>b.classList.toggle('active',b.dataset.tab===t));
   document.querySelectorAll('.sec-panel').forEach(p=>p.classList.toggle('active',p.dataset.panel===t));
   try{localStorage.setItem('wsmTab',t);}catch(e){}
-}
-(function(){switchTab(localStorage.getItem('wsmTab')||'keys');})();
+};
+(function(){window.switchTab(localStorage.getItem('wsmTab')||'keys');})();
 
 async function clearSecurityAlerts(){
   try{
@@ -3046,18 +3047,26 @@ async function deleteChangelog(id){
     else toast('Erro',false);
   }catch(e){toast('Erro de rede',false);}
 }
-</script>
-
-<script>
 (function(){
   // Inicializa data do dia para o campo date
-  const dtField=document.getElementById('cl-date');
+  var dtField=document.getElementById('cl-date');
   if(dtField)dtField.value=new Date().toISOString().slice(0,10);
-  // Carrega changelog quando a aba é aberta (inicial)
+  // Carrega changelog quando a aba e aberta (inicial)
   if((localStorage.getItem('wsmTab')||'keys')==='changelog')loadChangelogAdmin();
+  // Anima canvas de fundo (particulas)
+  var c=document.getElementById('_cvs');
+  if(c){
+    var ctx=c.getContext('2d');
+    function resizeCvs(){c.width=window.innerWidth;c.height=window.innerHeight;}
+    resizeCvs();
+    window.addEventListener('resize',resizeCvs);
+    var pts=Array.from({length:60},function(){return{x:Math.random()*c.width,y:Math.random()*c.height,vx:(Math.random()-.5)*.4,vy:(Math.random()-.5)*.4,r:Math.random()*2+.5};});
+    function drawCvs(){ctx.clearRect(0,0,c.width,c.height);pts.forEach(function(p){p.x+=p.vx;p.y+=p.vy;if(p.x<0||p.x>c.width)p.vx*=-1;if(p.y<0||p.y>c.height)p.vy*=-1;ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fillStyle='rgba(124,58,237,0.5)';ctx.fill();});for(var i=0;i<pts.length;i++){for(var j=i+1;j<pts.length;j++){var dx=pts[i].x-pts[j].x,dy=pts[i].y-pts[j].y,d=Math.sqrt(dx*dx+dy*dy);if(d<130){ctx.beginPath();ctx.moveTo(pts[i].x,pts[i].y);ctx.lineTo(pts[j].x,pts[j].y);ctx.strokeStyle='rgba(124,58,237,'+(0.12*(1-d/130))+')';ctx.lineWidth=.7;ctx.stroke();}}}requestAnimationFrame(drawCvs);}
+    drawCvs();
+  }
 })();
 </script>
-${CANVAS_BG}</body></html>`;
+<canvas id="_cvs" style="position:fixed;inset:0;z-index:0;pointer-events:none"></canvas></body></html>`;
 }
 
 function renderPlanosPage() {
