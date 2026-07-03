@@ -126,10 +126,11 @@ async function getMongoDb() {
 async function loadDb() {
   try {
     const db = await getMongoDb();
-    const [keysDoc, logsDoc, alertsDoc] = await Promise.all([
+    const [keysDoc, logsDoc, alertsDoc, changelogDoc] = await Promise.all([
       db.collection('store').findOne({ _id: 'keys' }),
       db.collection('store').findOne({ _id: 'logs' }),
       db.collection('security_alerts').findOne({ _id: 'alerts' }),
+      db.collection('store').findOne({ _id: 'changelog' }),
     ]);
     const keyCount = keysDoc?.data ? Object.keys(keysDoc.data).length : 0;
     if (keyCount === 0) {
@@ -139,6 +140,7 @@ async function loadDb() {
       keys:           keysDoc?.data && typeof keysDoc.data === 'object' ? keysDoc.data : {},
       logs:           Array.isArray(logsDoc?.data) ? logsDoc.data : [],
       securityAlerts: Array.isArray(alertsDoc?.data) ? alertsDoc.data : [],
+      changelog:      Array.isArray(changelogDoc?.data) ? changelogDoc.data : [],
     };
   } catch (e) {
     console.error('[DB] Erro ao carregar:', e.message);
@@ -224,9 +226,23 @@ async function saveLogs() {
   }
 }
 
+async function saveChangelog() {
+  try {
+    const db = await getMongoDb();
+    await db.collection('store').updateOne(
+      { _id: 'changelog' },
+      { $set: { _id: 'changelog', data: changelog, updatedAt: new Date() } },
+      { upsert: true }
+    );
+  } catch (e) {
+    console.error('[DB] Erro ao salvar changelog:', e.message);
+  }
+}
+
 let keys              = {};
 let freeUsage         = { usageDate: '', byPhone: {} };
 let logs              = [];
+let changelog         = []; // entradas de atualização exibidas na aba ATUALIZAÇÕES
 let securityAlerts    = []; // telemetria reativa — eventos de ameaça do servidor
 let sessions          = {};
 let modSessions       = {};
@@ -1568,6 +1584,34 @@ setTimeout(loadHistory,300);
 ${CANVAS_BG}</body></html>`;
 }
 
+function renderChangelogPage() {
+  const entries = [...changelog].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+  const rows = entries.length === 0
+    ? '<div style="text-align:center;padding:40px;color:#666">Nenhuma atualização cadastrada ainda.</div>'
+    : entries.map(e => `
+      <div style="background:#1a1a2e;border:1px solid #2a2a4a;border-radius:12px;padding:24px;margin-bottom:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span style="font-size:18px;font-weight:700;color:#3ddc84">${escHtml(e.title||'Atualização')}</span>
+          <span style="font-size:13px;color:#888;background:#111;padding:4px 10px;border-radius:20px">${escHtml(e.version||'')} — ${escHtml(e.date||'')}</span>
+        </div>
+        <ul style="margin:0;padding-left:20px;color:#ccc;line-height:1.8">
+          ${(e.items||[]).map(i=>`<li>${escHtml(i)}</li>`).join('')}
+        </ul>
+      </div>`).join('');
+  return `<!DOCTYPE html><html lang="pt-BR"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Atualizações — WaTiDy</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>*{box-sizing:border-box;margin:0;padding:0}body{background:#0d0d14;color:#e5e7eb;font-family:'Syne',sans-serif;min-height:100vh;padding:40px 20px}
+.wrap{max-width:720px;margin:0 auto}.logo{font-size:28px;font-weight:800;color:#3ddc84;margin-bottom:8px}
+.sub{color:#888;font-size:14px;margin-bottom:32px;border-bottom:1px solid #222;padding-bottom:20px}</style>
+</head><body><div class="wrap">
+<div class="logo">WaTiDy</div>
+<div class="sub">Histórico de Atualizações</div>
+${rows}
+</div></body></html>`;
+}
+
 function renderExtensionLogin({ callback, error = '', keyVal = '' }) {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2285,6 +2329,7 @@ td.td-status{white-space:nowrap;overflow:hidden}
   <button class="rtab active" data-tab="keys" onclick="switchTab('keys')"><span class="rtab-icon">🔑</span><span class="rtab-label">Chaves</span></button>
   <button class="rtab" data-tab="logs" onclick="switchTab('logs')"><span class="rtab-icon">📋</span><span class="rtab-label">Logs</span></button>
   <button class="rtab" data-tab="audit" onclick="switchTab('audit')"><span class="rtab-icon">🛡</span><span class="rtab-label">Auditoria</span></button>
+  <button class="rtab" data-tab="changelog" onclick="switchTab('changelog');loadChangelogAdmin()"><span class="rtab-icon">📝</span><span class="rtab-label">Changelog</span></button>
 </nav>
 <div class="admin-content">
 
@@ -2937,6 +2982,81 @@ async function runPentest(){
     if(btn){btn.disabled=false;btn.textContent='↻ Re-executar';}
   }
 }
+
+async function loadChangelogAdmin(){
+  try{
+    const r=await fetch(_RA+'/api/changelog');
+    const d=await r.json();
+    if(!d.ok)return;
+    const tb=document.getElementById('changelog-tb');
+    if(!tb)return;
+    if(!d.changelog||d.changelog.length===0){tb.innerHTML='<tr><td colspan="4" class="empty">Nenhuma entrada cadastrada ainda.</td></tr>';return;}
+    tb.innerHTML=d.changelog.map(function(e){return '<tr>'+
+      '<td style="font-weight:600;color:var(--g)">'+_esc(e.title||'')+'</td>'+
+      '<td style="font-size:12px;color:var(--tx3)">'+_esc(e.version||'-')+'</td>'+
+      '<td style="font-size:12px;color:var(--tx3)">'+_esc(e.date||'-')+'</td>'+
+      '<td style="font-size:11px;color:var(--muted)">'+((e.items||[]).map(function(i){return _esc(i);}).join(' · ').slice(0,120))+'</td>'+
+      '<td><button class="btn btn-sm" style="background:var(--red);border-color:var(--red)" onclick="deleteChangelog(\''+e.id+'\')">🗑</button></td>'+
+      '</tr>';}).join('');
+  }catch(e){console.error(e);}
+}
+function _esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+async function submitChangelog(){
+  const title=document.getElementById('cl-title').value.trim();
+  const version=document.getElementById('cl-version').value.trim();
+  const date=document.getElementById('cl-date').value.trim();
+  const items=document.getElementById('cl-items').value.trim().split('\n').map(s=>s.trim()).filter(Boolean);
+  if(!title||items.length===0){toast('Título e pelo menos 1 item são obrigatórios',false);return;}
+  try{
+    const r=await fetch(_RA+'/api/changelog',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,version,date,items})});
+    const d=await r.json();
+    if(d.ok){toast('✅ Entrada adicionada!');document.getElementById('cl-title').value='';document.getElementById('cl-version').value='';document.getElementById('cl-items').value='';await loadChangelogAdmin();}
+    else toast('Erro: '+(d.error||'?'),false);
+  }catch(e){toast('Erro de rede',false);}
+}
+async function deleteChangelog(id){
+  if(!confirm('Remover entrada?'))return;
+  try{
+    const r=await fetch(_RA+'/api/changelog/'+id,{method:'DELETE'});
+    const d=await r.json();
+    if(d.ok){toast('Removido');await loadChangelogAdmin();}
+    else toast('Erro',false);
+  }catch(e){toast('Erro de rede',false);}
+}
+</script>
+
+<!-- ── PAINEL CHANGELOG ── -->
+<div class="sec-panel" data-panel="changelog">
+<div class="sec">
+  <div class="sh"><div class="st"><span class="st-accent">📝</span> Changelog — Atualizações</div></div>
+  <div style="padding:16px;display:grid;gap:12px">
+    <div style="background:var(--card2);border:1px solid var(--brd);border-radius:8px;padding:16px;display:grid;gap:10px">
+      <div style="font-size:13px;font-weight:700;color:var(--tx);margin-bottom:4px">Adicionar entrada</div>
+      <input id="cl-title" class="inp" placeholder="Título (ex: Versão 7.4.3.58)" style="width:100%">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <input id="cl-version" class="inp" placeholder="Versão (ex: 7.4.3.58)">
+        <input id="cl-date" class="inp" type="date">
+      </div>
+      <textarea id="cl-items" class="inp" rows="4" placeholder="Uma mudança por linha&#10;Ex: Corrigido bug nas respostas rápidas&#10;Ex: Melhorado carregamento inicial" style="width:100%;resize:vertical"></textarea>
+      <button class="btn" onclick="submitChangelog()">➕ Adicionar ao Changelog</button>
+    </div>
+    <div class="ov"><table>
+      <thead><tr><th>Título</th><th>Versão</th><th>Data</th><th>Itens (prévia)</th><th></th></tr></thead>
+      <tbody id="changelog-tb"><tr><td colspan="5" class="empty">Carregando...</td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+</div>
+<script>
+(function(){
+  // Inicializa data do dia para o campo date
+  const dtField=document.getElementById('cl-date');
+  if(dtField)dtField.value=new Date().toISOString().slice(0,10);
+  // Carrega changelog quando a aba é aberta
+  const origSwitch=window.switchTab;
+  window.switchTab=function(t){origSwitch(t);if(t==='changelog')loadChangelogAdmin();};
+  if((localStorage.getItem('wsmTab')||'keys')==='changelog')loadChangelogAdmin();
+})();
 </script>
 ${CANVAS_BG}</body></html>`;
 }
@@ -4804,6 +4924,12 @@ async function handleRequest(req, res) {
   if ((p === '/api/urls/update' || p === '/api/services/update') && (req.method === 'GET' || req.method === 'POST')) {
     sendJson(res, wppUpdate()); return;
   }
+  if (p.startsWith('/api/urls/active-notes/') && req.method === 'GET') {
+    sendJson(res, { success: true, path_note_update: { redirect: false } }); return;
+  }
+  if (p.startsWith('/api/urls/notes/') && req.method === 'GET') {
+    sendHtml(res, renderChangelogPage()); return;
+  }
   if (p === '/api/external/is_instaled' && req.method === 'POST') {
     sendJson(res, { success: true }); return;
   }
@@ -5248,6 +5374,35 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true }); return;
   }
 
+  // ── Changelog admin ──────────────────────────────────────────────────────
+  if (p === R_ADMIN+'/api/changelog' && req.method === 'GET') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    sendJson(res, { ok: true, changelog }); return;
+  }
+  if (p === R_ADMIN+'/api/changelog' && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const body = await parseBody(req);
+    const title   = String(body.title   || '').trim().slice(0, 120);
+    const version = String(body.version || '').trim().slice(0, 20);
+    const date    = String(body.date    || new Date().toISOString().slice(0, 10)).trim();
+    const items   = (Array.isArray(body.items) ? body.items : String(body.items || '').split('\n'))
+      .map(i => String(i).trim()).filter(Boolean).slice(0, 50);
+    if (!title || items.length === 0) { sendJson(res, { error: 'title e items obrigatórios' }, 400); return; }
+    const entry = { id: Date.now().toString(36), title, version, date, items, createdAt: new Date().toISOString() };
+    changelog.unshift(entry);
+    if (changelog.length > 100) changelog = changelog.slice(0, 100);
+    await saveChangelog();
+    sendJson(res, { ok: true, entry }); return;
+  }
+  if (p.startsWith(R_ADMIN+'/api/changelog/') && req.method === 'DELETE') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
+    const entryId = p.slice((R_ADMIN+'/api/changelog/').length);
+    const before = changelog.length;
+    changelog = changelog.filter(e => e.id !== entryId);
+    await saveChangelog();
+    sendJson(res, { ok: true, removed: before - changelog.length }); return;
+  }
+
   if (p === R_ADMIN+'/api/logs' && req.method === 'DELETE') {
     if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     const body = await parseBody(req);
@@ -5593,7 +5748,7 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true }); return;
   }
 
-  // ── Portal de Ativação ZVM-style ─────────────────────────────────────────
+  // ── Portal de Ativação da Extensão ───────────────────────────────────────
   if (p === '/extension/auth' && req.method === 'GET') {
     const cb = url.searchParams.get('callback') || 'https://web.whatsapp.com';
     sendHtml(res, renderExtensionLogin({ callback: cb })); return;
@@ -5692,6 +5847,7 @@ process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
     const loaded = await loadDb();
     keys           = loaded.keys || {};
     logs           = loaded.logs || [];
+    changelog      = loaded.changelog || [];
     securityAlerts = []; // inicia sessão limpa — histórico preservado no Mongo via "Limpar" explícito
     for (const code of Object.keys(keys)) sanitizeKeyRecord(keys[code]);
     serverReady = true;
