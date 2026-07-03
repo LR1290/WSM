@@ -453,6 +453,10 @@ function isProManagerId(managerId) {
 }
 function sanitizeKeyRecord(k) {
   if (!k || typeof k !== 'object') return k;
+  // Recompute uses from phones + ip-based provisional devices
+  const _phones  = Array.isArray(k.phones)  ? k.phones  : [];
+  const _devices = Array.isArray(k.devices) ? k.devices : [];
+  k.uses = _phones.length + _devices.filter(d => d.startsWith('ip:')).length;
   if (k.plan_id === FREE_PLAN_ID || k.plan_id === FREE_OWNER_ID) k.plan_id = 'WSM_PRO';
   if (k.planId === FREE_PLAN_ID || k.planId === FREE_OWNER_ID) k.planId = 'WSM_PRO';
   if (!k.isBasicPlan) {
@@ -2577,7 +2581,7 @@ async function loadChangelogAdmin(){
       '<td style="font-size:12px;color:var(--tx3)">'+_esc(e.version||'-')+'</td>'+
       '<td style="font-size:12px;color:var(--tx3)">'+_esc(e.date||'-')+'</td>'+
       '<td style="font-size:11px;color:var(--muted)">'+((e.items||[]).map(function(i){return _esc(i);}).join(' · ').slice(0,120))+'</td>'+
-      '<td><button class="btn btn-sm" style="background:var(--red);border-color:var(--red)" onclick="deleteChangelog(\''+e.id+'\')">🗑</button></td>'+
+      '<td><button class="btn btn-sm" style="background:var(--red);border-color:var(--red)" onclick="deleteChangelog(\\x27'+e.id+'\\x27)">🗑</button></td>'+
       '</tr>';}).join('');
   }catch(e){console.error(e);}
 }
@@ -2586,7 +2590,7 @@ async function submitChangelog(){
   const title=document.getElementById('cl-title').value.trim();
   const version=document.getElementById('cl-version').value.trim();
   const date=document.getElementById('cl-date').value.trim();
-  const items=document.getElementById('cl-items').value.trim().split('\n').map(s=>s.trim()).filter(Boolean);
+  const items=document.getElementById('cl-items').value.trim().split('\\n').map(s=>s.trim()).filter(Boolean);
   if(!title||items.length===0){toast('Título e pelo menos 1 item são obrigatórios',false);return;}
   try{
     const r=await fetch(_RA+'/api/changelog',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title,version,date,items})});
@@ -4481,6 +4485,9 @@ function buildUserPremium(code, rec) {
 }
 
 function keyToUser(code, rec) {
+  const phones  = Array.isArray(rec.phones)  ? rec.phones  : [];
+  const devices = Array.isArray(rec.devices) ? rec.devices : [];
+  const totalUses = phones.length + devices.filter(d => d.startsWith('ip:')).length;
   return {
     user_id: String(rec.user_id || 0),
     name: rec.label || 'Usuario',
@@ -4492,6 +4499,7 @@ function keyToUser(code, rec) {
     dataCadastro: rec.createdAt || new Date().toISOString(),
     whatsapp_registro: rec.lastPhone || '',
     whatsapp_plugin: rec.lastPhone || '',
+    uses: totalUses,
     path: '', afiliado: '', campanhaID: '', start_form: true,
     cookies: { _fbc: '', _fbp: '', _ga: '', _ttclid: '', _ttp: '' },
   };
@@ -4711,9 +4719,10 @@ function renderClientAuthPainel(storeId, token, page, rec) {
   const statusBg = isDeferred ? 'rgba(124,111,255,0.1)' : (st === 'active' || st === 'free' ? 'rgba(0,230,118,0.1)' : st === 'expired' ? 'rgba(255,167,38,0.1)' : 'rgba(239,83,80,0.1)');
   const expiresAt = isDeferred ? 'Ativa ao 1° uso' : (rec && rec.expiresAt ? new Date(rec.expiresAt).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}) : '—');
   const createdAt = rec && rec.createdAt ? new Date(rec.createdAt).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
-  const phones = rec && Array.isArray(rec.phones) ? rec.phones : [];
+  const phones  = rec && Array.isArray(rec.phones)  ? rec.phones  : [];
+  const devicesArr = rec && Array.isArray(rec.devices) ? rec.devices : [];
   const lastPhone = rec && rec.lastPhone ? rec.lastPhone : phones.length > 0 ? phones[phones.length-1] : '';
-  const uses = phones.length;
+  const uses = phones.length + devicesArr.filter(d => d.startsWith('ip:')).length;
   const maxUses = rec && rec.maxUses > 0 ? rec.maxUses : '∞';
   const devPct = rec && rec.maxUses > 0 ? Math.min(100, Math.round((uses / rec.maxUses) * 100)) : 0;
   const keyDisplay = escHtml(keyCode);
@@ -5072,21 +5081,45 @@ async function handleRequest(req, res) {
       const body = await parseBody(req);
       let keyCode = normKey(body.access_token_plugin || body.chave || body.senha || body.email || '');
       keyCode = keyCode.replace(/@[a-z0-9._-]+\.[a-z]{2,}$/, '');
-      const phone = String(body.phone || body.whatsapp || '').trim();
+      const phone = String(body.phone || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
       const rec = await findLicenseByCode(keyCode);
       if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return; }
 
+      const phones  = Array.isArray(rec.phones)  ? rec.phones  : [];
+      const devices = Array.isArray(rec.devices)  ? rec.devices : [];
+      const maxUses = rec.maxUses != null ? rec.maxUses : -1;
+
       if (phone && phone !== '-') {
-        const phones = Array.isArray(rec.phones) ? rec.phones : [];
-        const maxUses = rec.maxUses != null ? rec.maxUses : -1;
-        const isNewPhone = !phones.includes(phone);
-        if (isNewPhone) {
+        // Phone explicitly provided — register it as the canonical device ID
+        if (!phones.includes(phone)) {
           if (maxUses > 0 && phones.length >= maxUses) {
             sendJson(res, { success: false, msg_id: 'limit_reached' }); return;
           }
           phones.push(phone);
-          await updateLicense(keyCode, { phones, uses: phones.length, lastPhone: phone, lastIp: ip });
-          rec.phones = phones; rec.uses = phones.length; rec.lastPhone = phone;
+          // Remove IP placeholder for this session if exists
+          const ipKey = 'ip:' + ip;
+          const ipIdx = devices.indexOf(ipKey);
+          if (ipIdx >= 0) devices.splice(ipIdx, 1);
+          const update = { phones, uses: phones.length, lastPhone: phone, lastIp: ip, devices };
+          await updateLicense(keyCode, update);
+          Object.assign(rec, { phones, uses: phones.length, lastPhone: phone, devices });
+        }
+      } else {
+        // No phone yet — track IP as provisional device so the counter is non-zero
+        const ipKey = 'ip:' + ip;
+        if (!phones.some(ph => ph === ipKey) && !devices.includes(ipKey)) {
+          const totalDevices = phones.length + devices.filter(d => d.startsWith('ip:')).length;
+          if (maxUses <= 0 || totalDevices < maxUses) {
+            devices.push(ipKey);
+            const update = { devices, uses: phones.length + devices.filter(d=>d.startsWith('ip:')).length, lastIp: ip };
+            await updateLicense(keyCode, update);
+            Object.assign(rec, { devices, uses: update.uses });
+          } else {
+            // Limit reached even for provisional — still let the existing device through if IP seen before
+            if (!devices.includes(ipKey)) {
+              sendJson(res, { success: false, msg_id: 'limit_reached' }); return;
+            }
+          }
         }
       }
 
