@@ -3048,15 +3048,12 @@ async function deleteChangelog(id){
 }
 </script>
 
-
 <script>
 (function(){
   // Inicializa data do dia para o campo date
   const dtField=document.getElementById('cl-date');
   if(dtField)dtField.value=new Date().toISOString().slice(0,10);
-  // Carrega changelog quando a aba é aberta
-  const origSwitch=window.switchTab;
-  window.switchTab=function(t){origSwitch(t);if(t==='changelog')loadChangelogAdmin();};
+  // Carrega changelog quando a aba é aberta (inicial)
   if((localStorage.getItem('wsmTab')||'keys')==='changelog')loadChangelogAdmin();
 })();
 </script>
