@@ -5008,7 +5008,7 @@ async function handleRequest(req, res) {
     sendJson(res, { success: true, url: installUrl }); return;
   }
   if (p.startsWith('/api/urls/uninstall/') || p === '/api/urls/uninstall') {
-    sendJson(res, { success: true, url: uninstallUrl }); return;
+    res.writeHead(302, { Location: '/ate-mais' }); res.end(); return;
   }
   if ((p === '/api/urls/update' || p === '/api/services/update') && (req.method === 'GET' || req.method === 'POST')) {
     sendJson(res, wppUpdate()); return;
@@ -5073,21 +5073,29 @@ async function handleRequest(req, res) {
 
     if (p.startsWith('/api/auth/validation/') && req.method === 'POST') {
       if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
-      const body = await parseBody(req);
-      const chave = normKey(body.chave || body.access_token_plugin || body.senha || body.email || '');
-      if (!chave || !/^[a-zA-Z0-9-]+$/.test(chave)) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return; }
+
+      // ── Guardas de entrada (nível 400) — executam ANTES de qualquer acesso ao banco ──
+      const rawValidation = await readRawBody(req, 250);
+      if (rawValidation === null) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
+      const body = _safeParse(rawValidation);
+
+      let chave = String(body.chave || body.access_token_plugin || body.senha || body.email || '').trim().replace(/\s+/g, '-');
+      if (chave.length !== 20) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
+      if (!/^[a-zA-Z0-9-]+$/.test(chave)) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
+      chave = chave.toLowerCase();
       const telefone = String(body.telefone || body.phone || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
 
+      // ── Persistência (nível 404/403) ──
       const db = await getMongoDb();
       const keysDoc = await db.collection('store').findOne({ _id: 'keys' });
       const kv = keysDoc && keysDoc.data && keysDoc.data[chave];
-      if (!kv) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return; }
+      if (!kv) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }, 404); return; }
 
       const limite = typeof kv.limite === 'number' ? kv.limite : -1;
       let currentUsos = typeof kv.usos === 'number' ? kv.usos : 0;
 
       if (limite > 0 && currentUsos >= limite) {
-        sendJson(res, { success: false, msg_id: 'limit_reached' }); return;
+        sendJson(res, { success: false, msg_id: 'limit_reached' }, 403); return;
       }
 
       const now = new Date().toISOString();
