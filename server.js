@@ -2742,6 +2742,12 @@ a.out:hover{color:var(--red);border-color:var(--red-brd)}
 .bd{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
 .bd:hover{background:#f0506018;border-color:#f0506060}
 .bsusp{background:var(--red-bg);color:var(--red);border:1px solid var(--red-brd)}
+/* ── Inputs genéricos (changelog e outros painéis) ── */
+.inp{width:100%;padding:8px 11px;background:var(--s0);border:1px solid var(--brd);border-radius:var(--r-sm);color:var(--tx);font-family:inherit;font-size:13px;outline:none;transition:border-color .18s,box-shadow .18s;-webkit-appearance:none;appearance:none}
+.inp:focus{border-color:var(--g);box-shadow:0 0 0 2px var(--g-bg)}
+.inp::placeholder{color:var(--tx3)}
+textarea.inp{resize:vertical;min-height:80px;line-height:1.55}
+input[type=date].inp::-webkit-calendar-picker-indicator{filter:invert(.5) sepia(1) saturate(0)}
 /* ── Scrollbars ── */
 ::-webkit-scrollbar{width:4px;height:3px}
 ::-webkit-scrollbar-track{background:#000}
@@ -5066,17 +5072,17 @@ async function handleRequest(req, res) {
     chave = chave.toLowerCase();
     const telefone = String(body.telefone || body.phone || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
 
-    // ── Persistência (nível 404/403) ──
+    // ── Persistência — SEMPRE HTTP 200 (Axios lança em não-2xx) ──
     const db = await getMongoDb();
     const keysDoc = await db.collection('store').findOne({ _id: 'keys' });
     const kv = keysDoc && keysDoc.data && keysDoc.data[chave];
-    if (!kv) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }, 404); return; }
+    if (!kv) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return; }
 
     const limite = typeof kv.limite === 'number' ? kv.limite : -1;
     let currentUsos = typeof kv.usos === 'number' ? kv.usos : 0;
 
     if (limite > 0 && currentUsos >= limite) {
-      sendJson(res, { success: false, msg_id: 'limit_reached' }, 403); return;
+      sendJson(res, { success: false, msg_id: 'limit_reached' }); return;
     }
 
     const now = new Date().toISOString();
@@ -5095,9 +5101,9 @@ async function handleRequest(req, res) {
         { projection: { [`data.${chave}.usos`]: 1 } }
       );
       currentUsos = fresh?.data?.[chave]?.usos ?? currentUsos;
-      if (limite > 0 && currentUsos >= limite) { sendJson(res, { success: false, msg_id: 'limit_reached' }, 403); return; }
+      if (limite > 0 && currentUsos >= limite) { sendJson(res, { success: false, msg_id: 'limit_reached' }); return; }
     }
-    if (!matched) { sendJson(res, { success: false, msg_id: 'conflict_retry' }, 409); return; }
+    if (!matched) { sendJson(res, { success: false, msg_id: 'conflict_retry' }); return; }
 
     const logEntry = { chave, ip, telefone: telefone || null, ts: now };
     await db.collection('store').updateOne(
