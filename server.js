@@ -5807,12 +5807,14 @@ async function handleRequest(req, res) {
   }
 
   if (p === '/client/status' && req.method === 'POST') {
-    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
-    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
+    // Guard 1: tamanho via header — não consome stream
     const _cl = parseInt(req.headers['content-length'] || '0', 10);
     if (_cl > 256) { sendJson(res, { error: 'payload_too_large' }, 400); return; }
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const body = await parseBody(req);
-    const _rawKey = (typeof body.key === 'string' ? body.key : '').trim().toLowerCase();
+    // Guard 2: sanitizar + comprimento exato + whitelist de caracteres
+    let _rawKey = (typeof body.key === 'string' ? body.key : '').trim().replace(/\s+/g, '-').toLowerCase();
+    if (_rawKey.length !== 20) { sendJson(res, { error: 'invalid_key' }, 400); return; }
     if (!/^[a-z0-9\-]{20}$/.test(_rawKey)) { sendJson(res, { error: 'invalid_key' }, 400); return; }
     const code = sanitizeId(_rawKey, 20);
     if (!code) { sendJson(res, { error: 'not_found' }, 404); return; }
