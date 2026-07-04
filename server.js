@@ -4524,43 +4524,43 @@ async function authSuccess(code, rec) {
 function renderInstallPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WSM — Instalado com Sucesso!</title>
+<title>WaTiDy — Instalado com Sucesso!</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 50%,#0f172a 100%);color:#fff;overflow:hidden}
-.bg-circles{position:fixed;inset:0;pointer-events:none;overflow:hidden}
-.bg-circles span{position:absolute;border-radius:50%;opacity:.08;animation:float 8s ease-in-out infinite}
-.bg-circles span:nth-child(1){width:400px;height:400px;background:#3ddc84;top:-100px;left:-100px;animation-delay:0s}
-.bg-circles span:nth-child(2){width:300px;height:300px;background:#1c55ed;bottom:-80px;right:-80px;animation-delay:2s}
-.bg-circles span:nth-child(3){width:200px;height:200px;background:#3ddc84;top:50%;left:50%;transform:translate(-50%,-50%);animation-delay:4s}
-@keyframes float{0%,100%{transform:scale(1) translateY(0)}50%{transform:scale(1.1) translateY(-20px)}}
-.card{position:relative;background:rgba(255,255,255,.05);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.1);border-radius:24px;padding:48px 40px;max-width:480px;width:90%;text-align:center;box-shadow:0 32px 64px rgba(0,0,0,.4)}
-.icon-wrap{width:80px;height:80px;margin:0 auto 24px;background:linear-gradient(135deg,#3ddc84,#16a34a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:36px;box-shadow:0 0 40px rgba(61,220,132,.4);animation:pulse 2s ease-in-out infinite}
-@keyframes pulse{0%,100%{box-shadow:0 0 40px rgba(61,220,132,.4)}50%{box-shadow:0 0 60px rgba(61,220,132,.7)}}
-h1{font-size:26px;font-weight:700;margin-bottom:8px;background:linear-gradient(90deg,#3ddc84,#60efff);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.subtitle{color:rgba(255,255,255,.6);font-size:15px;margin-bottom:32px;line-height:1.6}
-.steps{text-align:left;background:rgba(255,255,255,.04);border-radius:12px;padding:20px;margin-bottom:28px}
+body{font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;color:#fff;overflow:hidden}
+.bg{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.bg span{position:absolute;border-radius:50%;opacity:.06;animation:fl 8s ease-in-out infinite}
+.bg span:nth-child(1){width:500px;height:500px;background:#02b875;top:-150px;left:-150px;animation-delay:0s}
+.bg span:nth-child(2){width:350px;height:350px;background:#00ff87;bottom:-100px;right:-100px;animation-delay:3s}
+.bg span:nth-child(3){width:250px;height:250px;background:#02b875;top:60%;left:60%;animation-delay:5s}
+@keyframes fl{0%,100%{transform:scale(1)}50%{transform:scale(1.12) translateY(-18px)}}
+.card{position:relative;background:rgba(255,255,255,.04);backdrop-filter:blur(24px);border:1px solid rgba(2,184,117,.2);border-radius:24px;padding:48px 40px;max-width:480px;width:90%;text-align:center;box-shadow:0 32px 64px rgba(0,0,0,.6)}
+.icon{width:76px;height:76px;margin:0 auto 22px;background:linear-gradient(135deg,#02b875,#00cc6a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:34px;box-shadow:0 0 40px rgba(2,184,117,.45);animation:pulse 2.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 40px rgba(2,184,117,.45)}50%{box-shadow:0 0 65px rgba(2,184,117,.8)}}
+h1{font-size:26px;font-weight:700;margin-bottom:8px;background:linear-gradient(90deg,#02b875,#00ff87);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sub{color:rgba(255,255,255,.55);font-size:15px;margin-bottom:30px;line-height:1.65}
+.steps{text-align:left;background:rgba(2,184,117,.06);border:1px solid rgba(2,184,117,.12);border-radius:14px;padding:20px;margin-bottom:28px}
 .step{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}
 .step:last-child{margin-bottom:0}
-.step-num{width:26px;height:26px;min-width:26px;background:linear-gradient(135deg,#3ddc84,#16a34a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#0f172a}
-.step-text{font-size:14px;color:rgba(255,255,255,.8);line-height:1.5}
-.btn{display:inline-block;margin-top:4px;padding:14px 32px;background:linear-gradient(135deg,#3ddc84,#16a34a);color:#0f172a;font-weight:700;font-size:15px;border-radius:12px;text-decoration:none;transition:transform .2s,box-shadow .2s}
-.btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(61,220,132,.4)}
-.badge{margin-top:20px;font-size:12px;color:rgba(255,255,255,.35)}
+.sn{width:26px;height:26px;min-width:26px;background:linear-gradient(135deg,#02b875,#00cc6a);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#0a0a0a}
+.st{font-size:14px;color:rgba(255,255,255,.8);line-height:1.5}
+.btn{display:inline-block;margin-top:4px;padding:13px 30px;background:linear-gradient(135deg,#02b875,#00cc6a);color:#0a0a0a;font-weight:700;font-size:15px;border-radius:12px;text-decoration:none;transition:transform .2s,box-shadow .2s}
+.btn:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(2,184,117,.5)}
+.badge{margin-top:20px;font-size:12px;color:rgba(255,255,255,.28)}
 </style></head><body>
-<div class="bg-circles"><span></span><span></span><span></span></div>
+<div class="bg"><span></span><span></span><span></span></div>
 <div class="card">
-  <div class="icon-wrap">&#10003;</div>
-  <h1>WSM Instalado!</h1>
-  <p class="subtitle">Sua extensao foi instalada com sucesso.<br>Siga os passos abaixo para comecar a usar.</p>
+  <div class="icon">&#10003;</div>
+  <h1>WaTiDy Instalado!</h1>
+  <p class="sub">Sua extensao foi instalada com sucesso.<br>Siga os passos abaixo para comecar a usar.</p>
   <div class="steps">
-    <div class="step"><div class="step-num">1</div><div class="step-text">Abra o <strong>WhatsApp Web</strong> no seu navegador</div></div>
-    <div class="step"><div class="step-num">2</div><div class="step-text">Clique no icone do WSM na barra de extensoes</div></div>
-    <div class="step"><div class="step-num">3</div><div class="step-text">Insira sua chave de ativacao e clique em <strong>Ativar Agora</strong></div></div>
-    <div class="step"><div class="step-num">4</div><div class="step-text">Aproveite todos os recursos premium do WSM!</div></div>
+    <div class="step"><div class="sn">1</div><div class="st">Abra o <strong>WhatsApp Web</strong> no seu navegador</div></div>
+    <div class="step"><div class="sn">2</div><div class="st">Clique no icone do <strong>WaTiDy</strong> na barra de extensoes</div></div>
+    <div class="step"><div class="sn">3</div><div class="st">Insira sua chave de ativacao e clique em <strong>Ativar Agora</strong></div></div>
+    <div class="step"><div class="sn">4</div><div class="st">Aproveite todos os recursos premium do WaTiDy!</div></div>
   </div>
   <a class="btn" href="https://web.whatsapp.com" target="_blank">Abrir WhatsApp Web</a>
-  <div class="badge">WSM &mdash; Automacao inteligente para WhatsApp</div>
+  <div class="badge">WaTiDy &mdash; Automacao inteligente para WhatsApp</div>
 </div>
 </body></html>`;
 }
@@ -4568,65 +4568,65 @@ h1{font-size:26px;font-weight:700;margin-bottom:8px;background:linear-gradient(9
 function renderUninstallPage() {
   return `<!DOCTYPE html><html lang="pt-BR"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WSM — Ate logo!</title>
+<title>WaTiDy — Ate logo!</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a 0%,#1a1a2e 50%,#0f172a 100%);color:#fff;overflow:hidden}
-.stars{position:fixed;inset:0;pointer-events:none}
-.star{position:absolute;width:2px;height:2px;background:#fff;border-radius:50%;opacity:0;animation:twinkle 3s ease-in-out infinite}
-@keyframes twinkle{0%,100%{opacity:0;transform:scale(1)}50%{opacity:.8;transform:scale(1.5)}}
-.card{position:relative;background:rgba(255,255,255,.05);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.1);border-radius:24px;padding:48px 40px;max-width:480px;width:90%;text-align:center;box-shadow:0 32px 64px rgba(0,0,0,.5)}
-.wave{font-size:56px;animation:wave 2s ease-in-out infinite;display:inline-block;transform-origin:bottom right}
-@keyframes wave{0%,100%{transform:rotate(0deg)}20%{transform:rotate(-15deg)}40%{transform:rotate(10deg)}60%{transform:rotate(-10deg)}80%{transform:rotate(5deg)}}
-h1{font-size:26px;font-weight:700;margin:20px 0 8px;background:linear-gradient(90deg,#a78bfa,#60a5fa);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.subtitle{color:rgba(255,255,255,.6);font-size:15px;margin-bottom:28px;line-height:1.6}
-.msg-box{background:rgba(255,255,255,.04);border-left:3px solid #a78bfa;border-radius:8px;padding:16px 18px;margin-bottom:28px;text-align:left;font-size:14px;color:rgba(255,255,255,.75);line-height:1.7}
-.feedback{margin-bottom:24px}
-.feedback p{font-size:13px;color:rgba(255,255,255,.5);margin-bottom:10px}
-.stars-rating{display:flex;gap:6px;justify-content:center}
-.star-btn{font-size:28px;cursor:pointer;transition:transform .15s;filter:grayscale(1);opacity:.5}
-.star-btn:hover,.star-btn.active{filter:none;opacity:1;transform:scale(1.2)}
-.btn{display:inline-block;padding:14px 32px;background:linear-gradient(135deg,#a78bfa,#7c3aed);color:#fff;font-weight:700;font-size:15px;border-radius:12px;text-decoration:none;transition:transform .2s,box-shadow .2s;margin-right:10px}
-.btn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(167,139,250,.4)}
-.btn-ghost{background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7)}
-.btn-ghost:hover{box-shadow:0 8px 24px rgba(255,255,255,.1)}
-.badge{margin-top:24px;font-size:12px;color:rgba(255,255,255,.25)}
+body{font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;color:#fff;overflow:hidden}
+.bg{position:fixed;inset:0;pointer-events:none}
+.dot{position:absolute;width:2px;height:2px;background:#02b875;border-radius:50%;opacity:0;animation:tw 3s ease-in-out infinite}
+@keyframes tw{0%,100%{opacity:0;transform:scale(1)}50%{opacity:.7;transform:scale(1.8)}}
+.card{position:relative;background:rgba(255,255,255,.04);backdrop-filter:blur(24px);border:1px solid rgba(2,184,117,.18);border-radius:24px;padding:48px 40px;max-width:480px;width:90%;text-align:center;box-shadow:0 32px 64px rgba(0,0,0,.65)}
+.wave{font-size:54px;animation:wv 2s ease-in-out infinite;display:inline-block;transform-origin:bottom right}
+@keyframes wv{0%,100%{transform:rotate(0)}20%{transform:rotate(-15deg)}40%{transform:rotate(10deg)}60%{transform:rotate(-10deg)}80%{transform:rotate(5deg)}}
+h1{font-size:26px;font-weight:700;margin:18px 0 8px;background:linear-gradient(90deg,#02b875,#00ff87);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sub{color:rgba(255,255,255,.55);font-size:15px;margin-bottom:26px;line-height:1.65}
+.msg{background:rgba(2,184,117,.07);border-left:3px solid #02b875;border-radius:8px;padding:16px 18px;margin-bottom:26px;text-align:left;font-size:14px;color:rgba(255,255,255,.72);line-height:1.7}
+.fb{margin-bottom:22px}
+.fb p{font-size:13px;color:rgba(255,255,255,.45);margin-bottom:10px}
+.sr{display:flex;gap:6px;justify-content:center}
+.sb{font-size:28px;cursor:pointer;transition:transform .15s;filter:grayscale(1);opacity:.45}
+.sb:hover,.sb.active{filter:none;opacity:1;transform:scale(1.2);color:#02b875}
+.btn{display:inline-block;padding:13px 28px;background:linear-gradient(135deg,#02b875,#00cc6a);color:#0a0a0a;font-weight:700;font-size:15px;border-radius:12px;text-decoration:none;transition:transform .2s,box-shadow .2s;margin-right:8px}
+.btn:hover{transform:translateY(-2px);box-shadow:0 8px 28px rgba(2,184,117,.5)}
+.btn-g{background:transparent;border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.65);margin-right:0}
+.btn-g:hover{box-shadow:0 8px 24px rgba(255,255,255,.08)}
+.badge{margin-top:22px;font-size:12px;color:rgba(255,255,255,.22)}
 </style></head><body>
-<div class="stars" id="stars"></div>
+<div class="bg" id="bg"></div>
 <div class="card">
   <div class="wave">&#128075;</div>
   <h1>Nos vemos em breve!</h1>
-  <p class="subtitle">O WSM foi desinstalado do seu navegador.<br>Sentiremos sua falta por aqui.</p>
-  <div class="msg-box">
-    Obrigado por ter usado o WSM! Se algo nao funcionou como esperado, adorariamos saber o que aconteceu para poder melhorar. Sua opiniao e muito importante para nos.
+  <p class="sub">O WaTiDy foi desinstalado do seu navegador.<br>Sentiremos sua falta por aqui.</p>
+  <div class="msg">
+    Obrigado por ter usado o WaTiDy! Se algo nao funcionou como esperado, adorariamos saber o que aconteceu para poder melhorar. Sua opiniao e muito importante para nos.
   </div>
-  <div class="feedback">
-    <p>Como foi sua experiencia com o WSM?</p>
-    <div class="stars-rating" id="rating">
-      <span class="star-btn" data-v="1">&#9733;</span>
-      <span class="star-btn" data-v="2">&#9733;</span>
-      <span class="star-btn" data-v="3">&#9733;</span>
-      <span class="star-btn" data-v="4">&#9733;</span>
-      <span class="star-btn" data-v="5">&#9733;</span>
+  <div class="fb">
+    <p>Como foi sua experiencia com o WaTiDy?</p>
+    <div class="sr" id="rating">
+      <span class="sb" data-v="1">&#9733;</span>
+      <span class="sb" data-v="2">&#9733;</span>
+      <span class="sb" data-v="3">&#9733;</span>
+      <span class="sb" data-v="4">&#9733;</span>
+      <span class="sb" data-v="5">&#9733;</span>
     </div>
   </div>
   <a class="btn" href="https://web.whatsapp.com" target="_blank">Reinstalar</a>
-  <a class="btn btn-ghost" href="mailto:suporte@wsm.app.br">Enviar Feedback</a>
-  <div class="badge">WSM &mdash; Ate a proxima!</div>
+  <a class="btn btn-g" href="mailto:suporte@watidy.com.br">Enviar Feedback</a>
+  <div class="badge">WaTiDy &mdash; Ate a proxima!</div>
 </div>
 <script>
 (function(){
-  var c=document.getElementById('stars');
-  for(var i=0;i<80;i++){
-    var s=document.createElement('div');
-    s.className='star';
-    s.style.left=Math.random()*100+'%';
-    s.style.top=Math.random()*100+'%';
-    s.style.animationDelay=Math.random()*3+'s';
-    s.style.animationDuration=(2+Math.random()*2)+'s';
-    c.appendChild(s);
+  var c=document.getElementById('bg');
+  for(var i=0;i<70;i++){
+    var d=document.createElement('div');
+    d.className='dot';
+    d.style.left=Math.random()*100+'%';
+    d.style.top=Math.random()*100+'%';
+    d.style.animationDelay=Math.random()*3+'s';
+    d.style.animationDuration=(2+Math.random()*2)+'s';
+    c.appendChild(d);
   }
-  var btns=document.querySelectorAll('.star-btn');
+  var btns=document.querySelectorAll('.sb');
   btns.forEach(function(b){
     b.addEventListener('click',function(){
       var v=parseInt(b.dataset.v);
@@ -5048,6 +5048,77 @@ async function handleRequest(req, res) {
     sendJson(res, { success: true, notify: [] }); return;
   }
 
+  // ── Validation (sem access-token — guards executam primeiro) ────────────────
+  if (p.startsWith('/api/auth/validation/') && req.method === 'POST') {
+    if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
+
+    // Guard 1: tamanho via header — não consome o stream
+    const cl = parseInt(req.headers['content-length'] || '0', 10);
+    if (cl > 250) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
+
+    // Guard 2: parse do body (stream intacto)
+    const body = await parseBody(req);
+
+    // Guard 3: extrair e sanitizar chave
+    let chave = String(body.chave || body.access_token_plugin || body.senha || body.email || '').trim().replace(/\s+/g, '-');
+    if (chave.length !== 20) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
+    if (!/^[a-zA-Z0-9-]+$/.test(chave)) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
+    chave = chave.toLowerCase();
+    const telefone = String(body.telefone || body.phone || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
+
+    // ── Persistência (nível 404/403) ──
+    const db = await getMongoDb();
+    const keysDoc = await db.collection('store').findOne({ _id: 'keys' });
+    const kv = keysDoc && keysDoc.data && keysDoc.data[chave];
+    if (!kv) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }, 404); return; }
+
+    const limite = typeof kv.limite === 'number' ? kv.limite : -1;
+    let currentUsos = typeof kv.usos === 'number' ? kv.usos : 0;
+
+    if (limite > 0 && currentUsos >= limite) {
+      sendJson(res, { success: false, msg_id: 'limit_reached' }, 403); return;
+    }
+
+    const now = new Date().toISOString();
+    let matched = false;
+    for (let i = 0; i < 3; i++) {
+      const telefoneSet = telefone ? { [`data.${chave}.telefone`]: telefone } : {};
+      const upResult = await db.collection('store').updateOne(
+        { _id: 'keys', [`data.${chave}`]: { $exists: true }, [`data.${chave}.usos`]: currentUsos },
+        { $inc: { [`data.${chave}.usos`]: 1 },
+          $set: { [`data.${chave}.ultimoIp`]: ip, [`data.${chave}.ultimoAcesso`]: now, ...telefoneSet } }
+      );
+      if (upResult.matchedCount > 0) { matched = true; break; }
+      await new Promise(r => setTimeout(r, 50));
+      const fresh = await db.collection('store').findOne(
+        { _id: 'keys' },
+        { projection: { [`data.${chave}.usos`]: 1 } }
+      );
+      currentUsos = fresh?.data?.[chave]?.usos ?? currentUsos;
+      if (limite > 0 && currentUsos >= limite) { sendJson(res, { success: false, msg_id: 'limit_reached' }, 403); return; }
+    }
+    if (!matched) { sendJson(res, { success: false, msg_id: 'conflict_retry' }, 409); return; }
+
+    const logEntry = { chave, ip, telefone: telefone || null, ts: now };
+    await db.collection('store').updateOne(
+      { _id: 'logs' },
+      { $push: { data: { $each: [logEntry], $slice: -LOG_MAX } } },
+      { upsert: true }
+    );
+
+    const rec = {
+      code: chave, label: kv.label || chave, active: kv.ativo !== false,
+      premium: !!kv.premium, expiresAt: kv.expiresAt || null,
+      phones: [], uses: currentUsos + 1, maxUses: limite,
+      email: kv.email || chave, bearer_token: chave, access_token_plugin: chave,
+      user_id: kv.user_id || 0, createdAt: kv.criadoEm || now,
+      lastPhone: telefone || kv.telefone || '', lastIp: ip, lastUsed: now,
+    };
+    const result = await authSuccess(chave, rec);
+    if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }); return; }
+    sendJson(res, result.body); return;
+  }
+
   // Routes requiring access-token (chromeStoreId suffix accepted but not validated)
   if (p.startsWith('/api/auth/') || p.startsWith('/api/user/') || p.startsWith('/api/services/') || p.startsWith('/api/notify/')) {
     if (!requireAccessToken(req)) { sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403); return; }
@@ -5067,73 +5138,6 @@ async function handleRequest(req, res) {
       const body = await parseBody(req);
       const { code, rec } = await getOrCreateFreeKey(body.extension_id || body.device_id, ip);
       const result = await authSuccess(code, rec);
-      if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }); return; }
-      sendJson(res, result.body); return;
-    }
-
-    if (p.startsWith('/api/auth/validation/') && req.method === 'POST') {
-      if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
-
-      // ── Guardas de entrada (nível 400) — executam ANTES de qualquer acesso ao banco ──
-      const rawValidation = await readRawBody(req, 250);
-      if (rawValidation === null) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
-      const body = _safeParse(rawValidation);
-
-      let chave = String(body.chave || body.access_token_plugin || body.senha || body.email || '').trim().replace(/\s+/g, '-');
-      if (chave.length !== 20) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
-      if (!/^[a-zA-Z0-9-]+$/.test(chave)) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
-      chave = chave.toLowerCase();
-      const telefone = String(body.telefone || body.phone || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
-
-      // ── Persistência (nível 404/403) ──
-      const db = await getMongoDb();
-      const keysDoc = await db.collection('store').findOne({ _id: 'keys' });
-      const kv = keysDoc && keysDoc.data && keysDoc.data[chave];
-      if (!kv) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }, 404); return; }
-
-      const limite = typeof kv.limite === 'number' ? kv.limite : -1;
-      let currentUsos = typeof kv.usos === 'number' ? kv.usos : 0;
-
-      if (limite > 0 && currentUsos >= limite) {
-        sendJson(res, { success: false, msg_id: 'limit_reached' }, 403); return;
-      }
-
-      const now = new Date().toISOString();
-      let matched = false;
-      for (let i = 0; i < 3; i++) {
-        const telefoneSet = telefone ? { [`data.${chave}.telefone`]: telefone } : {};
-        const upResult = await db.collection('store').updateOne(
-          { _id: 'keys', [`data.${chave}`]: { $exists: true }, [`data.${chave}.usos`]: currentUsos },
-          { $inc: { [`data.${chave}.usos`]: 1 },
-            $set: { [`data.${chave}.ultimoIp`]: ip, [`data.${chave}.ultimoAcesso`]: now, ...telefoneSet } }
-        );
-        if (upResult.matchedCount > 0) { matched = true; break; }
-        await new Promise(r => setTimeout(r, 50));
-        const fresh = await db.collection('store').findOne(
-          { _id: 'keys' },
-          { projection: { [`data.${chave}.usos`]: 1 } }
-        );
-        currentUsos = fresh?.data?.[chave]?.usos ?? currentUsos;
-        if (limite > 0 && currentUsos >= limite) { sendJson(res, { success: false, msg_id: 'limit_reached' }); return; }
-      }
-      if (!matched) { sendJson(res, { success: false, msg_id: 'conflict_retry' }, 409); return; }
-
-      const logEntry = { chave, ip, telefone: telefone || null, ts: now };
-      await db.collection('store').updateOne(
-        { _id: 'logs' },
-        { $push: { data: { $each: [logEntry], $slice: -LOG_MAX } } },
-        { upsert: true }
-      );
-
-      const rec = {
-        code: chave, label: kv.label || chave, active: kv.ativo !== false,
-        premium: !!kv.premium, expiresAt: kv.expiresAt || null,
-        phones: [], uses: currentUsos + 1, maxUses: limite,
-        email: kv.email || chave, bearer_token: chave, access_token_plugin: chave,
-        user_id: kv.user_id || 0, createdAt: kv.criadoEm || now,
-        lastPhone: telefone || kv.telefone || '', lastIp: ip, lastUsed: now,
-      };
-      const result = await authSuccess(chave, rec);
       if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }); return; }
       sendJson(res, result.body); return;
     }
