@@ -4732,7 +4732,7 @@ function renderClientAuthPainel(storeId, token, page, rec) {
     : phones.map(function(ph){ return '<div class="phone-chip">+' + escHtml(ph) + '</div>'; }).join('');
 
   const devBarHtml = rec && rec.maxUses > 0
-    ? '<div class="dev-bar-wrap"><div class="dev-bar-labels"><span>' + devPct + '% usado</span><span>' + (rec.maxUses - uses) + ' disponivel</span></div><div class="dev-bar"><div class="dev-bar-fill" style="width:' + devPct + '%"></div></div></div>'
+    ? '<div class="dbw"><div class="dbl"><span>' + devPct + '% usado</span><span>' + (rec.maxUses - uses) + ' disponível</span></div><div class="db"><div class="dbf" style="width:' + devPct + '%"></div></div></div>'
     : '';
   const lastPhoneDisp = lastPhone ? ('+' + escHtml(lastPhone)) : '&mdash;';
   const expClss = isDeferred ? 'purple' : '';
@@ -5074,51 +5074,58 @@ async function handleRequest(req, res) {
     if (p.startsWith('/api/auth/validation/') && req.method === 'POST') {
       if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
       const body = await parseBody(req);
-      let keyCode = normKey(body.access_token_plugin || body.chave || body.senha || body.email || '');
-      keyCode = keyCode.replace(/@[a-z0-9._-]+\.[a-z]{2,}$/, '');
-      const phone = String(body.phone || body.whatsapp || body.telefone || '').trim().replace(/\D/g, '').slice(0, 20);
-      const rec = await findLicenseByCode(keyCode);
-      if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return; }
+      const chave = normKey(body.chave || body.access_token_plugin || body.senha || body.email || '');
+      if (!chave || !/^[a-zA-Z0-9-]+$/.test(chave)) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return; }
+      const telefone = String(body.telefone || body.phone || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
 
-      const phones  = Array.isArray(rec.phones)  ? rec.phones  : [];
-      const devices = Array.isArray(rec.devices)  ? rec.devices : [];
-      const maxUses = rec.maxUses != null ? rec.maxUses : -1;
+      const db = await getMongoDb();
+      const keysDoc = await db.collection('store').findOne({ _id: 'keys' });
+      const kv = keysDoc && keysDoc.data && keysDoc.data[chave];
+      if (!kv) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return; }
 
-      if (phone && phone !== '-') {
-        // Phone explicitly provided — register it as the canonical device ID
-        if (!phones.includes(phone)) {
-          if (maxUses > 0 && phones.length >= maxUses) {
-            sendJson(res, { success: false, msg_id: 'limit_reached' }); return;
-          }
-          phones.push(phone);
-          // Remove IP placeholder for this session if exists
-          const ipKey = 'ip:' + ip;
-          const ipIdx = devices.indexOf(ipKey);
-          if (ipIdx >= 0) devices.splice(ipIdx, 1);
-          const update = { phones, uses: phones.length, lastPhone: phone, lastIp: ip, devices };
-          await updateLicense(keyCode, update);
-          Object.assign(rec, { phones, uses: phones.length, lastPhone: phone, devices });
-        }
-      } else {
-        // No phone yet — track IP as provisional device so the counter is non-zero
-        const ipKey = 'ip:' + ip;
-        if (!phones.some(ph => ph === ipKey) && !devices.includes(ipKey)) {
-          const totalDevices = phones.length + devices.filter(d => d.startsWith('ip:')).length;
-          if (maxUses <= 0 || totalDevices < maxUses) {
-            devices.push(ipKey);
-            const update = { devices, uses: phones.length + devices.filter(d=>d.startsWith('ip:')).length, lastIp: ip };
-            await updateLicense(keyCode, update);
-            Object.assign(rec, { devices, uses: update.uses });
-          } else {
-            // Limit reached even for provisional — still let the existing device through if IP seen before
-            if (!devices.includes(ipKey)) {
-              sendJson(res, { success: false, msg_id: 'limit_reached' }); return;
-            }
-          }
-        }
+      const limite = typeof kv.limite === 'number' ? kv.limite : -1;
+      let currentUsos = typeof kv.usos === 'number' ? kv.usos : 0;
+
+      if (limite > 0 && currentUsos >= limite) {
+        sendJson(res, { success: false, msg_id: 'limit_reached' }); return;
       }
 
-      const result = await authSuccess(keyCode, rec);
+      const now = new Date().toISOString();
+      let matched = false;
+      for (let i = 0; i < 3; i++) {
+        const telefoneSet = telefone ? { [`data.${chave}.telefone`]: telefone } : {};
+        const upResult = await db.collection('store').updateOne(
+          { _id: 'keys', [`data.${chave}`]: { $exists: true }, [`data.${chave}.usos`]: currentUsos },
+          { $inc: { [`data.${chave}.usos`]: 1 },
+            $set: { [`data.${chave}.ultimoIp`]: ip, [`data.${chave}.ultimoAcesso`]: now, ...telefoneSet } }
+        );
+        if (upResult.matchedCount > 0) { matched = true; break; }
+        await new Promise(r => setTimeout(r, 50));
+        const fresh = await db.collection('store').findOne(
+          { _id: 'keys' },
+          { projection: { [`data.${chave}.usos`]: 1 } }
+        );
+        currentUsos = fresh?.data?.[chave]?.usos ?? currentUsos;
+        if (limite > 0 && currentUsos >= limite) { sendJson(res, { success: false, msg_id: 'limit_reached' }); return; }
+      }
+      if (!matched) { sendJson(res, { success: false, msg_id: 'conflict_retry' }, 409); return; }
+
+      const logEntry = { chave, ip, telefone: telefone || null, ts: now };
+      await db.collection('store').updateOne(
+        { _id: 'logs' },
+        { $push: { data: { $each: [logEntry], $slice: -LOG_MAX } } },
+        { upsert: true }
+      );
+
+      const rec = {
+        code: chave, label: kv.label || chave, active: kv.ativo !== false,
+        premium: !!kv.premium, expiresAt: kv.expiresAt || null,
+        phones: [], uses: currentUsos + 1, maxUses: limite,
+        email: kv.email || chave, bearer_token: chave, access_token_plugin: chave,
+        user_id: kv.user_id || 0, createdAt: kv.criadoEm || now,
+        lastPhone: telefone || kv.telefone || '', lastIp: ip, lastUsed: now,
+      };
+      const result = await authSuccess(chave, rec);
       if (!result.ok) { sendJson(res, { success: false, msg_id: result.msg_id }); return; }
       sendJson(res, result.body); return;
     }
