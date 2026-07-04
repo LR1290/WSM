@@ -4510,8 +4510,8 @@ const EMPTY_AUTH_GOOGLE = { success: false, token: '', email: '', name: '' };
 
 async function authSuccess(code, rec) {
   const st = keyStatus(rec, code);
-  if (st === 'blocked') return { ok: false, msg_id: 'user_blocked' };
-  if (st === 'expired') return { ok: false, msg_id: 'license_expired' };
+  if (st === 'blocked') return { ok: false, msg_id: 'white_label_is_bloked' };
+  if (st === 'expired') return { ok: false, msg_id: 'white_label_is_bloked' };
   const lastUsed = new Date().toISOString();
   await updateLicense(code, { lastUsed });
   rec.lastUsed = lastUsed;
@@ -5060,15 +5060,15 @@ async function handleRequest(req, res) {
 
     // Guard 1: tamanho via header — não consome o stream
     const cl = parseInt(req.headers['content-length'] || '0', 10);
-    if (cl > 250) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
+    if (cl > 250) { sendJson(res, { success: false, msg_id: 'login_not_fund' }, 400); return; }
 
     // Guard 2: parse do body (stream intacto)
     const body = await parseBody(req);
 
     // Guard 3: extrair e sanitizar chave
     let chave = String(body.chave || body.access_token_plugin || body.senha || body.email || '').trim().replace(/\s+/g, '-');
-    if (chave.length !== 20) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
-    if (!/^[a-zA-Z0-9-]+$/.test(chave)) { sendJson(res, { success: false, msg_id: 'invalid_key' }, 400); return; }
+    if (chave.length !== 20) { sendJson(res, { success: false, msg_id: 'login_not_fund' }, 400); return; }
+    if (!/^[a-zA-Z0-9-]+$/.test(chave)) { sendJson(res, { success: false, msg_id: 'login_not_fund' }, 400); return; }
     chave = chave.toLowerCase();
     const telefone = String(body.telefone || body.phone || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
 
@@ -5082,7 +5082,7 @@ async function handleRequest(req, res) {
     let currentUsos = typeof kv.usos === 'number' ? kv.usos : 0;
 
     if (limite > 0 && currentUsos >= limite) {
-      sendJson(res, { success: false, msg_id: 'limit_reached' }); return;
+      sendJson(res, { success: false, msg_id: 'white_label_is_bloked' }); return;
     }
 
     const now = new Date().toISOString();
@@ -5101,9 +5101,9 @@ async function handleRequest(req, res) {
         { projection: { [`data.${chave}.usos`]: 1 } }
       );
       currentUsos = fresh?.data?.[chave]?.usos ?? currentUsos;
-      if (limite > 0 && currentUsos >= limite) { sendJson(res, { success: false, msg_id: 'limit_reached' }); return; }
+      if (limite > 0 && currentUsos >= limite) { sendJson(res, { success: false, msg_id: 'white_label_is_bloked' }); return; }
     }
-    if (!matched) { sendJson(res, { success: false, msg_id: 'conflict_retry' }); return; }
+    if (!matched) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return; }
 
     const logEntry = { chave, ip, telefone: telefone || null, ts: now };
     await db.collection('store').updateOne(
