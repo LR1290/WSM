@@ -1967,7 +1967,7 @@ function showPanel(d,key){
   const actCard=document.getElementById('r-act-card'),lastCard=document.getElementById('r-last-card');
   if(d.activatedAt&&actCard){actCard.style.display='block';document.getElementById('r-activated').textContent=fmtDate(d.activatedAt);}
   if(d.lastUsed&&lastCard){lastCard.style.display='block';document.getElementById('r-lastused').textContent=fmtDate(d.lastUsed);}
-  document.getElementById('r-links').innerHTML='<a class="link-btn" href="https://app.watidy.com.br/dashboard/backup-fixer" target="_blank">🔧 Corrija Backups</a><a class="link-btn" href="https://app.watidy.com.br/dashboard/converter" target="_blank">🎵 Converta Áudios</a><a class="link-btn" href="https://wa.me/5521996771552?text=WSM!%20Preciso%20de%20ajuda." target="_blank" style="border-color:#25d36640;color:#25d366">💬 Suporte WhatsApp</a>';
+  document.getElementById('r-links').innerHTML='<a class="link-btn" href="https://wa.me/5521996771552?text=WSM!%20Preciso%20de%20ajuda." target="_blank" rel="noopener" style="border-color:#25d36640;color:#25d366">💬 Suporte WhatsApp</a>';
   const renewBanner=document.getElementById('r-renew-banner');
   if(renewBanner){const showRenew=d.expired||(d.hoursLeft!==null&&d.hoursLeft<168);renewBanner.style.display=showRenew?'flex':'none';if(d.expired){const t=renewBanner.querySelector('.renew-banner-title');if(t)t.textContent='⏰ Chave expirada!';}}
   const phoneSec=document.getElementById('r-phone-section'),phoneList=document.getElementById('r-phone-list');
@@ -4372,11 +4372,6 @@ function normKey(raw) {
   return String(raw || '').trim().toLowerCase().slice(0, 48);
 }
 
-function generateKeyCode() {
-  const hex = () => crypto.randomBytes(3).toString('hex');
-  return `wt-${hex()}-${hex()}-${hex()}`;
-}
-
 function _synthRec(k, kv) {
   return {
     code: k, label: kv.label || k, active: kv.active !== false,
@@ -5081,7 +5076,7 @@ async function handleRequest(req, res) {
       const body = await parseBody(req);
       let keyCode = normKey(body.access_token_plugin || body.chave || body.senha || body.email || '');
       keyCode = keyCode.replace(/@[a-z0-9._-]+\.[a-z]{2,}$/, '');
-      const phone = String(body.phone || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
+      const phone = String(body.phone || body.whatsapp || body.telefone || '').trim().replace(/\D/g, '').slice(0, 20);
       const rec = await findLicenseByCode(keyCode);
       if (!rec) { sendJson(res, { success: false, msg_id: 'invalid_token_in_validation' }); return; }
 
@@ -5132,6 +5127,7 @@ async function handleRequest(req, res) {
 
       // POST /api/user/update — client-side profile update (name, whatsapp_plugin)
     if (p === '/api/user/update' && req.method === 'POST') {
+      if (!checkRateLimit(ip, 'api')) { sendJson(res, { success: false, msg_id: 'rate_limited' }, 429); return; }
       const keyCode = normKey(parseBearer(req));
       if (!keyCode) { sendJson(res, { success: false, msg_id: 'no_token' }, 401); return; }
       const rec = await findLicenseByCode(keyCode);
@@ -5149,12 +5145,13 @@ async function handleRequest(req, res) {
 
     // POST /api/client/phone — register WhatsApp phone used on login
     if (p === '/api/client/phone' && req.method === 'POST') {
+      if (!requireAccessToken(req)) { sendJson(res, { success: false, msg_id: 'invalid_access_token' }, 403); return; }
       const keyCode = normKey(parseBearer(req));
       if (!keyCode) { sendJson(res, { success: false, msg_id: 'no_token' }, 401); return; }
       const rec = await findLicenseByCode(keyCode);
       if (!rec || !rec.active) { sendJson(res, { success: false, msg_id: 'invalid_token' }, 401); return; }
       const body = await parseBody(req);
-      const phone = String(body.phone || body.whatsapp || '').trim().replace(/\D/g, '').slice(0, 20);
+      const phone = String(body.phone || body.whatsapp || body.telefone || '').trim().replace(/\D/g, '').slice(0, 20);
       if (!phone) { sendJson(res, { success: false, msg_id: 'invalid_phone' }, 400); return; }
       const phones = Array.isArray(rec.phones) ? rec.phones : [];
       if (!phones.includes(phone)) {
@@ -5791,6 +5788,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === '/client/status' && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const _cl = parseInt(req.headers['content-length'] || '0', 10);
     if (_cl > 256) { sendJson(res, { error: 'payload_too_large' }, 400); return; }
@@ -5820,6 +5818,7 @@ async function handleRequest(req, res) {
   }
 
   if (p === '/client/remove-phone' && req.method === 'POST') {
+    if (!isAdminSession(req)) { sendJson(res, { error: 'unauthorized' }, 401); return; }
     if (!checkRateLimit(ip, 'api')) { sendJson(res, { error: 'rate_limited' }, 429); return; }
     const _clRm = parseInt(req.headers['content-length'] || '0', 10);
     if (_clRm > 256) { sendJson(res, { error: 'payload_too_large' }, 400); return; }
@@ -5838,10 +5837,6 @@ async function handleRequest(req, res) {
     removePhoneFromKey(keys[keyCode], phone);
     saveKey(keyCode).catch(()=>{});
     sendJson(res, { ok: true, phones: keys[keyCode].phones }); return;
-  }
-
-  if (req.method === 'GET' && (p === '/dashboard/backup-fixer' || p === '/dashboard/converter')) {
-    res.writeHead(302, { Location: 'https://app.watidy.com.br' + p }); res.end(); return;
   }
 
   if (p === '/faq' && req.method === 'GET') {
@@ -5933,6 +5928,14 @@ async function handleRequest(req, res) {
     sendJson(res, { ok: true, labels: [] }); return;
   }
 
+  if (p === '/portal' && req.method === 'GET') {
+    const keyParam = normKey(url.searchParams.get('key') || '');
+    if (keyParam) {
+      const rec = await findLicenseByCode(keyParam);
+      if (rec) { sendHtml(res, renderClientAuthPainel(null, keyParam, null, rec)); return; }
+    }
+    sendHtml(res, renderClientPortal()); return;
+  }
   const CLIENT_PATHS = ['/', '/plans/manage', '/plans/new', '/dashboard/chaves'];
   if (req.method === 'GET' && (CLIENT_PATHS.includes(p) || p.startsWith('/unauthorized') || p.startsWith('/funnels') || p.startsWith('/labels'))) {
     sendHtml(res, renderClientPortal()); return;
