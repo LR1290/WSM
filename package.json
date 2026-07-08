@@ -1,16 +1,14 @@
 {
   "name": "watidy-server",
-  "version": "3.0.0",
-  "description": "WaTiDy license server",
+  "version": "4.0.0",
+  "description": "waTidy license server — landing, portal do cliente, painéis e API da extensão",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
-    "mongodb": "^6.7.0",
-    "node-fetch": "^2.7.0"
+    "mongodb": "^6.7.0"
   },
   "engines": {
     "node": ">=18.0.0"
